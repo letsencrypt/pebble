@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	directoryPath = "/directory"
-	newRegPath    = "/new-reg"
+	// Note: We deliberately pick endpoint paths that differ from Boulder to
+	// exercise clients processing of the /directory response
+	directoryPath = "/dir"
 )
 
 // TODO(@cpu) - externalize Problem code to another package
