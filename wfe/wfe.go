@@ -63,10 +63,13 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
+	nonce                  *nonceMap
 }
 
 func New() (WebFrontEndImpl, error) {
-	return WebFrontEndImpl{}, nil
+	return WebFrontEndImpl{
+		nonce: newNonceMap(),
+	}, nil
 }
 
 func (wfe *WebFrontEndImpl) HandleFunc(
@@ -90,8 +93,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-				// TODO(@cpu): generate nonces...
-				response.Header().Set("Replay-Nonce", "TODO...")
+				response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 
 				logEvent.Endpoint = pattern
 				if request.URL != nil {
