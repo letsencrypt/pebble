@@ -20,6 +20,7 @@ const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
 	directoryPath = "/dir"
+	noncePath     = "/nonce-plz"
 )
 
 type requestEvent struct {
@@ -127,6 +128,8 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
+	// Note: "GET" also implies "HEAD"
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
 	return m
 }
 
@@ -136,7 +139,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	directoryEndpoints := map[string]string{}
+	directoryEndpoints := map[string]string{
+		"new-nonce": noncePath,
+	}
 
 	response.Header().Set("Content-Type", "application/json")
 
@@ -189,6 +194,16 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 
 	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
 	return resultUrl.String()
+}
+
+func (wfe *WebFrontEndImpl) Nonce(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	response.WriteHeader(http.StatusNoContent)
+	response.Write([]byte("{}"))
 }
 
 func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
