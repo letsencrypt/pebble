@@ -23,6 +23,17 @@ const (
 	noncePath     = "/nonce-plz"
 )
 
+// TODO(@cpu) - externalize Problem code to another package
+type ProblemDetails struct {
+	Type       string `json:"type,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	HTTPStatus int    `json:"status,omitempty"`
+}
+
+func (pd *ProblemDetails) Error() string {
+	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
+}
+
 type requestEvent struct {
 	ClientAddr string `json:",omitempty"`
 	Endpoint   string `json:",omitempty"`
@@ -115,7 +126,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
 	problemDoc, err := marshalIndent(prob)
-
 	if err != nil {
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
