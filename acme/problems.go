@@ -15,6 +15,8 @@ func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
+// TODO(@cpu): Make constants for the Type strings
+
 func InternalErrorProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       "urn:acme:error:serverInternal",
