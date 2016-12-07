@@ -213,7 +213,6 @@ func (wfe *WebFrontEndImpl) Nonce(
 	request *http.Request) {
 
 	response.WriteHeader(http.StatusNoContent)
-	response.Write([]byte("{}"))
 }
 
 func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
