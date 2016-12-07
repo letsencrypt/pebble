@@ -3,18 +3,24 @@ package wfe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/letsencrypt/pebble/acme"
+	jose "github.com/square/go-jose"
 )
 
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
 	directoryPath = "/dir"
+	noncePath     = "/nonce-plz"
 )
 
 // TODO(@cpu) - externalize Problem code to another package
@@ -63,10 +69,13 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
+	nonce                  *nonceMap
 }
 
 func New() (WebFrontEndImpl, error) {
-	return WebFrontEndImpl{}, nil
+	return WebFrontEndImpl{
+		nonce: newNonceMap(),
+	}, nil
 }
 
 func (wfe *WebFrontEndImpl) HandleFunc(
@@ -90,8 +99,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-				// TODO(@cpu): generate nonces...
-				response.Header().Set("Replay-Nonce", "TODO...")
+				response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 
 				logEvent.Endpoint = pattern
 				if request.URL != nil {
@@ -102,7 +110,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 				if !methodsMap[request.Method] {
 					response.Header().Set("Allow", methodsStr)
-					wfe.sendError(response)
+					wfe.sendError(acme.MethodNotAllowed(), response)
 					return
 				}
 
@@ -116,27 +124,22 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux.Handle(pattern, defaultHandler)
 }
 
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter) {
-	// TODO(@cpu): Support problems & varied error codes
-	code := http.StatusInternalServerError
-
-	problemDoc, err := marshalIndent(&ProblemDetails{
-		Type:       "urn:acme:error:serverInternal",
-		Detail:     "An unknown internal server error occurred",
-		HTTPStatus: http.StatusInternalServerError,
-	})
+func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
+	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
 	response.Header().Set("Content-Type", "application/problem+json")
-	response.WriteHeader(code)
+	response.WriteHeader(prob.HTTPStatus)
 	response.Write(problemDoc)
 }
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
+	// Note: "GET" also implies "HEAD"
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
 	return m
 }
 
@@ -146,13 +149,16 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	directoryEndpoints := map[string]string{}
+	directoryEndpoints := map[string]string{
+		"new-nonce": noncePath,
+	}
 
 	response.Header().Set("Content-Type", "application/json")
 
 	relDir, err := wfe.relativeDirectory(request, directoryEndpoints)
 	if err != nil {
-		wfe.sendError(response)
+		wfe.sendError(acme.InternalErrorProblem("unable to create directory"), response)
+		return
 	}
 
 	response.Write(relDir)
@@ -198,6 +204,103 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 
 	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
 	return resultUrl.String()
+}
+
+func (wfe *WebFrontEndImpl) Nonce(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	response.WriteHeader(http.StatusNoContent)
+}
+
+func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+	parsedJWS, err := jose.ParseSigned(body)
+	if err != nil {
+		return nil, nil, errors.New("Parse error reading JWS")
+	}
+
+	if len(parsedJWS.Signatures) > 1 {
+		return nil, nil, errors.New("Too many signatures in POST body")
+	}
+
+	if len(parsedJWS.Signatures) == 0 {
+		return nil, nil, errors.New("POST JWS not signed")
+	}
+
+	key := parsedJWS.Signatures[0].Header.JsonWebKey
+	if key == nil {
+		return nil, nil, errors.New("No JWK in JWS header")
+	}
+
+	if !key.Valid() {
+		return nil, nil, errors.New("Invalid JWK in JWS header")
+	}
+
+	return key, parsedJWS, nil
+}
+
+func (wfe *WebFrontEndImpl) verifyPOST(
+	ctx context.Context,
+	logEvent *requestEvent,
+	request *http.Request,
+	resource acme.Resource) *acme.ProblemDetails {
+
+	if _, ok := request.Header["Content-Length"]; !ok {
+		return acme.MalformedProblem("missing Content-Length header on POST")
+	}
+
+	if request.Body == nil {
+		return acme.MalformedProblem("no body on POST")
+	}
+
+	bodyBytes, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		return acme.InternalErrorProblem("unable to read request body")
+	}
+
+	body := string(bodyBytes)
+
+	submittedKey, parsedJWS, err := wfe.extractJWSKey(body)
+	if err != nil {
+		return acme.MalformedProblem(err.Error())
+	}
+
+	// TODO(@cpu): Find a reg with this key
+
+	// TODO(@cpu): `checkAlgorithm()`
+
+	// TODO(@cpu): use the looked up key, not submittedKey!
+	payload, err := parsedJWS.Verify(submittedKey)
+	if err != nil {
+		return acme.MalformedProblem("JWS verification error")
+	}
+
+	nonce := parsedJWS.Signatures[0].Header.Nonce
+	if len(nonce) == 0 {
+		return acme.BadNonceProblem("JWS has no anti-replay nonce")
+	} else if !wfe.nonce.validNonce(nonce) {
+		return acme.BadNonceProblem(fmt.Sprintf(
+			"JWS has an invalid anti-replay nonce: %s", nonce))
+	}
+
+	var parsedRequest struct {
+		Resource string `json:"resource"`
+	}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	if err != nil {
+		return acme.MalformedProblem("Request payload did not parse as JSON")
+	}
+	if parsedRequest.Resource == "" {
+		return acme.MalformedProblem(
+			"JWS request payload does not specify a resource")
+	} else if resource != acme.Resource(parsedRequest.Resource) {
+		return acme.MalformedProblem(
+			"JWS request payload resource does not match known resource")
+	}
+
+	return nil
 }
 
 func addNoCacheHeader(response http.ResponseWriter) {
