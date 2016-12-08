@@ -171,7 +171,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
 	problemDoc, err := marshalIndent(prob)
-
 	if err != nil {
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
@@ -362,6 +361,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	if err != nil {
 		return nil, nil, acme.MalformedProblem("Request payload did not parse as JSON")
 	}
+
 	if parsedRequest.Resource == "" {
 		return nil, nil, acme.MalformedProblem(
 			"JWS request payload does not specify a resource")
