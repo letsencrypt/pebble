@@ -5,7 +5,7 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,19 +40,21 @@ type requestEvent struct {
 type memoryStore struct {
 	sync.RWMutex
 	// Pebble keeps registrations in-memory, not persisted anywhere
-	registrationsByKey map[string]*acme.Registration
+	// Each Registration's ID is the hex encoding of a SHA256 sum over its public
+	// key bytes
+	registrationsByID map[string]*acme.Registration
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		registrationsByKey: make(map[string]*acme.Registration),
+		registrationsByID: make(map[string]*acme.Registration),
 	}
 }
 
-func (m *memoryStore) getRegistration(digest string) *acme.Registration {
+func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
 	m.RLock()
 	defer m.RUnlock()
-	if reg, present := m.registrationsByKey[digest]; present {
+	if reg, present := m.registrationsByID[id]; present {
 		return reg
 	}
 	return nil
@@ -61,23 +63,23 @@ func (m *memoryStore) getRegistration(digest string) *acme.Registration {
 func (m *memoryStore) count() int {
 	m.RLock()
 	defer m.RUnlock()
-	return len(m.registrationsByKey)
+	return len(m.registrationsByID)
 }
 
 func (m *memoryStore) addRegistration(reg *acme.Registration) (*acme.Registration, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	digest := reg.ID
-	if len(digest) == 0 {
+	regID := reg.ID
+	if len(regID) == 0 {
 		return nil, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
 	}
 
-	if _, present := m.registrationsByKey[digest]; present {
-		return nil, fmt.Errorf("registration %q already exists", digest)
+	if _, present := m.registrationsByID[regID]; present {
+		return nil, fmt.Errorf("registration %q already exists", regID)
 	}
 
-	m.registrationsByKey[digest] = reg
+	m.registrationsByID[regID] = reg
 	return reg, nil
 }
 
@@ -263,24 +265,29 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response.WriteHeader(http.StatusNoContent)
 }
 
-// KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
-// provided public key.
-func KeyDigest(key crypto.PublicKey) (string, error) {
+/*
+ * keyToID produces a string with the hex representation of the SHA256 digest
+ * over a provided public key. We use this for acme.Registration ID values
+ * because it makes looking up a registration by key easy (required by the spec
+ * for retreiving existing registrations), and becauase it makes the reg URLs
+ * somewhat human digestable/comparable.
+ */
+func keyToID(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 	case *jose.JsonWebKey:
 		if t == nil {
-			return "", fmt.Errorf("Cannot compute digest of nil key")
+			return "", fmt.Errorf("Cannot compute ID of nil key")
 		}
-		return KeyDigest(t.Key)
+		return keyToID(t.Key)
 	case jose.JsonWebKey:
-		return KeyDigest(t.Key)
+		return keyToID(t.Key)
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
 			return "", err
 		}
 		spkiDigest := sha256.Sum256(keyDER)
-		return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
+		return hex.EncodeToString(spkiDigest[:]), nil
 	}
 }
 
@@ -394,14 +401,14 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 
 	newReg.Key = key
-	digest, err := KeyDigest(newReg.Key)
+	regID, err := keyToID(newReg.Key)
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
 	}
-	newReg.ID = digest
+	newReg.ID = regID
 
-	if existingReg := wfe.db.getRegistration(newReg.ID); existingReg != nil {
+	if existingReg := wfe.db.getRegistrationByID(newReg.ID); existingReg != nil {
 		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
 		response.Header().Set("Location", regURL)
 		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
