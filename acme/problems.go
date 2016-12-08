@@ -5,6 +5,14 @@ import (
 	"net/http"
 )
 
+const (
+	errNS             = "urn:ietf:params:acme:error:"
+	serverInternalErr = errNS + "serverInternal"
+	malformedErr      = errNS + "malformedRequest"
+	badNonceErr       = errNS + "badNonce"
+	agreementReqErr   = errNS + "agreementRequired"
+)
+
 type ProblemDetails struct {
 	Type       string `json:"type,omitempty"`
 	Detail     string `json:"detail,omitempty"`
@@ -15,11 +23,9 @@ func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
-// TODO(@cpu): Make constants for the Type strings
-
 func InternalErrorProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       "urn:acme:error:serverInternal",
+		Type:       serverInternalErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusInternalServerError,
 	}
@@ -27,7 +33,7 @@ func InternalErrorProblem(detail string) *ProblemDetails {
 
 func MalformedProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       "urn:acme:error:malformedRequest",
+		Type:       malformedErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
@@ -35,7 +41,7 @@ func MalformedProblem(detail string) *ProblemDetails {
 
 func MethodNotAllowed() *ProblemDetails {
 	return &ProblemDetails{
-		Type:       "urn:acme:error:malformedRequest",
+		Type:       malformedErr,
 		Detail:     "Method not allowed",
 		HTTPStatus: http.StatusMethodNotAllowed,
 	}
@@ -43,8 +49,24 @@ func MethodNotAllowed() *ProblemDetails {
 
 func BadNonceProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       "urn:acme:error:badNonce",
+		Type:       badNonceErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func Conflict(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       malformedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
+	}
+}
+
+func AgreementRequiredProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       agreementReqErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
 	}
 }
