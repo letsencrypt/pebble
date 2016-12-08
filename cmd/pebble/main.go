@@ -17,7 +17,10 @@ type config struct {
 }
 
 func main() {
-	configFile := flag.String("config", "", "File path to the Pebble configuration file")
+	configFile := flag.String(
+		"config",
+		"test/config/pebble-config.json",
+		"File path to the Pebble configuration file")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
