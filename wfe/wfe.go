@@ -2,14 +2,20 @@ package wfe
 
 import (
 	"context"
+	"crypto"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -21,24 +27,61 @@ const (
 	// exercise clients processing of the /directory response
 	directoryPath = "/dir"
 	noncePath     = "/nonce-plz"
+	newRegPath    = "/sign-me-up"
+	regPath       = "/my-reg/"
 )
-
-// TODO(@cpu) - externalize Problem code to another package
-type ProblemDetails struct {
-	Type       string `json:"type,omitempty"`
-	Detail     string `json:"detail,omitempty"`
-	HTTPStatus int    `json:"status,omitempty"`
-}
-
-func (pd *ProblemDetails) Error() string {
-	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
-}
 
 type requestEvent struct {
 	ClientAddr string `json:",omitempty"`
 	Endpoint   string `json:",omitempty"`
 	Method     string `json:",omitempty"`
 	UserAgent  string `json:",omitempty"`
+}
+
+type memoryStore struct {
+	sync.RWMutex
+	// Pebble keeps registrations in-memory, not persisted anywhere
+	// Each Registration's ID is the hex encoding of a SHA256 sum over its public
+	// key bytes
+	registrationsByID map[string]*acme.Registration
+}
+
+func newMemoryStore() *memoryStore {
+	return &memoryStore{
+		registrationsByID: make(map[string]*acme.Registration),
+	}
+}
+
+func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
+	m.RLock()
+	defer m.RUnlock()
+	if reg, present := m.registrationsByID[id]; present {
+		return reg
+	}
+	return nil
+}
+
+func (m *memoryStore) count() int {
+	m.RLock()
+	defer m.RUnlock()
+	return len(m.registrationsByID)
+}
+
+func (m *memoryStore) addRegistration(reg *acme.Registration) (*acme.Registration, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	regID := reg.ID
+	if len(regID) == 0 {
+		return nil, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
+	}
+
+	if _, present := m.registrationsByID[regID]; present {
+		return nil, fmt.Errorf("registration %q already exists", regID)
+	}
+
+	m.registrationsByID[regID] = reg
+	return reg, nil
 }
 
 type wfeHandlerFunc func(context.Context, *requestEvent, http.ResponseWriter, *http.Request)
@@ -68,12 +111,16 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	SubscriberAgreementURL string
+	log                    *log.Logger
+	db                     *memoryStore
 	nonce                  *nonceMap
+	SubscriberAgreementURL string
 }
 
-func New() (WebFrontEndImpl, error) {
+func New(log *log.Logger) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
+		log:   log,
+		db:    newMemoryStore(),
 		nonce: newNonceMap(),
 	}, nil
 }
@@ -114,6 +161,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					return
 				}
 
+				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
+
 				// TODO(@cpu): Configureable request timeout
 				timeout := 1 * time.Minute
 				ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -138,8 +187,9 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
-	// Note: "GET" also implies "HEAD"
+	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
+	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
 	return m
 }
 
@@ -149,8 +199,10 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	// TODO(@cpu): Add directory metadata (e.g. TOS url)
 	directoryEndpoints := map[string]string{
 		"new-nonce": noncePath,
+		"new-reg":   newRegPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -215,6 +267,32 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response.WriteHeader(http.StatusNoContent)
 }
 
+/*
+ * keyToID produces a string with the hex representation of the SHA256 digest
+ * over a provided public key. We use this for acme.Registration ID values
+ * because it makes looking up a registration by key easy (required by the spec
+ * for retreiving existing registrations), and becauase it makes the reg URLs
+ * somewhat human digestable/comparable.
+ */
+func keyToID(key crypto.PublicKey) (string, error) {
+	switch t := key.(type) {
+	case *jose.JsonWebKey:
+		if t == nil {
+			return "", fmt.Errorf("Cannot compute ID of nil key")
+		}
+		return keyToID(t.Key)
+	case jose.JsonWebKey:
+		return keyToID(t.Key)
+	default:
+		keyDER, err := x509.MarshalPKIXPublicKey(key)
+		if err != nil {
+			return "", err
+		}
+		spkiDigest := sha256.Sum256(keyDER)
+		return hex.EncodeToString(spkiDigest[:]), nil
+	}
+}
+
 func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
@@ -241,47 +319,47 @@ func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.
 	return key, parsedJWS, nil
 }
 
+// NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
+// presently handle the `regCheck` parameter or do any lookups for existing
+// registrations.
 func (wfe *WebFrontEndImpl) verifyPOST(
 	ctx context.Context,
 	logEvent *requestEvent,
 	request *http.Request,
-	resource acme.Resource) *acme.ProblemDetails {
+	resource acme.Resource) ([]byte, *jose.JsonWebKey, *acme.ProblemDetails) {
 
 	if _, ok := request.Header["Content-Length"]; !ok {
-		return acme.MalformedProblem("missing Content-Length header on POST")
+		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
 	}
 
 	if request.Body == nil {
-		return acme.MalformedProblem("no body on POST")
+		return nil, nil, acme.MalformedProblem("no body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return acme.InternalErrorProblem("unable to read request body")
+		return nil, nil, acme.InternalErrorProblem("unable to read request body")
 	}
 
 	body := string(bodyBytes)
 
 	submittedKey, parsedJWS, err := wfe.extractJWSKey(body)
 	if err != nil {
-		return acme.MalformedProblem(err.Error())
+		return nil, nil, acme.MalformedProblem(err.Error())
 	}
-
-	// TODO(@cpu): Find a reg with this key
 
 	// TODO(@cpu): `checkAlgorithm()`
 
-	// TODO(@cpu): use the looked up key, not submittedKey!
 	payload, err := parsedJWS.Verify(submittedKey)
 	if err != nil {
-		return acme.MalformedProblem("JWS verification error")
+		return nil, nil, acme.MalformedProblem("JWS verification error")
 	}
 
 	nonce := parsedJWS.Signatures[0].Header.Nonce
 	if len(nonce) == 0 {
-		return acme.BadNonceProblem("JWS has no anti-replay nonce")
+		return nil, nil, acme.BadNonceProblem("JWS has no anti-replay nonce")
 	} else if !wfe.nonce.validNonce(nonce) {
-		return acme.BadNonceProblem(fmt.Sprintf(
+		return nil, nil, acme.BadNonceProblem(fmt.Sprintf(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}
 
@@ -290,16 +368,88 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
-		return acme.MalformedProblem("Request payload did not parse as JSON")
+		return nil, nil, acme.MalformedProblem("Request payload did not parse as JSON")
 	}
+
 	if parsedRequest.Resource == "" {
-		return acme.MalformedProblem(
+		return nil, nil, acme.MalformedProblem(
 			"JWS request payload does not specify a resource")
 	} else if resource != acme.Resource(parsedRequest.Resource) {
-		return acme.MalformedProblem(
+		return nil, nil, acme.MalformedProblem(
 			"JWS request payload resource does not match known resource")
 	}
 
+	return []byte(payload), submittedKey, nil
+}
+
+func (wfe *WebFrontEndImpl) NewRegistration(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceNewReg)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	var newReg acme.Registration
+	err := json.Unmarshal(body, &newReg)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	newReg.Key = key
+	regID, err := keyToID(newReg.Key)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(err.Error()), response)
+		return
+	}
+	newReg.ID = regID
+
+	if existingReg := wfe.db.getRegistrationByID(newReg.ID); existingReg != nil {
+		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
+		response.Header().Set("Location", regURL)
+		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
+		return
+	}
+
+	if newReg.ToSAgreed == false {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+		wfe.sendError(
+			acme.AgreementRequiredProblem(
+				"Provided registration did include true terms-of-service-agreed"),
+			response)
+		return
+	}
+
+	wfe.db.addRegistration(&newReg)
+	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.count())
+
+	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
+
+	response.Header().Add("Location", regURL)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling registration"), response)
+	}
+}
+
+func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, status int, v interface{}) error {
+	jsonReply, err := marshalIndent(v)
+	if err != nil {
+		return err // All callers are responsible for handling this error
+	}
+
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(status)
+
+	// Don't worry about returning an error from Write() because the caller will
+	// never handle it.
+	_, _ = response.Write(jsonReply)
 	return nil
 }
 
@@ -309,4 +459,8 @@ func addNoCacheHeader(response http.ResponseWriter) {
 
 func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "   ")
+}
+
+func link(url, relation string) string {
+	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
