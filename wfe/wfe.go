@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -110,13 +111,15 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	SubscriberAgreementURL string
+	log                    *log.Logger
 	db                     *memoryStore
 	nonce                  *nonceMap
+	SubscriberAgreementURL string
 }
 
-func New() (WebFrontEndImpl, error) {
+func New(log *log.Logger) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
+		log:   log,
 		db:    newMemoryStore(),
 		nonce: newNonceMap(),
 	}, nil
@@ -158,8 +161,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					return
 				}
 
-				// TODO(@cpu): logging instead of Printf!
-				fmt.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
+				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
 
 				// TODO(@cpu): Configureable request timeout
 				timeout := 1 * time.Minute
@@ -425,8 +427,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 
 	wfe.db.addRegistration(&newReg)
-	// TODO(@cpu): logging instead of printf
-	fmt.Printf("There are now %d registrations in memory\n", wfe.db.count())
+	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.count())
 
 	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
 
