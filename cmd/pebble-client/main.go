@@ -12,11 +12,24 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/letsencrypt/pebble/cmd"
 	"gopkg.in/square/go-jose.v1"
 )
+
+const (
+	version       = "0.0.1"
+	userAgentBase = "pebble-client"
+	locale        = "en-us"
+)
+
+func userAgent() string {
+	return fmt.Sprintf(
+		"%s %s (%s; %s)",
+		userAgentBase, version, runtime.GOOS, runtime.GOARCH)
+}
 
 type client struct {
 	server    *url.URL
@@ -96,10 +109,10 @@ func (c *client) updateDirectory() error {
 }
 
 func (c *client) updateNonce() error {
-	if _, ok := c.directory["new-nonce"]; !ok {
+	nonceURL := c.directory["new-nonce"]
+	if nonceURL == "" {
 		return fmt.Errorf("Missing \"new-nonce\" entry in server directory")
 	}
-	nonceURL := c.directory["new-nonce"]
 	fmt.Printf("Requesting nonce from %q\n", nonceURL)
 
 	before := c.nonce
@@ -116,14 +129,14 @@ func (c *client) updateNonce() error {
 }
 
 func (c *client) register() error {
-	if _, ok := c.directory["new-reg"]; !ok {
+	regURL := c.directory["new-reg"]
+	if regURL == "" {
 		return fmt.Errorf("Missing \"new-reg\" entry in server directory")
 	}
-	regURL := c.directory["new-reg"]
 	fmt.Printf("Registering new account with %q\n", regURL)
 
 	reqBody := struct {
-		ToSAgreed bool `json:"terms-of-service-agreed,omitempty"`
+		ToSAgreed bool `json:"terms-of-service-agreed"`
 		Contact   []string
 		Resource  string
 	}{
@@ -142,15 +155,16 @@ func (c *client) register() error {
 		return err
 	}
 
-	if locHeaders := resp.Header.Get("Location"); locHeaders == "" {
+	locHeader := resp.Header.Get("Location")
+	if locHeader == "" {
 		return fmt.Errorf("No 'location' header with account URL in response")
 	}
 
-	c.acctID = resp.Header.Get("Location")
+	c.acctID = locHeader
 	return nil
 }
 
-// Nonce satisfies the JWS "NonceSource" inteface
+// Nonce satisfies the JWS "NonceSource" interface
 func (c *client) Nonce() (string, error) {
 	n := c.nonce
 	err := c.updateNonce()
@@ -183,7 +197,8 @@ func (c *client) getAPI(url string) ([]byte, *http.Response, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("User-Agent", "pebble-client")
+	req.Header.Set("User-Agent", userAgent())
+	req.Header.Set("Accept-Language", locale)
 	return c.doReq(req)
 }
 
@@ -200,7 +215,8 @@ func (c *client) postAPI(url string, body []byte) ([]byte, *http.Response, error
 	}
 
 	req.Header.Set("Content-Type", "application/jose+json")
-	req.Header.Set("User-Agent", "pebble-client")
+	req.Header.Set("User-Agent", userAgent())
+	req.Header.Set("Accept-Language", locale)
 	return c.doReq(req)
 }
 
@@ -287,11 +303,6 @@ func main() {
 	server := flag.String("server", "http://localhost:14000/dir", "Directory address for Pebble server")
 	email := flag.String("email", "", "Email address for ACME registration contact")
 	flag.Parse()
-
-	if *email == "" {
-		fmt.Printf("You must provide a '--email' for a contact\n")
-		os.Exit(1)
-	}
 
 	fmt.Println("welcome to the pebble shell")
 
