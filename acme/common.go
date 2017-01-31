@@ -23,9 +23,9 @@ const (
 type Registration struct {
 	ID        string           `json:"id"`
 	Key       *jose.JsonWebKey `json:"key"`
-	Contact   []string         `json:"contact,omitempty"`
-	ToSAgreed bool             `json:"terms-of-service-agreed,omitempty"`
-	Orders    string           `json:"orders,omitempty"`
+	Contact   []string         `json:"contact"`
+	ToSAgreed bool             `json:"terms-of-service-agreed"`
+	Orders    string           `json:"orders"`
 	Status    string
 }
 
@@ -37,8 +37,8 @@ type OrderRequest struct {
 	CSR            string   `json:"csr"`
 	NotBefore      string   `json:"notBefore"`
 	NotAfter       string   `json:"notAfter"`
-	Authorizations []string `json:authorizations,omitempty"`
-	Certificate    string   `json:certificate,omitempty"`
+	Authorizations []string `json:"authorizations"`
+	Certificate    string   `json:"certificate"`
 }
 
 // Order is constructed out of an OrderRequest and is an internal type
