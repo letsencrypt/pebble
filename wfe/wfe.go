@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,11 +16,10 @@ import (
 	"net/url"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
-	jose "github.com/square/go-jose"
+	"gopkg.in/square/go-jose.v1"
 )
 
 const (
@@ -29,6 +29,8 @@ const (
 	noncePath     = "/nonce-plz"
 	newRegPath    = "/sign-me-up"
 	regPath       = "/my-reg/"
+	newOrderPath  = "/order-plz"
+	orderPath     = "/my-order/"
 )
 
 type requestEvent struct {
@@ -36,52 +38,6 @@ type requestEvent struct {
 	Endpoint   string `json:",omitempty"`
 	Method     string `json:",omitempty"`
 	UserAgent  string `json:",omitempty"`
-}
-
-type memoryStore struct {
-	sync.RWMutex
-	// Pebble keeps registrations in-memory, not persisted anywhere
-	// Each Registration's ID is the hex encoding of a SHA256 sum over its public
-	// key bytes
-	registrationsByID map[string]*acme.Registration
-}
-
-func newMemoryStore() *memoryStore {
-	return &memoryStore{
-		registrationsByID: make(map[string]*acme.Registration),
-	}
-}
-
-func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
-	m.RLock()
-	defer m.RUnlock()
-	if reg, present := m.registrationsByID[id]; present {
-		return reg
-	}
-	return nil
-}
-
-func (m *memoryStore) count() int {
-	m.RLock()
-	defer m.RUnlock()
-	return len(m.registrationsByID)
-}
-
-func (m *memoryStore) addRegistration(reg *acme.Registration) (*acme.Registration, error) {
-	m.Lock()
-	defer m.Unlock()
-
-	regID := reg.ID
-	if len(regID) == 0 {
-		return nil, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
-	}
-
-	if _, present := m.registrationsByID[regID]; present {
-		return nil, fmt.Errorf("registration %q already exists", regID)
-	}
-
-	m.registrationsByID[regID] = reg
-	return reg, nil
 }
 
 type wfeHandlerFunc func(context.Context, *requestEvent, http.ResponseWriter, *http.Request)
@@ -190,6 +146,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
+	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
+
+	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
 }
 
@@ -203,6 +163,7 @@ func (wfe *WebFrontEndImpl) Directory(
 	directoryEndpoints := map[string]string{
 		"new-nonce": noncePath,
 		"new-reg":   newRegPath,
+		"new-order": newOrderPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -263,7 +224,6 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
 	response.WriteHeader(http.StatusNoContent)
 }
 
@@ -427,7 +387,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 
 	wfe.db.addRegistration(&newReg)
-	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.count())
+	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.countRegistrations())
 
 	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
 
@@ -435,6 +395,116 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling registration"), response)
+	}
+}
+
+func (wfe *WebFrontEndImpl) validateOrder(order *acme.Order) error {
+	// TODO(@cpu) - Apply some more advanced policy decisions on the CSR
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) NewOrder(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceNewOrder)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	regID, err := keyToID(key)
+	if err != nil {
+		wfe.log.Printf("keyToID err: %s\n", err.Error())
+		wfe.sendError(acme.MalformedProblem("Error computing key digest"), response)
+		return
+	}
+	wfe.log.Printf("received new-order req from reg ID %s\n", regID)
+
+	var existingReg *acme.Registration
+	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("No existing registration with ID %q", regID)),
+			response)
+		return
+	}
+
+	var newOrder acme.OrderRequest
+	err = json.Unmarshal(body, &newOrder)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	csrBytes, err := base64.URLEncoding.DecodeString(newOrder.CSR)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error decoding Base64url-encoded CSR"), response)
+		return
+	}
+
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error parsing Base64url-encoded CSR"), response)
+		return
+	}
+
+	order := &acme.Order{
+		OrderRequest: newOrder,
+		ParsedCSR:    parsedCSR,
+	}
+	order.ID = acme.NewToken()
+	fmt.Printf("Order: %#v\n", order)
+
+	if err := wfe.validateOrder(order); err != nil {
+		wfe.sendError(
+			// TODO(@cpu) validateOrder should return a problem (e.g.
+			// rejectedIdentifier, unsupportedIdentifier, etc) as appropriate
+			acme.MalformedProblem(
+				fmt.Sprintf("Error validating order: %s", err.Error())), response)
+		return
+	}
+
+	_, err = wfe.db.addOrder(order)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("Error saving order"), response)
+		return
+	}
+
+	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
+	response.Header().Add("Location", orderURL)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, newOrder)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) Order(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
+	fmt.Printf("Order ID: %#v\n", orderID)
+
+	order := wfe.db.getOrderByID(orderID)
+	if order == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, order)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		return
 	}
 }
 
