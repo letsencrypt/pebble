@@ -67,11 +67,12 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	log                    *log.Logger
-	db                     *memoryStore
-	nonce                  *nonceMap
-	SubscriberAgreementURL string
+	log   *log.Logger
+	db    *memoryStore
+	nonce *nonceMap
 }
+
+const ToSURL = "data:text/plain,Do what thou wilt"
 
 func New(log *log.Logger) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
@@ -180,10 +181,13 @@ func (wfe *WebFrontEndImpl) Directory(
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
-	relativeDir := make(map[string]string, len(directory))
+	relativeDir := make(map[string]interface{}, len(directory))
 
 	for k, v := range directory {
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
+	}
+	relativeDir["meta"] = map[string]string{
+		"terms-of-service": ToSURL,
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -378,7 +382,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 
 	if newReg.ToSAgreed == false {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
 				"Provided registration did include true terms-of-service-agreed"),
@@ -436,23 +440,25 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err = json.Unmarshal(body, &newOrder)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+			acme.MalformedProblem("Error unmarshaling body JSON: "+err.Error()), response)
 		return
 	}
 
-	csrBytes, err := base64.URLEncoding.DecodeString(newOrder.CSR)
+	csrBytes, err := base64.RawURLEncoding.DecodeString(newOrder.CSR)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded CSR"), response)
+			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
 		return
 	}
 
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error parsing Base64url-encoded CSR"), response)
+			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
 		return
 	}
+
+	newOrder.Expires = time.Now().AddDate(0, 0, 1).Format(time.RFC3339)
 
 	order := &acme.Order{
 		OrderRequest: newOrder,
