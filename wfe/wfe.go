@@ -72,7 +72,7 @@ type WebFrontEndImpl struct {
 	nonce *nonceMap
 }
 
-const ToSURL = "data:text/plain,Do what thou wilt"
+const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
 func New(log *log.Logger) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
