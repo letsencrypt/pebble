@@ -31,6 +31,7 @@ const (
 	regPath       = "/my-reg/"
 	newOrderPath  = "/order-plz"
 	orderPath     = "/my-order/"
+	authzPath     = "/authZ/"
 )
 
 type requestEvent struct {
@@ -160,7 +161,6 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	// TODO(@cpu): Add directory metadata (e.g. TOS url)
 	directoryEndpoints := map[string]string{
 		"new-nonce": noncePath,
 		"new-reg":   newRegPath,
@@ -390,8 +390,12 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	wfe.db.addRegistration(&newReg)
-	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.countRegistrations())
+	count, err := wfe.db.addRegistration(&newReg)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error persisting registration"), response)
+		return
+	}
+	wfe.log.Printf("There are now %d registrations in memory\n", count)
 
 	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
 
@@ -399,14 +403,70 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling registration"), response)
+		return
 	}
 }
 
-func (wfe *WebFrontEndImpl) validateOrder(order *acme.Order) error {
-	// TODO(@cpu) - Apply some more advanced policy decisions on the CSR
+func (wfe *WebFrontEndImpl) verifyOrder(order *acme.Order, reg *acme.Registration) *acme.ProblemDetails {
+	// Shouldn't happen - defensive check
+	if order == nil {
+		return acme.InternalErrorProblem("Order is nil")
+	}
+	if reg == nil {
+		return acme.InternalErrorProblem("Registration is nil")
+	}
+	csr := order.ParsedCSR
+	if csr == nil {
+		return acme.InternalErrorProblem("Parsed CSR is nil")
+	}
+	if len(csr.DNSNames) == 0 {
+		return acme.MalformedProblem("CSR has no names in it")
+	}
+	orderKeyID, err := keyToID(csr.PublicKey)
+	if err != nil {
+		return acme.MalformedProblem("CSR has an invalid PublicKey")
+	}
+	if orderKeyID == reg.ID {
+		return acme.MalformedProblem("Certificate public key must be different than account key")
+	}
 	return nil
 }
 
+// makeAuthorizations populates an order with new authz's. The request parameter
+// is required to make the authz URL's absolute based on the request host
+func (wfe *WebFrontEndImpl) makeAuthorizations(order *acme.Order, request *http.Request) error {
+	var auths []string
+
+	names := make([]string, len(order.ParsedCSR.DNSNames))
+	copy(names, order.ParsedCSR.DNSNames)
+
+	// Create one authz for each name in the CSR
+	for _, name := range names {
+		ident := acme.Identifier{
+			Type:  acme.IdentifierDNS,
+			Value: name,
+		}
+		authz := &acme.Authorization{
+			ID:         acme.NewToken(),
+			Status:     acme.StatusPending,
+			Identifier: ident,
+			// TODO(@cpu): add Challenges field
+		}
+		// Persist the authorization in memory
+		count, err := wfe.db.addAuthorization(authz)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("There are now %d authorizations in the db\n", count)
+		authzURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+		auths = append(auths, authzURL)
+	}
+
+	order.Authorizations = auths
+	return nil
+}
+
+// NewOrder creates a new Order request and populates its authorizations
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -419,6 +479,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Compute the registration ID for the signer's key
 	regID, err := keyToID(key)
 	if err != nil {
 		wfe.log.Printf("keyToID err: %s\n", err.Error())
@@ -427,6 +488,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 	wfe.log.Printf("received new-order req from reg ID %s\n", regID)
 
+	// Find the existing registration object for that key ID
 	var existingReg *acme.Registration
 	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
 		wfe.sendError(
@@ -436,6 +498,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Unpack the order request body
 	var newOrder acme.OrderRequest
 	err = json.Unmarshal(body, &newOrder)
 	if err != nil {
@@ -444,13 +507,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Decode and parse the CSR bytes from the order
 	csrBytes, err := base64.RawURLEncoding.DecodeString(newOrder.CSR)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
 		return
 	}
-
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
 		wfe.sendError(
@@ -458,30 +521,39 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Overwrite the fields the server controls and create an internal type to
+	// hold the parsed CSR
 	newOrder.Expires = time.Now().AddDate(0, 0, 1).Format(time.RFC3339)
-
+	newOrder.ID = acme.NewToken()
+	newOrder.Status = acme.StatusPending
 	order := &acme.Order{
 		OrderRequest: newOrder,
 		ParsedCSR:    parsedCSR,
 	}
-	order.ID = acme.NewToken()
-	fmt.Printf("Order: %#v\n", order)
 
-	if err := wfe.validateOrder(order); err != nil {
-		wfe.sendError(
-			// TODO(@cpu) validateOrder should return a problem (e.g.
-			// rejectedIdentifier, unsupportedIdentifier, etc) as appropriate
-			acme.MalformedProblem(
-				fmt.Sprintf("Error validating order: %s", err.Error())), response)
+	// Verify the details of the order before creating authorizations
+	if err := wfe.verifyOrder(order, existingReg); err != nil {
+		wfe.sendError(err, response)
 		return
 	}
 
-	_, err = wfe.db.addOrder(order)
+	// Create the authorizations for the order
+	err = wfe.makeAuthorizations(order, request)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("Error creating authorizations for order"), response)
+		return
+	}
+
+	// Add the order to the in-memory DB
+	count, err := wfe.db.addOrder(order)
 	if err != nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("Error saving order"), response)
 		return
 	}
+	fmt.Printf("Added order %q to the db\n", order.ID)
+	fmt.Printf("There are now %d orders in the db\n", count)
 
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
@@ -492,6 +564,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 }
 
+// Order retrieves the details of an existing order
 func (wfe *WebFrontEndImpl) Order(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -507,7 +580,11 @@ func (wfe *WebFrontEndImpl) Order(
 		return
 	}
 
-	err := wfe.writeJsonResponse(response, http.StatusOK, order)
+	// Return only the initial OrderRequest not the internal object with the
+	// parsedCSR
+	orderReq := order.OrderRequest
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return

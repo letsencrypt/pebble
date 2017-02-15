@@ -18,12 +18,15 @@ type memoryStore struct {
 	registrationsByID map[string]*acme.Registration
 
 	ordersByID map[string]*acme.Order
+
+	authorizationsByID map[string]*acme.Authorization
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		registrationsByID: make(map[string]*acme.Registration),
-		ordersByID:        make(map[string]*acme.Order),
+		registrationsByID:  make(map[string]*acme.Registration),
+		ordersByID:         make(map[string]*acme.Order),
+		authorizationsByID: make(map[string]*acme.Authorization),
 	}
 }
 
@@ -36,44 +39,38 @@ func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
 	return nil
 }
 
-func (m *memoryStore) countRegistrations() int {
-	m.RLock()
-	defer m.RUnlock()
-	return len(m.registrationsByID)
-}
-
-func (m *memoryStore) addRegistration(reg *acme.Registration) (*acme.Registration, error) {
+func (m *memoryStore) addRegistration(reg *acme.Registration) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	regID := reg.ID
 	if len(regID) == 0 {
-		return nil, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
+		return 0, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
 	}
 
 	if _, present := m.registrationsByID[regID]; present {
-		return nil, fmt.Errorf("registration %q already exists", regID)
+		return 0, fmt.Errorf("registration %q already exists", regID)
 	}
 
 	m.registrationsByID[regID] = reg
-	return reg, nil
+	return len(m.registrationsByID), nil
 }
 
-func (m *memoryStore) addOrder(order *acme.Order) (*acme.Order, error) {
+func (m *memoryStore) addOrder(order *acme.Order) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	orderID := order.ID
 	if len(orderID) == 0 {
-		return nil, fmt.Errorf("order must have a non-empty ID to add to memoryStore")
+		return 0, fmt.Errorf("order must have a non-empty ID to add to memoryStore")
 	}
 
 	if _, present := m.ordersByID[orderID]; present {
-		return nil, fmt.Errorf("order %q already exists", orderID)
+		return 0, fmt.Errorf("order %q already exists", orderID)
 	}
 
 	m.ordersByID[orderID] = order
-	return order, nil
+	return len(m.ordersByID), nil
 }
 
 func (m *memoryStore) getOrderByID(id string) *acme.Order {
@@ -81,6 +78,32 @@ func (m *memoryStore) getOrderByID(id string) *acme.Order {
 	defer m.RUnlock()
 	if order, present := m.ordersByID[id]; present {
 		return order
+	}
+	return nil
+}
+
+func (m *memoryStore) addAuthorization(authz *acme.Authorization) (int, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	authzID := authz.ID
+	if len(authzID) == 0 {
+		return 0, fmt.Errorf("authz must have a non-empty ID to add to memoryStore")
+	}
+
+	if _, present := m.authorizationsByID[authzID]; present {
+		return 0, fmt.Errorf("authz %q already exists", authzID)
+	}
+
+	m.authorizationsByID[authzID] = authz
+	return len(m.authorizationsByID), nil
+}
+
+func (m *memoryStore) getAuthorizationByID(id string) *acme.Authorization {
+	m.RLock()
+	defer m.RUnlock()
+	if authz, present := m.authorizationsByID[id]; present {
+		return authz
 	}
 	return nil
 }
