@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/core"
 )
 
 // Pebble keeps all of its various objects (registrations, orders, etc)
@@ -15,22 +15,22 @@ type memoryStore struct {
 
 	// Each Registration's ID is the hex encoding of a SHA256 sum over its public
 	// key bytes.
-	registrationsByID map[string]*acme.Registration
+	registrationsByID map[string]*core.Registration
 
-	ordersByID map[string]*acme.Order
+	ordersByID map[string]*core.Order
 
-	authorizationsByID map[string]*acme.Authorization
+	authorizationsByID map[string]*core.Authorization
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		registrationsByID:  make(map[string]*acme.Registration),
-		ordersByID:         make(map[string]*acme.Order),
-		authorizationsByID: make(map[string]*acme.Authorization),
+		registrationsByID:  make(map[string]*core.Registration),
+		ordersByID:         make(map[string]*core.Order),
+		authorizationsByID: make(map[string]*core.Authorization),
 	}
 }
 
-func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
+func (m *memoryStore) getRegistrationByID(id string) *core.Registration {
 	m.RLock()
 	defer m.RUnlock()
 	if reg, present := m.registrationsByID[id]; present {
@@ -39,7 +39,7 @@ func (m *memoryStore) getRegistrationByID(id string) *acme.Registration {
 	return nil
 }
 
-func (m *memoryStore) addRegistration(reg *acme.Registration) (int, error) {
+func (m *memoryStore) addRegistration(reg *core.Registration) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -56,7 +56,7 @@ func (m *memoryStore) addRegistration(reg *acme.Registration) (int, error) {
 	return len(m.registrationsByID), nil
 }
 
-func (m *memoryStore) addOrder(order *acme.Order) (int, error) {
+func (m *memoryStore) addOrder(order *core.Order) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -73,7 +73,7 @@ func (m *memoryStore) addOrder(order *acme.Order) (int, error) {
 	return len(m.ordersByID), nil
 }
 
-func (m *memoryStore) getOrderByID(id string) *acme.Order {
+func (m *memoryStore) getOrderByID(id string) *core.Order {
 	m.RLock()
 	defer m.RUnlock()
 	if order, present := m.ordersByID[id]; present {
@@ -82,7 +82,7 @@ func (m *memoryStore) getOrderByID(id string) *acme.Order {
 	return nil
 }
 
-func (m *memoryStore) addAuthorization(authz *acme.Authorization) (int, error) {
+func (m *memoryStore) addAuthorization(authz *core.Authorization) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -99,7 +99,7 @@ func (m *memoryStore) addAuthorization(authz *acme.Authorization) (int, error) {
 	return len(m.authorizationsByID), nil
 }
 
-func (m *memoryStore) getAuthorizationByID(id string) *acme.Authorization {
+func (m *memoryStore) getAuthorizationByID(id string) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
 	if authz, present := m.authorizationsByID[id]; present {

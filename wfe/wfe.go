@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/core"
 	"gopkg.in/square/go-jose.v1"
 )
 
@@ -358,6 +359,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
+	// newReg is the ACME registration information submitted by the client
 	var newReg acme.Registration
 	err := json.Unmarshal(body, &newReg)
 	if err != nil {
@@ -366,15 +368,19 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	newReg.Key = key
-	regID, err := keyToID(newReg.Key)
+	// createdReg is the internal Pebble account object
+	createdReg := core.Registration{
+		Registration: newReg,
+	}
+
+	regID, err := keyToID(key)
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
 	}
-	newReg.ID = regID
+	createdReg.ID = regID
 
-	if existingReg := wfe.db.getRegistrationByID(newReg.ID); existingReg != nil {
+	if existingReg := wfe.db.getRegistrationByID(regID); existingReg != nil {
 		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
 		response.Header().Set("Location", regURL)
 		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
@@ -390,14 +396,14 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	count, err := wfe.db.addRegistration(&newReg)
+	count, err := wfe.db.addRegistration(&createdReg)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error persisting registration"), response)
 		return
 	}
 	wfe.log.Printf("There are now %d registrations in memory\n", count)
 
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
+	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, regID))
 
 	response.Header().Add("Location", regURL)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
@@ -407,7 +413,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 }
 
-func (wfe *WebFrontEndImpl) verifyOrder(order *acme.Order, reg *acme.Registration) *acme.ProblemDetails {
+func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registration) *acme.ProblemDetails {
 	// Shouldn't happen - defensive check
 	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
@@ -434,7 +440,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *acme.Order, reg *acme.Registratio
 
 // makeAuthorizations populates an order with new authz's. The request parameter
 // is required to make the authz URL's absolute based on the request host
-func (wfe *WebFrontEndImpl) makeAuthorizations(order *acme.Order, request *http.Request) error {
+func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.Request) error {
 	var auths []string
 
 	names := make([]string, len(order.ParsedCSR.DNSNames))
@@ -446,10 +452,12 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *acme.Order, request *http.
 			Type:  acme.IdentifierDNS,
 			Value: name,
 		}
-		authz := &acme.Authorization{
-			ID:         acme.NewToken(),
-			Status:     acme.StatusPending,
-			Identifier: ident,
+		authz := &core.Authorization{
+			ID: core.NewToken(),
+			Authorization: acme.Authorization{
+				Status:     acme.StatusPending,
+				Identifier: ident,
+			},
 			// TODO(@cpu): add Challenges field
 		}
 		// Persist the authorization in memory
@@ -489,17 +497,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("received new-order req from reg ID %s\n", regID)
 
 	// Find the existing registration object for that key ID
-	var existingReg *acme.Registration
+	var existingReg *core.Registration
 	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
 		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("No existing registration with ID %q", regID)),
+			acme.MalformedProblem("No existing registration for signer's public key"),
 			response)
 		return
 	}
 
 	// Unpack the order request body
-	var newOrder acme.OrderRequest
+	var newOrder acme.Order
 	err = json.Unmarshal(body, &newOrder)
 	if err != nil {
 		wfe.sendError(
@@ -521,14 +528,18 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Overwrite the fields the server controls and create an internal type to
-	// hold the parsed CSR
-	newOrder.Expires = time.Now().AddDate(0, 0, 1).Format(time.RFC3339)
-	newOrder.ID = acme.NewToken()
-	newOrder.Status = acme.StatusPending
-	order := &acme.Order{
-		OrderRequest: newOrder,
-		ParsedCSR:    parsedCSR,
+	order := &core.Order{
+		ID: core.NewToken(),
+		Order: acme.Order{
+			Status:  acme.StatusPending,
+			Expires: time.Now().AddDate(0, 0, 1).Format(time.RFC3339),
+			// Only the CSR, NotBefore and NotAfter fields of the client request are
+			// copied as-is
+			CSR:       newOrder.CSR,
+			NotBefore: newOrder.NotBefore,
+			NotAfter:  newOrder.NotAfter,
+		},
+		ParsedCSR: parsedCSR,
 	}
 
 	// Verify the details of the order before creating authorizations
@@ -582,7 +593,7 @@ func (wfe *WebFrontEndImpl) Order(
 
 	// Return only the initial OrderRequest not the internal object with the
 	// parsedCSR
-	orderReq := order.OrderRequest
+	orderReq := order.Order
 
 	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
 	if err != nil {
