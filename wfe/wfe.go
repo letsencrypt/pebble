@@ -151,6 +151,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
 
 	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
@@ -583,8 +584,6 @@ func (wfe *WebFrontEndImpl) Order(
 	request *http.Request) {
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
-	fmt.Printf("Order ID: %#v\n", orderID)
-
 	order := wfe.db.getOrderByID(orderID)
 	if order == nil {
 		response.WriteHeader(http.StatusNotFound)
@@ -598,6 +597,26 @@ func (wfe *WebFrontEndImpl) Order(
 	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) Authz(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
+	authz := wfe.db.getAuthorizationByID(authzID)
+	if authz == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, authz.Authorization)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
 		return
 	}
 }
