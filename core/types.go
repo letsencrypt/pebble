@@ -19,7 +19,8 @@ type Registration struct {
 
 type Authorization struct {
 	acme.Authorization
-	ID string
+	ID  string
+	URL string
 }
 
 type Challenge struct {

@@ -33,6 +33,7 @@ const (
 	newOrderPath  = "/order-plz"
 	orderPath     = "/my-order/"
 	authzPath     = "/authZ/"
+	challengePath = "/chalZ/"
 )
 
 type requestEvent struct {
@@ -152,6 +153,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET")
 
 	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
@@ -459,7 +461,12 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 				Status:     acme.StatusPending,
 				Identifier: ident,
 			},
-			// TODO(@cpu): add Challenges field
+		}
+		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+		// Create the challenges for this authz
+		err := wfe.makeChallenges(authz, request)
+		if err != nil {
+			return err
 		}
 		// Persist the authorization in memory
 		count, err := wfe.db.addAuthorization(authz)
@@ -472,6 +479,32 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	}
 
 	order.Authorizations = auths
+	return nil
+}
+
+// makeChallenges populates an authz with new challenges. The request parameter
+// is required to make the challenge URL's absolute based on the request host
+func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
+	var chals []string
+
+	// TODO(@cpu): construct challenges for DNS-01 and TLS-SNI-02
+	chal := &core.Challenge{
+		ID: core.NewToken(),
+		Challenge: acme.Challenge{
+			Type:  acme.ChallengeHTTP01,
+			Token: core.NewToken(),
+			URL:   authz.URL,
+		},
+	}
+	count, err := wfe.db.addChallenge(chal)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("There are now %d challenges in the db\n", count)
+	chalURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, chal.ID))
+	chals = append(chals, chalURL)
+
+	authz.Challenges = chals
 	return nil
 }
 
@@ -617,6 +650,26 @@ func (wfe *WebFrontEndImpl) Authz(
 	err := wfe.writeJsonResponse(response, http.StatusOK, authz.Authorization)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) Challenge(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
+	chal := wfe.db.getChallengeByID(chalID)
+	if chal == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, chal.Challenge)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
 }

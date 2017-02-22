@@ -20,6 +20,8 @@ type memoryStore struct {
 	ordersByID map[string]*core.Order
 
 	authorizationsByID map[string]*core.Authorization
+
+	challengesByID map[string]*core.Challenge
 }
 
 func newMemoryStore() *memoryStore {
@@ -27,6 +29,7 @@ func newMemoryStore() *memoryStore {
 		registrationsByID:  make(map[string]*core.Registration),
 		ordersByID:         make(map[string]*core.Order),
 		authorizationsByID: make(map[string]*core.Authorization),
+		challengesByID:     make(map[string]*core.Challenge),
 	}
 }
 
@@ -104,6 +107,32 @@ func (m *memoryStore) getAuthorizationByID(id string) *core.Authorization {
 	defer m.RUnlock()
 	if authz, present := m.authorizationsByID[id]; present {
 		return authz
+	}
+	return nil
+}
+
+func (m *memoryStore) addChallenge(chal *core.Challenge) (int, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	chalID := chal.ID
+	if len(chalID) == 0 {
+		return 0, fmt.Errorf("challenge must have a non-empty ID to add to memoryStore")
+	}
+
+	if _, present := m.challengesByID[chalID]; present {
+		return 0, fmt.Errorf("challenge %q already exists", chalID)
+	}
+
+	m.challengesByID[chalID] = chal
+	return len(m.challengesByID), nil
+}
+
+func (m *memoryStore) getChallengeByID(id string) *core.Challenge {
+	m.RLock()
+	defer m.RUnlock()
+	if chal, present := m.challengesByID[id]; present {
+		return chal
 	}
 	return nil
 }

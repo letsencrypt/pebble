@@ -25,6 +25,12 @@ const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
+type ChallengeType string
+
+const (
+	ChallengeHTTP01 = ChallengeType("http-01")
+)
+
 type Identifier struct {
 	Type  IdentifierType `json:"type"`
 	Value string         `json:"value"`
@@ -50,16 +56,16 @@ type Order struct {
 	Certificate    string   `json:"certificate,omitempty"`
 }
 
-// A Challenge is used to validate an authorization
-type Challenge struct {
-	Type  string `json:"type"`
-	URL   string `json:"url"`
-	Token string `json:"token"`
-}
-
 // An Authorization is created for each identifier in an order
 type Authorization struct {
-	Status     Status      `json:"status"`
-	Identifier Identifier  `json:"identifier"`
-	Challenges []Challenge `json:"challenges"`
+	Status     Status     `json:"status"`
+	Identifier Identifier `json:"identifier"`
+	Challenges []string   `json:"challenges"`
+}
+
+// A Challenge is used to validate an Authorization
+type Challenge struct {
+	Type  ChallengeType `json:"type"`
+	URL   string        `json:"url"`
+	Token string        `json:"token"`
 }
