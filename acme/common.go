@@ -13,41 +13,31 @@ const (
 	ResourceNewOrder = Resource("new-order")
 )
 
-type Status string
-
 const (
-	StatusPending = Status("pending")
-)
+	StatusPending = "pending"
 
-type IdentifierType string
+	IdentifierDNS = "dns"
 
-const (
-	IdentifierDNS = IdentifierType("dns")
-)
-
-type ChallengeType string
-
-const (
-	ChallengeHTTP01 = ChallengeType("http-01")
+	ChallengeHTTP01 = "http-01"
 )
 
 type Identifier struct {
-	Type  IdentifierType `json:"type"`
-	Value string         `json:"value"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 // TODO(@cpu) - Rename Registration to Account, update refs
 type Registration struct {
-	Status    Status           `json:"status"`
+	Status    string           `json:"status"`
 	Key       *jose.JsonWebKey `json:"key"`
 	Contact   []string         `json:"contact"`
 	ToSAgreed bool             `json:"terms-of-service-agreed"`
 	Orders    string           `json:"orders"`
 }
 
-// Order is used for new-order requests
+// An Order is created to request issuance for a CSR
 type Order struct {
-	Status         Status   `json:"status"`
+	Status         string   `json:"status"`
 	Expires        string   `json:"expires"`
 	CSR            string   `json:"csr"`
 	NotBefore      string   `json:"notBefore"`
@@ -58,14 +48,14 @@ type Order struct {
 
 // An Authorization is created for each identifier in an order
 type Authorization struct {
-	Status     Status     `json:"status"`
+	Status     string     `json:"status"`
 	Identifier Identifier `json:"identifier"`
 	Challenges []string   `json:"challenges"`
 }
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type  ChallengeType `json:"type"`
-	URL   string        `json:"url"`
-	Token string        `json:"token"`
+	Type  string `json:"type"`
+	URL   string `json:"url"`
+	Token string `json:"token"`
 }
