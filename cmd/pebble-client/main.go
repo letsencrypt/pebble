@@ -98,7 +98,6 @@ func (c *client) updateDirectory() error {
 		return err
 	}
 
-	fmt.Printf("Directory: %s\n", string(respBody))
 	var directory map[string]interface{}
 	err = json.Unmarshal(respBody, &directory)
 	if err != nil {
