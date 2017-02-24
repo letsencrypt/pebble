@@ -401,7 +401,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 
 	count, err := wfe.db.addRegistration(&createdReg)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error persisting registration"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error saving registration"), response)
 		return
 	}
 	wfe.log.Printf("There are now %d registrations in memory\n", count)
@@ -468,7 +468,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 		if err != nil {
 			return err
 		}
-		// Persist the authorization in memory
+		// Save the authorization in memory
 		count, err := wfe.db.addAuthorization(authz)
 		if err != nil {
 			return err
