@@ -33,7 +33,7 @@ func userAgent() string {
 
 type client struct {
 	server    *url.URL
-	directory map[string]string
+	directory map[string]interface{}
 	email     string
 	acctID    string
 	http      *http.Client
@@ -98,7 +98,7 @@ func (c *client) updateDirectory() error {
 		return err
 	}
 
-	var directory map[string]string
+	var directory map[string]interface{}
 	err = json.Unmarshal(respBody, &directory)
 	if err != nil {
 		return err
@@ -109,7 +109,7 @@ func (c *client) updateDirectory() error {
 }
 
 func (c *client) updateNonce() error {
-	nonceURL := c.directory["new-nonce"]
+	nonceURL := c.directory["new-nonce"].(string)
 	if nonceURL == "" {
 		return fmt.Errorf("Missing \"new-nonce\" entry in server directory")
 	}
@@ -129,7 +129,7 @@ func (c *client) updateNonce() error {
 }
 
 func (c *client) register() error {
-	regURL := c.directory["new-reg"]
+	regURL := c.directory["new-reg"].(string)
 	if regURL == "" {
 		return fmt.Errorf("Missing \"new-reg\" entry in server directory")
 	}
@@ -243,7 +243,7 @@ func (c *client) readEndpoint() (string, error) {
 			fmt.Printf("$> Enter a directory endpoint to POST: ")
 			continue
 		}
-		endpoint = c.directory[line]
+		endpoint = c.directory[line].(string)
 		break
 	}
 	if err := scanner.Err(); err != nil {

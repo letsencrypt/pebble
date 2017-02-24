@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/core"
 	"gopkg.in/square/go-jose.v1"
 )
 
@@ -31,6 +32,8 @@ const (
 	regPath       = "/my-reg/"
 	newOrderPath  = "/order-plz"
 	orderPath     = "/my-order/"
+	authzPath     = "/authZ/"
+	challengePath = "/chalZ/"
 )
 
 type requestEvent struct {
@@ -149,6 +152,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET")
 
 	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
@@ -160,7 +165,6 @@ func (wfe *WebFrontEndImpl) Directory(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	// TODO(@cpu): Add directory metadata (e.g. TOS url)
 	directoryEndpoints := map[string]string{
 		"new-nonce": noncePath,
 		"new-reg":   newRegPath,
@@ -358,6 +362,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
+	// newReg is the ACME registration information submitted by the client
 	var newReg acme.Registration
 	err := json.Unmarshal(body, &newReg)
 	if err != nil {
@@ -366,15 +371,19 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	newReg.Key = key
-	regID, err := keyToID(newReg.Key)
+	// createdReg is the internal Pebble account object
+	createdReg := core.Registration{
+		Registration: newReg,
+	}
+
+	regID, err := keyToID(key)
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
 	}
-	newReg.ID = regID
+	createdReg.ID = regID
 
-	if existingReg := wfe.db.getRegistrationByID(newReg.ID); existingReg != nil {
+	if existingReg := wfe.db.getRegistrationByID(regID); existingReg != nil {
 		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
 		response.Header().Set("Location", regURL)
 		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
@@ -390,23 +399,116 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	wfe.db.addRegistration(&newReg)
-	wfe.log.Printf("There are now %d registrations in memory\n", wfe.db.countRegistrations())
+	count, err := wfe.db.addRegistration(&createdReg)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error saving registration"), response)
+		return
+	}
+	wfe.log.Printf("There are now %d registrations in memory\n", count)
 
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, newReg.ID))
+	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, regID))
 
 	response.Header().Add("Location", regURL)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling registration"), response)
+		return
 	}
 }
 
-func (wfe *WebFrontEndImpl) validateOrder(order *acme.Order) error {
-	// TODO(@cpu) - Apply some more advanced policy decisions on the CSR
+func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registration) *acme.ProblemDetails {
+	// Shouldn't happen - defensive check
+	if order == nil {
+		return acme.InternalErrorProblem("Order is nil")
+	}
+	if reg == nil {
+		return acme.InternalErrorProblem("Registration is nil")
+	}
+	csr := order.ParsedCSR
+	if csr == nil {
+		return acme.InternalErrorProblem("Parsed CSR is nil")
+	}
+	if len(csr.DNSNames) == 0 {
+		return acme.MalformedProblem("CSR has no names in it")
+	}
+	orderKeyID, err := keyToID(csr.PublicKey)
+	if err != nil {
+		return acme.MalformedProblem("CSR has an invalid PublicKey")
+	}
+	if orderKeyID == reg.ID {
+		return acme.MalformedProblem("Certificate public key must be different than account key")
+	}
 	return nil
 }
 
+// makeAuthorizations populates an order with new authz's. The request parameter
+// is required to make the authz URL's absolute based on the request host
+func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.Request) error {
+	var auths []string
+
+	names := make([]string, len(order.ParsedCSR.DNSNames))
+	copy(names, order.ParsedCSR.DNSNames)
+
+	// Create one authz for each name in the CSR
+	for _, name := range names {
+		ident := acme.Identifier{
+			Type:  acme.IdentifierDNS,
+			Value: name,
+		}
+		authz := &core.Authorization{
+			ID: newToken(),
+			Authorization: acme.Authorization{
+				Status:     acme.StatusPending,
+				Identifier: ident,
+			},
+		}
+		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+		// Create the challenges for this authz
+		err := wfe.makeChallenges(authz, request)
+		if err != nil {
+			return err
+		}
+		// Save the authorization in memory
+		count, err := wfe.db.addAuthorization(authz)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("There are now %d authorizations in the db\n", count)
+		authzURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+		auths = append(auths, authzURL)
+	}
+
+	order.Authorizations = auths
+	return nil
+}
+
+// makeChallenges populates an authz with new challenges. The request parameter
+// is required to make the challenge URL's absolute based on the request host
+func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
+	var chals []string
+
+	// TODO(@cpu): construct challenges for DNS-01 and TLS-SNI-02
+	chal := &core.Challenge{
+		ID: newToken(),
+		Challenge: acme.Challenge{
+			Type:  acme.ChallengeHTTP01,
+			Token: newToken(),
+			URL:   authz.URL,
+		},
+	}
+	count, err := wfe.db.addChallenge(chal)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("There are now %d challenges in the db\n", count)
+	chalURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, chal.ID))
+	chals = append(chals, chalURL)
+
+	authz.Challenges = chals
+	return nil
+}
+
+// NewOrder creates a new Order request and populates its authorizations
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -419,6 +521,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Compute the registration ID for the signer's key
 	regID, err := keyToID(key)
 	if err != nil {
 		wfe.log.Printf("keyToID err: %s\n", err.Error())
@@ -427,16 +530,17 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 	wfe.log.Printf("received new-order req from reg ID %s\n", regID)
 
-	var existingReg *acme.Registration
+	// Find the existing registration object for that key ID
+	var existingReg *core.Registration
 	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
 		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("No existing registration with ID %q", regID)),
+			acme.MalformedProblem("No existing registration for signer's public key"),
 			response)
 		return
 	}
 
-	var newOrder acme.OrderRequest
+	// Unpack the order request body
+	var newOrder acme.Order
 	err = json.Unmarshal(body, &newOrder)
 	if err != nil {
 		wfe.sendError(
@@ -444,13 +548,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	// Decode and parse the CSR bytes from the order
 	csrBytes, err := base64.RawURLEncoding.DecodeString(newOrder.CSR)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
 		return
 	}
-
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
 		wfe.sendError(
@@ -458,30 +562,43 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	newOrder.Expires = time.Now().AddDate(0, 0, 1).Format(time.RFC3339)
-
-	order := &acme.Order{
-		OrderRequest: newOrder,
-		ParsedCSR:    parsedCSR,
+	order := &core.Order{
+		ID: newToken(),
+		Order: acme.Order{
+			Status:  acme.StatusPending,
+			Expires: time.Now().AddDate(0, 0, 1).Format(time.RFC3339),
+			// Only the CSR, NotBefore and NotAfter fields of the client request are
+			// copied as-is
+			CSR:       newOrder.CSR,
+			NotBefore: newOrder.NotBefore,
+			NotAfter:  newOrder.NotAfter,
+		},
+		ParsedCSR: parsedCSR,
 	}
-	order.ID = acme.NewToken()
-	fmt.Printf("Order: %#v\n", order)
 
-	if err := wfe.validateOrder(order); err != nil {
-		wfe.sendError(
-			// TODO(@cpu) validateOrder should return a problem (e.g.
-			// rejectedIdentifier, unsupportedIdentifier, etc) as appropriate
-			acme.MalformedProblem(
-				fmt.Sprintf("Error validating order: %s", err.Error())), response)
+	// Verify the details of the order before creating authorizations
+	if err := wfe.verifyOrder(order, existingReg); err != nil {
+		wfe.sendError(err, response)
 		return
 	}
 
-	_, err = wfe.db.addOrder(order)
+	// Create the authorizations for the order
+	err = wfe.makeAuthorizations(order, request)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("Error creating authorizations for order"), response)
+		return
+	}
+
+	// Add the order to the in-memory DB
+	count, err := wfe.db.addOrder(order)
 	if err != nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("Error saving order"), response)
 		return
 	}
+	fmt.Printf("Added order %q to the db\n", order.ID)
+	fmt.Printf("There are now %d orders in the db\n", count)
 
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
@@ -492,6 +609,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 }
 
+// Order retrieves the details of an existing order
 func (wfe *WebFrontEndImpl) Order(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -499,17 +617,59 @@ func (wfe *WebFrontEndImpl) Order(
 	request *http.Request) {
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
-	fmt.Printf("Order ID: %#v\n", orderID)
-
 	order := wfe.db.getOrderByID(orderID)
 	if order == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	err := wfe.writeJsonResponse(response, http.StatusOK, order)
+	// Return only the initial OrderRequest not the internal object with the
+	// parsedCSR
+	orderReq := order.Order
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) Authz(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
+	authz := wfe.db.getAuthorizationByID(authzID)
+	if authz == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, authz.Authorization)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) Challenge(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
+	chal := wfe.db.getChallengeByID(chalID)
+	if chal == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	err := wfe.writeJsonResponse(response, http.StatusOK, chal.Challenge)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
 }

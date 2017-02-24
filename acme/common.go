@@ -1,12 +1,6 @@
 package acme
 
 import (
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/base64"
-	"fmt"
-	"io"
-
 	"gopkg.in/square/go-jose.v1"
 )
 
@@ -19,48 +13,49 @@ const (
 	ResourceNewOrder = Resource("new-order")
 )
 
+const (
+	StatusPending = "pending"
+
+	IdentifierDNS = "dns"
+
+	ChallengeHTTP01 = "http-01"
+)
+
+type Identifier struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
 // TODO(@cpu) - Rename Registration to Account, update refs
 type Registration struct {
-	ID        string           `json:"id"`
+	Status    string           `json:"status"`
 	Key       *jose.JsonWebKey `json:"key"`
 	Contact   []string         `json:"contact"`
 	ToSAgreed bool             `json:"terms-of-service-agreed"`
 	Orders    string           `json:"orders"`
-	Status    string
 }
 
-// OrderRequest is used for new-order requests
-type OrderRequest struct {
-	ID             string   `json:"id"`
+// An Order is created to request issuance for a CSR
+type Order struct {
 	Status         string   `json:"status"`
 	Expires        string   `json:"expires"`
 	CSR            string   `json:"csr"`
 	NotBefore      string   `json:"notBefore"`
 	NotAfter       string   `json:"notAfter"`
 	Authorizations []string `json:"authorizations"`
-	Certificate    string   `json:"certificate"`
+	Certificate    string   `json:"certificate,omitempty"`
 }
 
-// Order is constructed out of an OrderRequest and is an internal type
-type Order struct {
-	OrderRequest
-	ParsedCSR *x509.CertificateRequest
+// An Authorization is created for each identifier in an order
+type Authorization struct {
+	Status     string     `json:"status"`
+	Identifier Identifier `json:"identifier"`
+	Challenges []string   `json:"challenges"`
 }
 
-// TODO(@cpu): Create an "Authorizations" type
-
-// RandomString and NewToken come from Boulder core/util.go
-// RandomString returns a randomly generated string of the requested length.
-func RandomString(byteLength int) string {
-	b := make([]byte, byteLength)
-	_, err := io.ReadFull(rand.Reader, b)
-	if err != nil {
-		panic(fmt.Sprintf("Error reading random bytes: %s", err))
-	}
-	return base64.RawURLEncoding.EncodeToString(b)
-}
-
-// NewToken produces a random string for Challenges, etc.
-func NewToken() string {
-	return RandomString(32)
+// A Challenge is used to validate an Authorization
+type Challenge struct {
+	Type  string `json:"type"`
+	URL   string `json:"url"`
+	Token string `json:"token"`
 }
