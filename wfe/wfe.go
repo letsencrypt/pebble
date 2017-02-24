@@ -456,7 +456,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Value: name,
 		}
 		authz := &core.Authorization{
-			ID: core.NewToken(),
+			ID: newToken(),
 			Authorization: acme.Authorization{
 				Status:     acme.StatusPending,
 				Identifier: ident,
@@ -489,10 +489,10 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 
 	// TODO(@cpu): construct challenges for DNS-01 and TLS-SNI-02
 	chal := &core.Challenge{
-		ID: core.NewToken(),
+		ID: newToken(),
 		Challenge: acme.Challenge{
 			Type:  acme.ChallengeHTTP01,
-			Token: core.NewToken(),
+			Token: newToken(),
 			URL:   authz.URL,
 		},
 	}
@@ -563,7 +563,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	order := &core.Order{
-		ID: core.NewToken(),
+		ID: newToken(),
 		Order: acme.Order{
 			Status:  acme.StatusPending,
 			Expires: time.Now().AddDate(0, 0, 1).Format(time.RFC3339),
