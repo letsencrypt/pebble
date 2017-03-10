@@ -16,7 +16,6 @@ import (
 )
 
 const (
-	maxRedirect      = 10
 	whitespaceCutset = "\n\r\t"
 	userAgentBase    = "LetsEncrypt-Pebble-VA"
 
@@ -119,18 +118,8 @@ func (va VAImpl) fetchHTTP(identifier string, chal *core.Challenge) ([]byte, *ac
 		DisableKeepAlives: true,
 	}
 
-	// TODO(@cpu) - should this be made to match Boulder more closely?
-	//              does the spec have constraints/guidance here?
-	logRedirect := func(req *http.Request, via []*http.Request) error {
-		if len(via) > maxRedirect {
-			return fmt.Errorf("Maximum redirects (%d) exceeded", maxRedirect)
-		}
-		return nil
-	}
-
 	client := &http.Client{
-		Transport:     transport,
-		CheckRedirect: logRedirect,
+		Transport: transport,
 		// TODO(@cpu) - configurable http timeout?
 		Timeout: time.Second * 5,
 	}
