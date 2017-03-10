@@ -120,8 +120,7 @@ func (va VAImpl) fetchHTTP(identifier string, chal *core.Challenge) ([]byte, *ac
 
 	client := &http.Client{
 		Transport: transport,
-		// TODO(@cpu) - configurable http timeout?
-		Timeout: time.Second * 5,
+		Timeout:   time.Second * 5,
 	}
 
 	resp, err := client.Do(httpRequest)
