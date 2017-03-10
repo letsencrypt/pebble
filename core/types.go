@@ -1,9 +1,14 @@
 package core
 
 import (
+	"crypto"
 	"crypto/x509"
+	"encoding/base64"
+	"fmt"
+	"time"
 
 	"github.com/letsencrypt/pebble/acme"
+	"gopkg.in/square/go-jose.v1"
 )
 
 type Order struct {
@@ -19,11 +24,27 @@ type Registration struct {
 
 type Authorization struct {
 	acme.Authorization
-	ID  string
-	URL string
+	ID          string
+	URL         string
+	ExpiresDate time.Time
 }
 
 type Challenge struct {
 	acme.Challenge
-	ID string
+	ID            string
+	Authz         *Authorization
+	ValidatedDate time.Time
+}
+
+func (ch Challenge) ExpectedKeyAuthorization(key *jose.JsonWebKey) (string, error) {
+	if key == nil {
+		return "", fmt.Errorf("Cannot authorize a nil key")
+	}
+
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", err
+	}
+
+	return ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint), nil
 }

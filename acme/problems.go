@@ -11,6 +11,8 @@ const (
 	malformedErr      = errNS + "malformedRequest"
 	badNonceErr       = errNS + "badNonce"
 	agreementReqErr   = errNS + "agreementRequired"
+	connectionErr     = errNS + "connection"
+	unauthorizedErr   = errNS + "unauthorized"
 )
 
 type ProblemDetails struct {
@@ -68,5 +70,21 @@ func AgreementRequiredProblem(detail string) *ProblemDetails {
 		Type:       agreementReqErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+func ConnectionProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       connectionErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadGateway, // TODO(@cpu): Change this later?
+	}
+}
+
+func UnauthorizedProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       unauthorizedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusUnauthorized,
 	}
 }
