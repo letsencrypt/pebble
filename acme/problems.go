@@ -75,16 +75,14 @@ func AgreementRequiredProblem(detail string) *ProblemDetails {
 
 func ConnectionProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       connectionErr,
-		Detail:     detail,
-		HTTPStatus: http.StatusBadGateway, // TODO(@cpu): Change this later?
+		Type:   connectionErr,
+		Detail: detail,
 	}
 }
 
 func UnauthorizedProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       unauthorizedErr,
-		Detail:     detail,
-		HTTPStatus: http.StatusUnauthorized,
+		Type:   unauthorizedErr,
+		Detail: detail,
 	}
 }
