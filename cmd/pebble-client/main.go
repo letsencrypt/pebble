@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/pebble/cmd"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -37,7 +37,7 @@ type client struct {
 	email     string
 	acctID    string
 	http      *http.Client
-	signer    jose.Signer
+	privKey   jose.SigningKey
 	nonce     string
 }
 
@@ -52,16 +52,14 @@ func newClient(server, email string) (*client, error) {
 		return nil, err
 	}
 
-	signer, err := jose.NewSigner(jose.RS256, privKey)
-	if err != nil {
-		return nil, err
-	}
-
 	c := &client{
 		server: url,
 		email:  email,
 		http:   &http.Client{},
-		signer: signer,
+		privKey: jose.SigningKey{
+			Key:       privKey,
+			Algorithm: jose.RS256,
+		},
 	}
 
 	err = c.updateDirectory()
@@ -73,7 +71,6 @@ func newClient(server, email string) (*client, error) {
 	if err != nil {
 		return nil, err
 	}
-	signer.SetNonceSource(c)
 
 	err = c.register()
 	if err != nil {
@@ -83,8 +80,19 @@ func newClient(server, email string) (*client, error) {
 	return c, nil
 }
 
-func (c *client) sign(data []byte) (*jose.JsonWebSignature, error) {
-	signed, err := c.signer.Sign(data)
+func (c *client) sign(data []byte, url string) (*jose.JSONWebSignature, error) {
+	signer, err := jose.NewSigner(c.privKey, &jose.SignerOptions{
+		NonceSource: c,
+		EmbedJWK:    true, // TODO(jsha): True only for registration
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	signed, err := signer.Sign(data)
 	if err != nil {
 		return nil, err
 	}
@@ -138,11 +146,9 @@ func (c *client) register() error {
 	reqBody := struct {
 		ToSAgreed bool `json:"terms-of-service-agreed"`
 		Contact   []string
-		Resource  string
 	}{
 		ToSAgreed: true,
 		Contact:   []string{"mailto:" + c.email},
-		Resource:  "new-reg",
 	}
 
 	reqBodyStr, err := json.Marshal(&reqBody)
@@ -189,6 +195,9 @@ func (c *client) doReq(req *http.Request) ([]byte, *http.Response, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if resp.StatusCode/100 != 2 {
+		return nil, nil, fmt.Errorf("Response %d: %s", resp.StatusCode, respBody)
+	}
 	return respBody, resp, nil
 }
 
@@ -203,7 +212,7 @@ func (c *client) getAPI(url string) ([]byte, *http.Response, error) {
 }
 
 func (c *client) postAPI(url string, body []byte) ([]byte, *http.Response, error) {
-	signedBody, err := c.sign(body)
+	signedBody, err := c.sign(body, url)
 	if err != nil {
 		return nil, nil, err
 	}
