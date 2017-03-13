@@ -18,11 +18,12 @@ import (
 	"strings"
 	"time"
 
+  "gopkg.in/square/go-jose.v2"
+
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/va"
-	"gopkg.in/square/go-jose.v1"
 )
 
 const (
@@ -253,12 +254,12 @@ func (wfe *WebFrontEndImpl) Nonce(
  */
 func keyToID(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
-	case *jose.JsonWebKey:
+	case *jose.JSONWebKey:
 		if t == nil {
 			return "", fmt.Errorf("Cannot compute ID of nil key")
 		}
 		return keyToID(t.Key)
-	case jose.JsonWebKey:
+	case jose.JSONWebKey:
 		return keyToID(t.Key)
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
@@ -270,30 +271,33 @@ func keyToID(key crypto.PublicKey) (string, error) {
 	}
 }
 
-func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.JsonWebSignature, error) {
+func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
-		return nil, nil, errors.New("Parse error reading JWS")
+		return nil, errors.New("Parse error reading JWS")
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
-		return nil, nil, errors.New("Too many signatures in POST body")
+		return nil, errors.New("Too many signatures in POST body")
 	}
 
 	if len(parsedJWS.Signatures) == 0 {
-		return nil, nil, errors.New("POST JWS not signed")
+		return nil, errors.New("POST JWS not signed")
 	}
+	return parsedJWS, nil
+}
 
-	key := parsedJWS.Signatures[0].Header.JsonWebKey
+func (wfe *WebFrontEndImpl) extractJWSKey(parsedJWS *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+	key := parsedJWS.Signatures[0].Header.JSONWebKey
 	if key == nil {
-		return nil, nil, errors.New("No JWK in JWS header")
+		return nil, errors.New("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
-		return nil, nil, errors.New("Invalid JWK in JWS header")
+		return nil, errors.New("Invalid JWK in JWS header")
 	}
 
-	return key, parsedJWS, nil
+	return key, nil
 }
 
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
@@ -302,8 +306,7 @@ func (wfe *WebFrontEndImpl) extractJWSKey(body string) (*jose.JsonWebKey, *jose.
 func (wfe *WebFrontEndImpl) verifyPOST(
 	ctx context.Context,
 	logEvent *requestEvent,
-	request *http.Request,
-	resource acme.Resource) ([]byte, *jose.JsonWebKey, *acme.ProblemDetails) {
+	request *http.Request) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
 	if _, ok := request.Header["Content-Length"]; !ok {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
@@ -319,15 +322,29 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	}
 
 	body := string(bodyBytes)
-
-	submittedKey, parsedJWS, err := wfe.extractJWSKey(body)
+	parsedJWS, err := wfe.parseJWS(body)
 	if err != nil {
 		return nil, nil, acme.MalformedProblem(err.Error())
 	}
 
+	keyID := parsedJWS.Signatures[0].Header.KeyID
+	var pubKey *jose.JSONWebKey
+	if len(keyID) > 0 {
+		account := wfe.db.getRegistrationByID(keyID)
+		if account == nil {
+			return nil, nil, acme.MalformedProblem(fmt.Sprintf(
+				"Account %s not found.", keyID))
+		}
+	} else {
+		pubKey, err = wfe.extractJWSKey(parsedJWS)
+		if err != nil {
+			return nil, nil, acme.MalformedProblem(err.Error())
+		}
+	}
+
 	// TODO(@cpu): `checkAlgorithm()`
 
-	payload, err := parsedJWS.Verify(submittedKey)
+	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
 		return nil, nil, acme.MalformedProblem("JWS verification error")
 	}
@@ -340,23 +357,22 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}
 
-	var parsedRequest struct {
-		Resource string `json:"resource"`
+	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
+	if !ok || len(headerURL) == 0 {
+		return nil, nil, acme.MalformedProblem("JWS header parameter 'url' required.")
 	}
-	err = json.Unmarshal([]byte(payload), &parsedRequest)
-	if err != nil {
-		return nil, nil, acme.MalformedProblem("Request payload did not parse as JSON")
+	expectedURL := url.URL{
+		Scheme: "http",
+		Host:   request.Host,
+		Path:   request.RequestURI,
+	}
+	if expectedURL.String() != headerURL {
+		return nil, nil, acme.MalformedProblem(fmt.Sprintf(
+			"JWS header parameter 'url' incorrect. Expected %q, got %q",
+			expectedURL.String(), headerURL))
 	}
 
-	if parsedRequest.Resource == "" {
-		return nil, nil, acme.MalformedProblem(
-			"JWS request payload does not specify a resource")
-	} else if resource != acme.Resource(parsedRequest.Resource) {
-		return nil, nil, acme.MalformedProblem(
-			"JWS request payload resource does not match known resource")
-	}
-
-	return []byte(payload), submittedKey, nil
+	return []byte(payload), pubKey, nil
 }
 
 func (wfe *WebFrontEndImpl) NewRegistration(
@@ -365,7 +381,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceNewReg)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -532,7 +548,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceNewOrder)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
