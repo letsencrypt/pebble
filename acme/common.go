@@ -1,8 +1,6 @@
 package acme
 
-import (
-	"gopkg.in/square/go-jose.v1"
-)
+import "gopkg.in/square/go-jose.v1"
 
 // acme.Resource values identify different types of ACME resources
 type Resource string
@@ -11,14 +9,20 @@ const (
 	ResourceNewNonce = Resource("new-nonce")
 	ResourceNewReg   = Resource("new-reg")
 	ResourceNewOrder = Resource("new-order")
+	// TODO(@cpu): Should there be a resource for challenge or just use 'authz'?
+	ResourceChallenge = Resource("challenge")
 )
 
 const (
 	StatusPending = "pending"
+	StatusInvalid = "invalid"
+	StatusValid   = "valid"
 
 	IdentifierDNS = "dns"
 
 	ChallengeHTTP01 = "http-01"
+
+	HTTP01BaseURL = ".well-known/acme-challenge/"
 )
 
 type Identifier struct {
@@ -51,11 +55,16 @@ type Authorization struct {
 	Status     string     `json:"status"`
 	Identifier Identifier `json:"identifier"`
 	Challenges []string   `json:"challenges"`
+	Expires    string     `json:"expires"`
 }
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type  string `json:"type"`
-	URL   string `json:"url"`
-	Token string `json:"token"`
+	Type                     string         `json:"type"`
+	URL                      string         `json:"url"`
+	Token                    string         `json:"token"`
+	Status                   string         `json:"status"`
+	Validated                string         `json:"validated,omitempty"`
+	ProvidedKeyAuthorization string         `json:"keyAuthorization,omitempty"`
+	Error                    ProblemDetails `json:"error,omitempty"`
 }

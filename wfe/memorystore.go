@@ -51,6 +51,10 @@ func (m *memoryStore) addRegistration(reg *core.Registration) (int, error) {
 		return 0, fmt.Errorf("registration must have a non-empty ID to add to memoryStore")
 	}
 
+	if reg.Key == nil {
+		return 0, fmt.Errorf("registration must not have a nil Key")
+	}
+
 	if _, present := m.registrationsByID[regID]; present {
 		return 0, fmt.Errorf("registration %q already exists", regID)
 	}
