@@ -1,6 +1,6 @@
 package acme
 
-import "gopkg.in/square/go-jose.v1"
+import "gopkg.in/square/go-jose.v2"
 
 // acme.Resource values identify different types of ACME resources
 type Resource string
@@ -33,7 +33,7 @@ type Identifier struct {
 // TODO(@cpu) - Rename Registration to Account, update refs
 type Registration struct {
 	Status    string           `json:"status"`
-	Key       *jose.JsonWebKey `json:"key"`
+	Key       *jose.JSONWebKey `json:"key"`
 	Contact   []string         `json:"contact"`
 	ToSAgreed bool             `json:"terms-of-service-agreed"`
 	Orders    string           `json:"orders"`

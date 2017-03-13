@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
-	"gopkg.in/square/go-jose.v1"
+	"gopkg.in/square/go-jose.v2"
 )
 
 type Order struct {
@@ -36,7 +36,7 @@ type Challenge struct {
 	ValidatedDate time.Time
 }
 
-func (ch Challenge) ExpectedKeyAuthorization(key *jose.JsonWebKey) (string, error) {
+func (ch Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) (string, error) {
 	if key == nil {
 		return "", fmt.Errorf("Cannot authorize a nil key")
 	}
