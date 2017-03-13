@@ -247,7 +247,11 @@ func (c *client) readEndpoint() (string, error) {
 			break
 		}
 		if _, ok := c.directory[line]; !ok {
-			fmt.Printf("Unknown directory endpoint: %q.\nAvailable choices: %s\n",
+			if url, err := url.Parse(line); err == nil {
+				endpoint = url.String()
+				break
+			}
+			fmt.Printf("Unknown directory endpoint or invalid URL: %q.\nAvailable choices: %s\n",
 				line, strings.Join(c.endpoints(), ", "))
 			fmt.Printf("$> Enter a directory endpoint to POST: ")
 			continue

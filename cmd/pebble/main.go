@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/cmd"
 	"github.com/letsencrypt/pebble/wfe"
 )
@@ -34,7 +35,9 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	wfe, err := wfe.New(logger)
+	clk := clock.Default()
+
+	wfe, err := wfe.New(logger, clk)
 	muxHandler := wfe.Handler()
 
 	srv := &http.Server{

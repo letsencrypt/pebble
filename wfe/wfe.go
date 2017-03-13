@@ -18,9 +18,12 @@ import (
 	"strings"
 	"time"
 
+  "gopkg.in/square/go-jose.v2"
+
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
-	"gopkg.in/square/go-jose.v2"
+	"github.com/letsencrypt/pebble/va"
 )
 
 const (
@@ -34,6 +37,9 @@ const (
 	orderPath     = "/my-order/"
 	authzPath     = "/authZ/"
 	challengePath = "/chalZ/"
+
+	// How long do pending authorizations last before expiring?
+	pendingAuthzExpire = time.Hour
 )
 
 type requestEvent struct {
@@ -73,15 +79,19 @@ type WebFrontEndImpl struct {
 	log   *log.Logger
 	db    *memoryStore
 	nonce *nonceMap
+	clk   clock.Clock
+	va    *va.VAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
-func New(log *log.Logger) (WebFrontEndImpl, error) {
+func New(log *log.Logger, clk clock.Clock) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
 		log:   log,
 		db:    newMemoryStore(),
 		nonce: newNonceMap(),
+		clk:   clk,
+		va:    va.NewVA(log, clk),
 	}, nil
 }
 
@@ -153,7 +163,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 
 	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
@@ -390,6 +400,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	createdReg := core.Registration{
 		Registration: newReg,
 	}
+	createdReg.Key = key
 
 	regID, err := keyToID(key)
 	if err != nil {
@@ -470,11 +481,15 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Type:  acme.IdentifierDNS,
 			Value: name,
 		}
+		now := wfe.clk.Now()
+		expires := now.Add(pendingAuthzExpire)
 		authz := &core.Authorization{
-			ID: newToken(),
+			ID:          newToken(),
+			ExpiresDate: expires,
 			Authorization: acme.Authorization{
 				Status:     acme.StatusPending,
 				Identifier: ident,
+				Expires:    expires.String(),
 			},
 		}
 		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
@@ -506,11 +521,14 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	chal := &core.Challenge{
 		ID: newToken(),
 		Challenge: acme.Challenge{
-			Type:  acme.ChallengeHTTP01,
-			Token: newToken(),
-			URL:   authz.URL,
+			Type:   acme.ChallengeHTTP01,
+			Token:  newToken(),
+			URL:    authz.URL,
+			Status: acme.StatusPending,
 		},
+		Authz: authz,
 	}
+
 	count, err := wfe.db.addChallenge(chal)
 	if err != nil {
 		return err
@@ -675,6 +693,20 @@ func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	if request.Method == "POST" {
+		wfe.updateChallenge(ctx, logEvent, response, request)
+		return
+	}
+
+	wfe.getChallenge(ctx, logEvent, response, request)
+}
+
+func (wfe *WebFrontEndImpl) getChallenge(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
 	chal := wfe.db.getChallengeByID(chalID)
 	if chal == nil {
@@ -685,6 +717,120 @@ func (wfe *WebFrontEndImpl) Challenge(
 	err := wfe.writeJsonResponse(response, http.StatusOK, chal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) updateChallenge(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceChallenge)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Compute the registration ID for the signer's key
+	regID, err := keyToID(key)
+	if err != nil {
+		wfe.log.Printf("keyToID err: %s\n", err.Error())
+		wfe.sendError(acme.MalformedProblem("Error computing key digest"), response)
+		return
+	}
+	wfe.log.Printf("received update-challenge req from reg ID %s\n", regID)
+
+	// Find the existing registration object for that key ID
+	var existingReg *core.Registration
+	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
+		wfe.sendError(
+			acme.MalformedProblem("No existing registration for signer's public key"),
+			response)
+		return
+	}
+
+	var chalResp acme.Challenge
+	err = json.Unmarshal(body, &chalResp)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
+	existingChal := wfe.db.getChallengeByID(chalID)
+	if existingChal == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if existingChal.Authz == nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("challenge missing associated authz"), response)
+		return
+	}
+
+	ident := existingChal.Authz.Identifier
+	if ident.Type != acme.IdentifierDNS {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("Authorization identifier was type %s, only %s is supported",
+					ident.Type, acme.IdentifierDNS)), response)
+		return
+	}
+
+	now := wfe.clk.Now()
+	if existingChal.Authz.ExpiresDate.After(now) {
+		wfe.sendError(
+			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s", existingChal.Authz.Expires)), response)
+		return
+	}
+
+	// Check that the challenge response is the same type as the challenge
+	// NOTE: Boulder doesn't do this at the time of writing and instead increments
+	//       a "StartChallengeWrongType" stat
+	if chalResp.Type != existingChal.Type {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("Challenge update was type %s, existing challenge is type %s",
+					chalResp.Type, existingChal.Type)), response)
+		return
+	}
+
+	// Check that the existing challenge is Pending
+	if existingChal.Status != acme.StatusPending {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("Cannot update challenge with status %s, only status %s",
+					existingChal.Status, acme.StatusPending)), response)
+		return
+	}
+
+	// Calculate the expected key authorization for the owning registration's key
+	expectedKeyAuth, err := existingChal.ExpectedKeyAuthorization(existingReg.Key)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem(
+				fmt.Sprintf("Unable to create expected key auth: %q", err)), response)
+		return
+	}
+
+	// Validate the expected key auth matches the provided key auth
+	if expectedKeyAuth != chalResp.ProvidedKeyAuthorization {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("Incorrect key authorization: %q",
+					chalResp.ProvidedKeyAuthorization)), response)
+		return
+	}
+
+	err = wfe.va.Validate(ident.Value, existingChal)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem(
+				fmt.Sprintf("Failed to validate challenge: %q", err)), response)
 		return
 	}
 }
