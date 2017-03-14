@@ -1,7 +1,5 @@
 package acme
 
-import "gopkg.in/square/go-jose.v2"
-
 // acme.Resource values identify different types of ACME resources
 type Resource string
 
@@ -32,11 +30,10 @@ type Identifier struct {
 
 // TODO(@cpu) - Rename Registration to Account, update refs
 type Registration struct {
-	Status    string           `json:"status"`
-	Key       *jose.JSONWebKey `json:"key"`
-	Contact   []string         `json:"contact"`
-	ToSAgreed bool             `json:"terms-of-service-agreed"`
-	Orders    string           `json:"orders"`
+	Status    string   `json:"status"`
+	Contact   []string `json:"contact"`
+	ToSAgreed bool     `json:"terms-of-service-agreed"`
+	Orders    string   `json:"orders"`
 }
 
 // An Order is created to request issuance for a CSR
@@ -44,27 +41,27 @@ type Order struct {
 	Status         string   `json:"status"`
 	Expires        string   `json:"expires"`
 	CSR            string   `json:"csr"`
-	NotBefore      string   `json:"notBefore"`
-	NotAfter       string   `json:"notAfter"`
+	NotBefore      string   `json:"notBefore,omitempty"`
+	NotAfter       string   `json:"notAfter,omitempty"`
 	Authorizations []string `json:"authorizations"`
 	Certificate    string   `json:"certificate,omitempty"`
 }
 
 // An Authorization is created for each identifier in an order
 type Authorization struct {
-	Status     string     `json:"status"`
-	Identifier Identifier `json:"identifier"`
-	Challenges []string   `json:"challenges"`
-	Expires    string     `json:"expires"`
+	Status     string      `json:"status"`
+	Identifier Identifier  `json:"identifier"`
+	Challenges []Challenge `json:"challenges"`
+	Expires    string      `json:"expires"`
 }
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type                     string         `json:"type"`
-	URL                      string         `json:"url"`
-	Token                    string         `json:"token"`
-	Status                   string         `json:"status"`
-	Validated                string         `json:"validated,omitempty"`
-	ProvidedKeyAuthorization string         `json:"keyAuthorization,omitempty"`
-	Error                    ProblemDetails `json:"error,omitempty"`
+	Type                     string          `json:"type"`
+	URI                      string          `json:"uri"`
+	Token                    string          `json:"token"`
+	Status                   string          `json:"status"`
+	Validated                string          `json:"validated,omitempty"`
+	ProvidedKeyAuthorization string          `json:"keyAuthorization,omitempty"`
+	Error                    *ProblemDetails `json:"error,omitempty"`
 }

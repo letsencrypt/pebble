@@ -19,7 +19,8 @@ type Order struct {
 
 type Registration struct {
 	acme.Registration
-	ID string
+	Key *jose.JSONWebKey `json:"key"`
+	ID  string
 }
 
 type Authorization struct {

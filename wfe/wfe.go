@@ -489,7 +489,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Authorization: acme.Authorization{
 				Status:     acme.StatusPending,
 				Identifier: ident,
-				Expires:    expires.String(),
+				Expires:    expires.UTC().Format(time.RFC3339),
 			},
 		}
 		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
@@ -515,15 +515,16 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 // makeChallenges populates an authz with new challenges. The request parameter
 // is required to make the challenge URL's absolute based on the request host
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
-	var chals []string
+	var chals []*core.Challenge
 
 	// TODO(@cpu): construct challenges for DNS-01 and TLS-SNI-02
+	id := newToken()
 	chal := &core.Challenge{
-		ID: newToken(),
+		ID: id,
 		Challenge: acme.Challenge{
 			Type:   acme.ChallengeHTTP01,
 			Token:  newToken(),
-			URL:    authz.URL,
+			URI:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
 		Authz: authz,
@@ -534,10 +535,12 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		return err
 	}
 	fmt.Printf("There are now %d challenges in the db\n", count)
-	chalURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, chal.ID))
-	chals = append(chals, chalURL)
+	chals = append(chals, chal)
 
-	authz.Challenges = chals
+	authz.Challenges = nil
+	for _, c := range chals {
+		authz.Challenges = append(authz.Challenges, c.Challenge)
+	}
 	return nil
 }
 
@@ -599,7 +602,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		ID: newToken(),
 		Order: acme.Order{
 			Status:  acme.StatusPending,
-			Expires: time.Now().AddDate(0, 0, 1).Format(time.RFC3339),
+			Expires: time.Now().AddDate(0, 0, 1).UTC().Format(time.RFC3339),
 			// Only the CSR, NotBefore and NotAfter fields of the client request are
 			// copied as-is
 			CSR:       newOrder.CSR,
@@ -635,7 +638,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, newOrder)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, order.Order)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
