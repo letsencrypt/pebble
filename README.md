@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-04](https://tools.ietf.org/html/draft-ietf-acme-acme-04) test
+is a small [ACME-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,7 +16,7 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-04](https://tools.ietf.org/html/draft-ietf-acme-acme-04) experience
+2. Move rapidly to gain [ACME draft-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
@@ -26,7 +26,7 @@ ACME-04 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to produce code that can be used to inform the
-pending Boulder support for ACME-04, through contribution of code as well as
+pending Boulder support for ACME-06, through contribution of code as well as
 design lessons learned. Development of Pebble is meant to be rapid, and to
 produce a minimum working prototype on a short schedule.
 
@@ -42,7 +42,7 @@ clients are not hardcoding URLs.)
 
 1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
 2. `go get -u github.com/letsencrypt/pebble`
-3. `go test ./... && go install ./...`
+3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
 4. `pebble -h`
 
 ## Usage
