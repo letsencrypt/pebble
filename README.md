@@ -22,7 +22,7 @@ randomize keys/certificates used for issuance.
 
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
-ACME-64 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
+ACME-04 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to produce code that can be used to inform the
@@ -41,7 +41,6 @@ clients are not hardcoding URLs.)
 ## Install
 
 1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
-2. `go get -u gopkg.in/square/go-jose.v2`
 2. `go get -u github.com/letsencrypt/pebble`
 3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
 4. `pebble -h`
