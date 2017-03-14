@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-  "gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
@@ -727,7 +727,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, acme.ResourceChallenge)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
