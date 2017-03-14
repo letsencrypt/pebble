@@ -58,7 +58,7 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge) error {
 	chal.Validated = chal.ValidatedDate.String()
 	if prob != nil {
 		// Update the challenge Error
-		chal.Error = *prob
+		chal.Error = prob
 		// Set the challenge and authorization to invalid
 		chal.Status = acme.StatusInvalid
 		authz.Status = acme.StatusInvalid
