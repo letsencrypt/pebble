@@ -481,7 +481,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Type:  acme.IdentifierDNS,
 			Value: name,
 		}
-		now := wfe.clk.Now()
+		now := wfe.clk.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		authz := &core.Authorization{
 			ID:          newToken(),
@@ -785,9 +785,9 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	now := wfe.clk.Now()
-	if existingChal.Authz.ExpiresDate.After(now) {
+	if now.After(existingChal.Authz.ExpiresDate) {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s", existingChal.Authz.Expires)), response)
+			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s %s", existingChal.Authz.ExpiresDate.Format(time.RFC3339))), response)
 		return
 	}
 
@@ -834,6 +834,12 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		wfe.sendError(
 			acme.InternalErrorProblem(
 				fmt.Sprintf("Failed to validate challenge: %q", err)), response)
+		return
+	}
+	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
+	err = wfe.writeJsonResponse(response, http.StatusOK, existingChal.Challenge)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
 }

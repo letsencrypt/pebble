@@ -52,10 +52,10 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge) error {
 	}
 
 	authz := chal.Authz
-	now := va.clk.Now()
+	now := va.clk.Now().UTC()
 	// Update the validated date for the challenge regardless of good/bad outcome
 	chal.ValidatedDate = now
-	chal.Validated = chal.ValidatedDate.String()
+	chal.Validated = chal.ValidatedDate.Format(time.RFC3339)
 	if prob != nil {
 		// Update the challenge Error
 		chal.Error = prob
@@ -65,7 +65,7 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge) error {
 	} else {
 		// Update the expiry for the valid authorization
 		authz.ExpiresDate = now.Add(validAuthzExpire)
-		authz.Expires = authz.ExpiresDate.String()
+		authz.Expires = authz.ExpiresDate.Format(time.RFC3339)
 		// Set the authorization & challenge to valid
 		chal.Status = acme.StatusValid
 		authz.Status = acme.StatusValid
