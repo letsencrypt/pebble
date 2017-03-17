@@ -11,7 +11,7 @@ before_install:
   - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
   - ./tools/venv.sh
   - . venv/bin/activate
-  - popd
+  - cd -
 
 after_install:
   - pebble
