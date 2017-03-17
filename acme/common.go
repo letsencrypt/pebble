@@ -57,11 +57,16 @@ type Authorization struct {
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type                     string          `json:"type"`
-	URI                      string          `json:"uri"`
-	Token                    string          `json:"token"`
-	Status                   string          `json:"status"`
-	Validated                string          `json:"validated,omitempty"`
-	ProvidedKeyAuthorization string          `json:"keyAuthorization,omitempty"`
-	Error                    *ProblemDetails `json:"error,omitempty"`
+	Type              string `json:"type"`
+	URI               string `json:"uri"`
+	Token             string `json:"token"`
+	Status            string `json:"status"`
+	Validated         string `json:"validated,omitempty"`
+	ValidationRecords []ValidationRecord
+	KeyAuthorization  string          `json:"keyAuthorization,omitempty"`
+	Error             *ProblemDetails `json:"error,omitempty"`
+}
+
+type ValidationRecord struct {
+	URL string
 }

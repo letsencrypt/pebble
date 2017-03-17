@@ -4,7 +4,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
-	"fmt"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -37,15 +36,15 @@ type Challenge struct {
 	ValidatedDate time.Time
 }
 
-func (ch Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) (string, error) {
+func (ch Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 	if key == nil {
-		return "", fmt.Errorf("Cannot authorize a nil key")
+		panic("ExpectedKeyAuthorization called with nil key")
 	}
 
 	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
-		return "", err
+		panic("ExpectedKeyAuthorization: " + err.Error())
 	}
 
-	return ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint), nil
+	return ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint)
 }
