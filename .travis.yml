@@ -1,4 +1,25 @@
 language: go
 
+sudo: true
+
 go:
   - 1.8
+
+before_install:
+  # The acme-v2 branch of certbot has some tweaks and an in-progress version of
+  # chisel, called chisel2, that works with the latest ACME spec. Check it out
+  # and run it against pebble.
+  - git clone -b acme-v2 https://github.com/certbot/certbot
+  - cd certbot
+  - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
+  - ./tools/venv.sh
+  - . venv/bin/activate
+  - cd -
+
+before_script:
+  - pebble &
+  # Wait for pebble to come up
+  - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
+
+script:
+  - python ./certbot/tools/chisel2.py  $(openssl rand -hex 3).127.0.0.1.ipna.me $(openssl rand -hex 3).127.0.0.1.ipna.me
