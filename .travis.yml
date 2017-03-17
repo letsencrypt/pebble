@@ -2,3 +2,19 @@ language: go
 
 go:
   - 1.8
+
+before_install:
+  - git clone -b acme-v2 https://github.com/certbot/certbot
+  - cd certbot
+  - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
+  - ./tools/venv.sh
+  - . venv/bin/activate
+  - popd
+
+after_install:
+  - pebble
+  # Wait for pebble to come up
+  - until </dev/tcp/localhost/14000 ; do : ; done
+
+script:
+  - python ./certbot/tools/chisel2.py  $(openssl rand -hex 3).127.0.0.1.ipna.me $(openssl rand -hex 3).127.0.0.1.ipna.me
