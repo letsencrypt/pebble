@@ -14,7 +14,7 @@ before_install:
   - cd -
 
 before_script:
-  - pebble
+  - pebble &
   # Wait for pebble to come up
   - until </dev/tcp/localhost/14000 ; do : ; done
 
