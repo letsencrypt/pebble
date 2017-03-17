@@ -1,6 +1,10 @@
 language: go
 
 sudo: true
+addons:
+  hosts:
+    - example.letsencrypt.org
+    - elpmaxe.letsencrypt.org
 
 go:
   - 1.8
@@ -22,4 +26,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - python ./certbot/tools/chisel2.py  $(openssl rand -hex 3).127.0.0.1.ipna.me $(openssl rand -hex 3).127.0.0.1.ipna.me
+  - python ./certbot/tools/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
