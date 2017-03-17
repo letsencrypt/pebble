@@ -13,7 +13,7 @@ before_install:
   - . venv/bin/activate
   - cd -
 
-after_install:
+before_script:
   - pebble
   # Wait for pebble to come up
   - until </dev/tcp/localhost/14000 ; do : ; done
