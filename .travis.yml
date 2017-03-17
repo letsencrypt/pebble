@@ -16,7 +16,7 @@ before_install:
 before_script:
   - pebble &
   # Wait for pebble to come up
-  - until </dev/tcp/localhost/14000 ; do : ; done
+  - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
   - python ./certbot/tools/chisel2.py  $(openssl rand -hex 3).127.0.0.1.ipna.me $(openssl rand -hex 3).127.0.0.1.ipna.me
