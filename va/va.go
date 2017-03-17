@@ -30,23 +30,25 @@ func userAgent() string {
 }
 
 type VAImpl struct {
-	log *log.Logger
-	clk clock.Clock
+	log      *log.Logger
+	clk      clock.Clock
+	httpPort int
 }
 
-func NewVA(log *log.Logger, clk clock.Clock) *VAImpl {
+func New(log *log.Logger, clk clock.Clock, httpPort int) *VAImpl {
 	return &VAImpl{
-		log: log,
-		clk: clk,
+		log:      log,
+		clk:      clk,
+		httpPort: httpPort,
 	}
 }
 
-func (va VAImpl) Validate(identifier string, chal *core.Challenge) error {
+func (va VAImpl) Validate(identifier string, chal *core.Challenge, reg *core.Registration) error {
 	// TODO(@cpu): Implement validation for DNS-01, TLS-SNI-02, etc
 	var prob *acme.ProblemDetails
 	switch chal.Type {
 	case acme.ChallengeHTTP01:
-		prob = va.validateHTTP01(identifier, chal)
+		prob = va.validateHTTP01(identifier, chal, reg)
 	default:
 		return fmt.Errorf("Invalid challenge type: %q", chal.Type)
 	}
@@ -74,18 +76,23 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge) error {
 	return nil
 }
 
-func (va VAImpl) validateHTTP01(identifier string, chal *core.Challenge) *acme.ProblemDetails {
+func (va VAImpl) validateHTTP01(
+	identifier string,
+	chal *core.Challenge,
+	reg *core.Registration,
+) *acme.ProblemDetails {
 	body, err := va.fetchHTTP(identifier, chal)
 	if err != nil {
 		return err
 	}
 
+	expectedKeyAuthorization := chal.ExpectedKeyAuthorization(reg.Key)
 	// The server SHOULD ignore whitespace characters at the end of the body
 	payload := strings.TrimRight(string(body), whitespaceCutset)
-	if payload != chal.ProvidedKeyAuthorization {
+	if payload != expectedKeyAuthorization {
 		return acme.UnauthorizedProblem(
 			fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",
-				chal.ProvidedKeyAuthorization, payload))
+				expectedKeyAuthorization, payload))
 	}
 
 	return nil
@@ -99,10 +106,13 @@ func (va VAImpl) fetchHTTP(identifier string, chal *core.Challenge) ([]byte, *ac
 
 	url := &url.URL{
 		Scheme: "http",
-		Host:   chal.Authz.Identifier.Value,
+		Host:   fmt.Sprintf("%s:%d", chal.Authz.Identifier.Value, va.httpPort),
 		Path:   path,
 	}
 
+	chal.ValidationRecords = []acme.ValidationRecord{
+		acme.ValidationRecord{url.String()},
+	}
 	va.log.Printf("Attempting to validate %s: %s\n", chal.Type, url)
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {

@@ -2,3 +2,11 @@ language: go
 
 go:
   - 1.8
+
+before_install:
+  - git clone -b acme-v2 https://github.com/certbot/certbot
+  - cd certbot
+  - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
+  - ./tools/venv.sh
+  - . venv/bin/activate
+

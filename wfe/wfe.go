@@ -85,13 +85,13 @@ type WebFrontEndImpl struct {
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
-func New(log *log.Logger, clk clock.Clock) (WebFrontEndImpl, error) {
+func New(log *log.Logger, clk clock.Clock, va *va.VAImpl) (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
 		log:   log,
 		db:    newMemoryStore(),
 		nonce: newNonceMap(),
 		clk:   clk,
-		va:    va.NewVA(log, clk),
+		va:    va,
 	}, nil
 }
 
@@ -812,24 +812,18 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	// Calculate the expected key authorization for the owning registration's key
-	expectedKeyAuth, err := existingChal.ExpectedKeyAuthorization(existingReg.Key)
-	if err != nil {
-		wfe.sendError(
-			acme.InternalErrorProblem(
-				fmt.Sprintf("Unable to create expected key auth: %q", err)), response)
-		return
-	}
+	expectedKeyAuth := existingChal.ExpectedKeyAuthorization(existingReg.Key)
 
 	// Validate the expected key auth matches the provided key auth
-	if expectedKeyAuth != chalResp.ProvidedKeyAuthorization {
+	if expectedKeyAuth != chalResp.KeyAuthorization {
 		wfe.sendError(
 			acme.MalformedProblem(
 				fmt.Sprintf("Incorrect key authorization: %q",
-					chalResp.ProvidedKeyAuthorization)), response)
+					chalResp.KeyAuthorization)), response)
 		return
 	}
 
-	err = wfe.va.Validate(ident.Value, existingChal)
+	err = wfe.va.Validate(ident.Value, existingChal, existingReg)
 	if err != nil {
 		wfe.sendError(
 			acme.InternalErrorProblem(

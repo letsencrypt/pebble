@@ -8,12 +8,14 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/cmd"
+	"github.com/letsencrypt/pebble/va"
 	"github.com/letsencrypt/pebble/wfe"
 )
 
 type config struct {
 	Pebble struct {
 		ListenAddress string
+		HTTPPort      int
 	}
 }
 
@@ -37,7 +39,8 @@ func main() {
 
 	clk := clock.Default()
 
-	wfe, err := wfe.New(logger, clk)
+	va := va.New(logger, clk, c.Pebble.HTTPPort)
+	wfe, err := wfe.New(logger, clk, va)
 	muxHandler := wfe.Handler()
 
 	srv := &http.Server{
