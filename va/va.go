@@ -64,6 +64,7 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge, reg *core.Reg
 		// Set the challenge and authorization to invalid
 		chal.Status = acme.StatusInvalid
 		authz.Status = acme.StatusInvalid
+		va.log.Printf("authz %s set INVALID by completed challenge %s", authz.ID, chal.ID)
 	} else {
 		// Update the expiry for the valid authorization
 		authz.ExpiresDate = now.Add(validAuthzExpire)
@@ -71,6 +72,7 @@ func (va VAImpl) Validate(identifier string, chal *core.Challenge, reg *core.Reg
 		// Set the authorization & challenge to valid
 		chal.Status = acme.StatusValid
 		authz.Status = acme.StatusValid
+		va.log.Printf("authz %s set VALID by completed challenge %s", authz.ID, chal.ID)
 	}
 
 	return nil
