@@ -39,10 +39,7 @@ func NewMemoryStore() *MemoryStore {
 func (m *MemoryStore) GetRegistrationByID(id string) *core.Registration {
 	m.RLock()
 	defer m.RUnlock()
-	if reg, present := m.registrationsByID[id]; present {
-		return reg
-	}
-	return nil
+	return m.registrationsByID[id]
 }
 
 func (m *MemoryStore) AddRegistration(reg *core.Registration) (int, error) {
@@ -86,10 +83,7 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	m.RLock()
 	defer m.RUnlock()
-	if order, present := m.ordersByID[id]; present {
-		return order
-	}
-	return nil
+	return m.ordersByID[id]
 }
 
 func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
@@ -112,10 +106,7 @@ func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
 func (m *MemoryStore) GetAuthorizationByID(id string) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
-	if authz, present := m.authorizationsByID[id]; present {
-		return authz
-	}
-	return nil
+	return m.authorizationsByID[id]
 }
 
 func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
@@ -138,10 +129,7 @@ func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
 func (m *MemoryStore) GetChallengeByID(id string) *core.Challenge {
 	m.RLock()
 	defer m.RUnlock()
-	if chal, present := m.challengesByID[id]; present {
-		return chal
-	}
-	return nil
+	return m.challengesByID[id]
 }
 
 func (m *MemoryStore) AddCertificate(cert *core.Certificate) (int, error) {
@@ -164,8 +152,5 @@ func (m *MemoryStore) AddCertificate(cert *core.Certificate) (int, error) {
 func (m *MemoryStore) GetCertificateByID(id string) *core.Certificate {
 	m.RLock()
 	defer m.RUnlock()
-	if cert, present := m.certificatesByID[id]; present {
-		return cert
-	}
-	return nil
+	return m.certificatesByID[id]
 }

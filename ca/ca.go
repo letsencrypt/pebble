@@ -72,8 +72,7 @@ func (ca *CAImpl) makeRootCert(
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA:           true,
-		MaxPathLenZero: true,
+		IsCA: true,
 	}
 
 	var signerKey crypto.Signer
@@ -109,16 +108,16 @@ func (ca *CAImpl) makeRootCert(
 	return newCert, nil
 }
 
-func (ca *CAImpl) newRootIssuer() {
+func (ca *CAImpl) newRootIssuer() error {
 	// Make a root private key
 	rk, err := makeKey()
 	if err != nil {
-		panic(fmt.Sprintf("Unable to create a new root private key: %s", err.Error()))
+		return err
 	}
 	// Make a self-signed root certificate
 	rc, err := ca.makeRootCert(rk, rootCAPrefix, nil)
 	if err != nil {
-		panic(fmt.Sprintf("Unable to create a new root certificate: %s", err.Error()))
+		return err
 	}
 
 	ca.root = &issuer{
@@ -126,30 +125,31 @@ func (ca *CAImpl) newRootIssuer() {
 		cert: rc,
 	}
 	ca.log.Printf("Generated new root issuer with serial %s\n", rc.ID)
+	return nil
 }
 
-func (ca *CAImpl) newIntermediateIssuer() {
+func (ca *CAImpl) newIntermediateIssuer() error {
 	if ca.root == nil {
-		panic("error: newIntermediateIssuer() called before newRootIssuer()")
+		return fmt.Errorf("newIntermediateIssuer() called before newRootIssuer()")
 	}
 
 	// Make an intermediate private key
 	ik, err := makeKey()
 	if err != nil {
-		panic(fmt.Sprintf(
-			"Unable to create a new intermediate private key: %s", err.Error()))
+		return err
 	}
 
 	// Make an intermediate certificate with the root issuer
 	ic, err := ca.makeRootCert(ik, intermediateCAPrefix, ca.root)
 	if err != nil {
-		panic(fmt.Sprintf("Unable to create a new intermediate certificate: %s", err.Error()))
+		return err
 	}
 	ca.intermediate = &issuer{
 		key:  ik,
 		cert: ic,
 	}
 	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
+	return nil
 }
 
 func (ca *CAImpl) NewCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
@@ -208,7 +208,13 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 		log: log,
 		db:  db,
 	}
-	ca.newRootIssuer()
-	ca.newIntermediateIssuer()
+	err := ca.newRootIssuer()
+	if err != nil {
+		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
+	}
+	err = ca.newIntermediateIssuer()
+	if err != nil {
+		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
+	}
 	return ca
 }

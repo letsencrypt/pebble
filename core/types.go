@@ -86,8 +86,8 @@ func (c Certificate) Chain() []byte {
 	// Add zero or more issuers
 	issuer := c.Issuer
 	for {
-		// if the issuer is nil, or the issuer's issuer is nil then it isn't a leaf
-		// or an intermediate. Don't put it in the chain
+		// if the issuer is nil, or the issuer's issuer is nil then we've reached
+		// the root of the chain and can break
 		if issuer == nil || issuer.Issuer == nil {
 			break
 		}
@@ -96,5 +96,5 @@ func (c Certificate) Chain() []byte {
 	}
 
 	// Return the chain, leaf cert first
-	return bytes.Join(chain, []byte{})
+	return bytes.Join(chain, nil)
 }
