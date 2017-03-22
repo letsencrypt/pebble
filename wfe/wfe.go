@@ -22,7 +22,9 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
 )
 
@@ -37,6 +39,7 @@ const (
 	orderPath     = "/my-order/"
 	authzPath     = "/authZ/"
 	challengePath = "/chalZ/"
+	certPath      = "/certZ/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -77,22 +80,29 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	log   *log.Logger
-	db    *memoryStore
+	db    *db.MemoryStore
 	nonce *nonceMap
 	clk   clock.Clock
 	va    *va.VAImpl
+	ca    *ca.CAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
-func New(log *log.Logger, clk clock.Clock, va *va.VAImpl) (WebFrontEndImpl, error) {
+func New(
+	log *log.Logger,
+	clk clock.Clock,
+	db *db.MemoryStore,
+	va *va.VAImpl,
+	ca *ca.CAImpl) WebFrontEndImpl {
 	return WebFrontEndImpl{
 		log:   log,
-		db:    newMemoryStore(),
+		db:    db,
 		nonce: newNonceMap(),
 		clk:   clk,
 		va:    va,
-	}, nil
+		ca:    ca,
+	}
 }
 
 func (wfe *WebFrontEndImpl) HandleFunc(
@@ -164,6 +174,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 
 	// TODO(@cpu): Handle regPath for existing reg updates
 	return m
@@ -330,7 +341,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	keyID := parsedJWS.Signatures[0].Header.KeyID
 	var pubKey *jose.JSONWebKey
 	if len(keyID) > 0 {
-		account := wfe.db.getRegistrationByID(keyID)
+		account := wfe.db.GetRegistrationByID(keyID)
 		if account == nil {
 			return nil, nil, acme.MalformedProblem(fmt.Sprintf(
 				"Account %s not found.", keyID))
@@ -409,7 +420,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 	createdReg.ID = regID
 
-	if existingReg := wfe.db.getRegistrationByID(regID); existingReg != nil {
+	if existingReg := wfe.db.GetRegistrationByID(regID); existingReg != nil {
 		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
 		response.Header().Set("Location", regURL)
 		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
@@ -425,7 +436,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	count, err := wfe.db.addRegistration(&createdReg)
+	count, err := wfe.db.AddRegistration(&createdReg)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error saving registration"), response)
 		return
@@ -471,6 +482,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registratio
 // is required to make the authz URL's absolute based on the request host
 func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.Request) error {
 	var auths []string
+	var authObs []*core.Authorization
 
 	names := make([]string, len(order.ParsedCSR.DNSNames))
 	copy(names, order.ParsedCSR.DNSNames)
@@ -486,6 +498,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 		authz := &core.Authorization{
 			ID:          newToken(),
 			ExpiresDate: expires,
+			Order:       order,
 			Authorization: acme.Authorization{
 				Status:     acme.StatusPending,
 				Identifier: ident,
@@ -499,16 +512,18 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			return err
 		}
 		// Save the authorization in memory
-		count, err := wfe.db.addAuthorization(authz)
+		count, err := wfe.db.AddAuthorization(authz)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("There are now %d authorizations in the db\n", count)
+		wfe.log.Printf("There are now %d authorizations in the db\n", count)
 		authzURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
 		auths = append(auths, authzURL)
+		authObs = append(authObs, authz)
 	}
 
 	order.Authorizations = auths
+	order.AuthorizationObjects = authObs
 	return nil
 }
 
@@ -530,16 +545,16 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		Authz: authz,
 	}
 
-	count, err := wfe.db.addChallenge(chal)
+	count, err := wfe.db.AddChallenge(chal)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("There are now %d challenges in the db\n", count)
+	wfe.log.Printf("There are now %d challenges in the db\n", count)
 	chals = append(chals, chal)
 
 	authz.Challenges = nil
 	for _, c := range chals {
-		authz.Challenges = append(authz.Challenges, c.Challenge)
+		authz.Challenges = append(authz.Challenges, &c.Challenge)
 	}
 	return nil
 }
@@ -568,7 +583,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	// Find the existing registration object for that key ID
 	var existingReg *core.Registration
-	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
+	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
 		wfe.sendError(
 			acme.MalformedProblem("No existing registration for signer's public key"),
 			response)
@@ -597,19 +612,20 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
 		return
 	}
-
+	expires := time.Now().AddDate(0, 0, 1)
 	order := &core.Order{
 		ID: newToken(),
 		Order: acme.Order{
 			Status:  acme.StatusPending,
-			Expires: time.Now().AddDate(0, 0, 1).UTC().Format(time.RFC3339),
+			Expires: expires.UTC().Format(time.RFC3339),
 			// Only the CSR, NotBefore and NotAfter fields of the client request are
 			// copied as-is
 			CSR:       newOrder.CSR,
 			NotBefore: newOrder.NotBefore,
 			NotAfter:  newOrder.NotAfter,
 		},
-		ParsedCSR: parsedCSR,
+		ExpiresDate: expires,
+		ParsedCSR:   parsedCSR,
 	}
 
 	// Verify the details of the order before creating authorizations
@@ -627,14 +643,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	// Add the order to the in-memory DB
-	count, err := wfe.db.addOrder(order)
+	count, err := wfe.db.AddOrder(order)
 	if err != nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("Error saving order"), response)
 		return
 	}
-	fmt.Printf("Added order %q to the db\n", order.ID)
-	fmt.Printf("There are now %d orders in the db\n", count)
+	wfe.log.Printf("Added order %q to the db\n", order.ID)
+	wfe.log.Printf("There are now %d orders in the db\n", count)
 
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
@@ -653,7 +669,7 @@ func (wfe *WebFrontEndImpl) Order(
 	request *http.Request) {
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
-	order := wfe.db.getOrderByID(orderID)
+	order := wfe.db.GetOrderByID(orderID)
 	if order == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
@@ -677,7 +693,7 @@ func (wfe *WebFrontEndImpl) Authz(
 	request *http.Request) {
 
 	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
-	authz := wfe.db.getAuthorizationByID(authzID)
+	authz := wfe.db.GetAuthorizationByID(authzID)
 	if authz == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
@@ -711,7 +727,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	request *http.Request) {
 
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
-	chal := wfe.db.getChallengeByID(chalID)
+	chal := wfe.db.GetChallengeByID(chalID)
 	if chal == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
@@ -747,7 +763,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Find the existing registration object for that key ID
 	var existingReg *core.Registration
-	if existingReg = wfe.db.getRegistrationByID(regID); existingReg == nil {
+	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
 		wfe.sendError(
 			acme.MalformedProblem("No existing registration for signer's public key"),
 			response)
@@ -763,19 +779,20 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
-	existingChal := wfe.db.getChallengeByID(chalID)
+	existingChal := wfe.db.GetChallengeByID(chalID)
 	if existingChal == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	if existingChal.Authz == nil {
+	existingAuthz := existingChal.Authz
+	if existingAuthz == nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("challenge missing associated authz"), response)
 		return
 	}
 
-	ident := existingChal.Authz.Identifier
+	ident := existingAuthz.Identifier
 	if ident.Type != acme.IdentifierDNS {
 		wfe.sendError(
 			acme.MalformedProblem(
@@ -785,9 +802,24 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	now := wfe.clk.Now()
-	if now.After(existingChal.Authz.ExpiresDate) {
+	if now.After(existingAuthz.ExpiresDate) {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s %s", existingChal.Authz.ExpiresDate.Format(time.RFC3339))), response)
+			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s %s",
+				existingAuthz.ExpiresDate.Format(time.RFC3339))), response)
+		return
+	}
+
+	existingOrder := existingAuthz.Order
+	if existingOrder == nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("authz missing associated order"), response)
+		return
+	}
+
+	if now.After(existingOrder.ExpiresDate) {
+		wfe.sendError(
+			acme.MalformedProblem(fmt.Sprintf("order expired %s %s",
+				existingOrder.ExpiresDate.Format(time.RFC3339))), response)
 		return
 	}
 
@@ -830,12 +862,90 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 				fmt.Sprintf("Failed to validate challenge: %q", err)), response)
 		return
 	}
+
+	// TODO(@cpu): call maybeIssue on a separate goroutine
+	err = wfe.maybeIssue(request, existingOrder)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem(
+				fmt.Sprintf("Failed to attempt proactive issuance: %q", err)), response)
+		return
+	}
+
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
 	err = wfe.writeJsonResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
+}
+
+func (wfe *WebFrontEndImpl) maybeIssue(request *http.Request, order *core.Order) error {
+	// We can only process orders that are pending
+	if order.Status != acme.StatusPending {
+		return fmt.Errorf("Order %s is not status pending, was status %s\n",
+			order.ID, order.Status)
+	}
+
+	// Check the order to see if all of its authorizations are valid
+	for _, authz := range order.AuthorizationObjects {
+		// If any of the authorizations are invalid the order isn't ready to issue
+		if authz.Status != acme.StatusValid {
+			return nil
+		}
+	}
+
+	return wfe.issue(request, order)
+}
+
+func (wfe *WebFrontEndImpl) issue(request *http.Request, order *core.Order) error {
+	wfe.log.Printf("Order %s is fully authorized. Ready to issue\n", order.ID)
+	// Update the order to reflect that we're now processing it
+	order.Status = acme.StatusProcessing
+
+	csr := order.ParsedCSR
+	domains := make([]string, len(csr.DNSNames))
+	copy(domains, csr.DNSNames)
+
+	// issue a certificate for the csr
+	cert, err := wfe.ca.NewCertificate(domains, csr.PublicKey)
+	if err != nil {
+		return err
+	}
+	wfe.log.Printf("Issued certificate serial %s\n", cert.ID)
+	order.Status = acme.StatusValid
+
+	/*
+	 * Update the Order with the URL to retrieve the certificate from.
+	 *
+	 * NOTE: We had to pipe through a `http.Request` to be able to use
+	 * `relativeEndpoint` here. This works for now but will be a problem if we
+	 * start running the issuance in a separate goroutine. At that point we might
+	 * have to work around this by having the Order object stash a URL prefix to
+	 * be used by the issuance go routine to construct the order's certificate
+	 * URL without an associated HTTP request.
+	 */
+	order.Certificate = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, cert.ID))
+
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) Certificate(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	serial := strings.TrimPrefix(request.URL.Path, certPath)
+	cert := wfe.db.GetCertificateByID(serial)
+	if cert == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(cert.Chain())
 }
 
 func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, status int, v interface{}) error {

@@ -12,9 +12,10 @@ const (
 )
 
 const (
-	StatusPending = "pending"
-	StatusInvalid = "invalid"
-	StatusValid   = "valid"
+	StatusPending    = "pending"
+	StatusInvalid    = "invalid"
+	StatusValid      = "valid"
+	StatusProcessing = "processing"
 
 	IdentifierDNS = "dns"
 
@@ -49,10 +50,10 @@ type Order struct {
 
 // An Authorization is created for each identifier in an order
 type Authorization struct {
-	Status     string      `json:"status"`
-	Identifier Identifier  `json:"identifier"`
-	Challenges []Challenge `json:"challenges"`
-	Expires    string      `json:"expires"`
+	Status     string       `json:"status"`
+	Identifier Identifier   `json:"identifier"`
+	Challenges []*Challenge `json:"challenges"`
+	Expires    string       `json:"expires"`
 }
 
 // A Challenge is used to validate an Authorization
