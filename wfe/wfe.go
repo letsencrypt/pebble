@@ -22,7 +22,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
@@ -84,7 +83,6 @@ type WebFrontEndImpl struct {
 	nonce *nonceMap
 	clk   clock.Clock
 	va    *va.VAImpl
-	ca    *ca.CAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -93,15 +91,13 @@ func New(
 	log *log.Logger,
 	clk clock.Clock,
 	db *db.MemoryStore,
-	va *va.VAImpl,
-	ca *ca.CAImpl) WebFrontEndImpl {
+	va *va.VAImpl) WebFrontEndImpl {
 	return WebFrontEndImpl{
 		log:   log,
 		db:    db,
 		nonce: newNonceMap(),
 		clk:   clk,
 		va:    va,
-		ca:    ca,
 	}
 }
 
@@ -626,6 +622,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		},
 		ExpiresDate: expires,
 		ParsedCSR:   parsedCSR,
+		// At the time we issue a certificate for an order we don't have the HTTP
+		// request to construct a path to access the certificate. To work around
+		// this we calculate the path prefix now append the cert ID later when we
+		// need the cert URL to complete the order.
+		CertPathPrefix: wfe.relativeEndpoint(request, certPath),
 	}
 
 	// Verify the details of the order before creating authorizations
@@ -855,22 +856,8 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	err = wfe.va.Validate(ident.Value, existingChal, existingReg)
-	if err != nil {
-		wfe.sendError(
-			acme.InternalErrorProblem(
-				fmt.Sprintf("Failed to validate challenge: %q", err)), response)
-		return
-	}
-
-	// TODO(@cpu): call maybeIssue on a separate goroutine
-	err = wfe.maybeIssue(request, existingOrder)
-	if err != nil {
-		wfe.sendError(
-			acme.InternalErrorProblem(
-				fmt.Sprintf("Failed to attempt proactive issuance: %q", err)), response)
-		return
-	}
+	// Submit a validation job to the VA, this will be processed asynchronously
+	wfe.va.ValidateChallenge(ident.Value, existingChal, existingReg)
 
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
 	err = wfe.writeJsonResponse(response, http.StatusOK, existingChal.Challenge)
@@ -878,56 +865,6 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
-}
-
-func (wfe *WebFrontEndImpl) maybeIssue(request *http.Request, order *core.Order) error {
-	// We can only process orders that are pending
-	if order.Status != acme.StatusPending {
-		return fmt.Errorf("Order %s is not status pending, was status %s\n",
-			order.ID, order.Status)
-	}
-
-	// Check the order to see if all of its authorizations are valid
-	for _, authz := range order.AuthorizationObjects {
-		// If any of the authorizations are invalid the order isn't ready to issue
-		if authz.Status != acme.StatusValid {
-			return nil
-		}
-	}
-
-	return wfe.issue(request, order)
-}
-
-func (wfe *WebFrontEndImpl) issue(request *http.Request, order *core.Order) error {
-	wfe.log.Printf("Order %s is fully authorized. Ready to issue\n", order.ID)
-	// Update the order to reflect that we're now processing it
-	order.Status = acme.StatusProcessing
-
-	csr := order.ParsedCSR
-	domains := make([]string, len(csr.DNSNames))
-	copy(domains, csr.DNSNames)
-
-	// issue a certificate for the csr
-	cert, err := wfe.ca.NewCertificate(domains, csr.PublicKey)
-	if err != nil {
-		return err
-	}
-	wfe.log.Printf("Issued certificate serial %s\n", cert.ID)
-	order.Status = acme.StatusValid
-
-	/*
-	 * Update the Order with the URL to retrieve the certificate from.
-	 *
-	 * NOTE: We had to pipe through a `http.Request` to be able to use
-	 * `relativeEndpoint` here. This works for now but will be a problem if we
-	 * start running the issuance in a separate goroutine. At that point we might
-	 * have to work around this by having the Order object stash a URL prefix to
-	 * be used by the issuance go routine to construct the order's certificate
-	 * URL without an associated HTTP request.
-	 */
-	order.Certificate = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, cert.ID))
-
-	return nil
 }
 
 func (wfe *WebFrontEndImpl) Certificate(

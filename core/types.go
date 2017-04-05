@@ -19,6 +19,7 @@ type Order struct {
 	ParsedCSR            *x509.CertificateRequest
 	ExpiresDate          time.Time
 	AuthorizationObjects []*Authorization
+	CertPathPrefix       string
 }
 
 type Registration struct {
@@ -97,4 +98,10 @@ func (c Certificate) Chain() []byte {
 
 	// Return the chain, leaf cert first
 	return bytes.Join(chain, nil)
+}
+
+type ValidationRecord struct {
+	URL         string
+	Error       *acme.ProblemDetails
+	ValidatedAt time.Time
 }

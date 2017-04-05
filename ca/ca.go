@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 )
@@ -152,7 +153,7 @@ func (ca *CAImpl) newIntermediateIssuer() error {
 	return nil
 }
 
-func (ca *CAImpl) NewCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
@@ -217,4 +218,41 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
 	return ca
+}
+
+func (ca *CAImpl) CompleteOrder(order *core.Order) {
+	// Check the authorizations - this is done by the VA before calling
+	// CompleteOrder but we do it again for robustness sake.
+	for _, authz := range order.AuthorizationObjects {
+		if authz.Status != acme.StatusValid {
+			return
+		}
+	}
+
+	if order.Status != acme.StatusPending {
+		ca.log.Printf("Error: Asked to complete orrder %s is not status pending, was status %s",
+			order.ID, order.Status)
+		return
+	}
+
+	ca.log.Printf("Order %s is fully authorized. Ready to issue", order.ID)
+	// Update the order to reflect that we're now processing it
+	order.Status = acme.StatusProcessing
+
+	csr := order.ParsedCSR
+	domains := make([]string, len(csr.DNSNames))
+	copy(domains, csr.DNSNames)
+
+	// issue a certificate for the csr
+	cert, err := ca.newCertificate(domains, csr.PublicKey)
+	if err != nil {
+		ca.log.Printf("Error: unable to issue order: %s", err.Error())
+		return
+	}
+	ca.log.Printf("Issued certificate serial %s\n", cert.ID)
+
+	// Update the order to valid status with a certificate URL
+	order.Status = acme.StatusValid
+	order.Certificate = order.CertPathPrefix + cert.ID
+	ca.log.Printf("Order %s has Certificate %s", order.ID, order.Certificate)
 }
