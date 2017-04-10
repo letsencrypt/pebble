@@ -622,11 +622,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		},
 		ExpiresDate: expires,
 		ParsedCSR:   parsedCSR,
-		// At the time we issue a certificate for an order we don't have the HTTP
-		// request to construct a path to access the certificate. To work around
-		// this we calculate the path prefix now append the cert ID later when we
-		// need the cert URL to complete the order.
-		CertPathPrefix: wfe.relativeEndpoint(request, certPath),
 	}
 
 	// Verify the details of the order before creating authorizations
@@ -674,6 +669,12 @@ func (wfe *WebFrontEndImpl) Order(
 	if order == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
+	}
+
+	// If the order has a cert ID then set the certificate URL by constructing
+	// a relative path based on the HTTP request & the cert ID
+	if order.CertID != "" {
+		order.Certificate = wfe.relativeEndpoint(request, certPath+order.CertID)
 	}
 
 	// Return only the initial OrderRequest not the internal object with the

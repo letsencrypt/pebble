@@ -240,19 +240,17 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Status = acme.StatusProcessing
 
 	csr := order.ParsedCSR
-	domains := make([]string, len(csr.DNSNames))
-	copy(domains, csr.DNSNames)
-
 	// issue a certificate for the csr
-	cert, err := ca.newCertificate(domains, csr.PublicKey)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
 	}
 	ca.log.Printf("Issued certificate serial %s\n", cert.ID)
 
-	// Update the order to valid status with a certificate URL
+	// Update the order to valid status and store a cert ID for the wfe to use to
+	// render the certificate URL for the order
 	order.Status = acme.StatusValid
-	order.Certificate = order.CertPathPrefix + cert.ID
+	order.CertID = cert.ID
 	ca.log.Printf("Order %s has Certificate %s", order.ID, order.Certificate)
 }
