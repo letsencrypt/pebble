@@ -230,7 +230,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	}
 
 	if order.Status != acme.StatusPending {
-		ca.log.Printf("Error: Asked to complete orrder %s is not status pending, was status %s",
+		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
 			order.ID, order.Status)
 		return
 	}
