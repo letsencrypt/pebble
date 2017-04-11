@@ -67,10 +67,12 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
+	order.RLock()
 	orderID := order.ID
 	if len(orderID) == 0 {
 		return 0, fmt.Errorf("order must have a non-empty ID to add to MemoryStore")
 	}
+	order.RUnlock()
 
 	if _, present := m.ordersByID[orderID]; present {
 		return 0, fmt.Errorf("order %q already exists", orderID)
@@ -90,10 +92,12 @@ func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
+	authz.RLock()
 	authzID := authz.ID
 	if len(authzID) == 0 {
 		return 0, fmt.Errorf("authz must have a non-empty ID to add to MemoryStore")
 	}
+	authz.RUnlock()
 
 	if _, present := m.authorizationsByID[authzID]; present {
 		return 0, fmt.Errorf("authz %q already exists", authzID)
@@ -113,7 +117,9 @@ func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
+	chal.RLock()
 	chalID := chal.ID
+	chal.RUnlock()
 	if len(chalID) == 0 {
 		return 0, fmt.Errorf("challenge must have a non-empty ID to add to MemoryStore")
 	}

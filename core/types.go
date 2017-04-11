@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -14,6 +15,7 @@ import (
 )
 
 type Order struct {
+	sync.RWMutex
 	acme.Order
 	ID                   string
 	ParsedCSR            *x509.CertificateRequest
@@ -29,6 +31,7 @@ type Registration struct {
 }
 
 type Authorization struct {
+	sync.RWMutex
 	acme.Authorization
 	ID          string
 	URL         string
@@ -37,6 +40,7 @@ type Authorization struct {
 }
 
 type Challenge struct {
+	sync.RWMutex
 	acme.Challenge
 	ID            string
 	Authz         *Authorization
