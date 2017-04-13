@@ -677,8 +677,10 @@ func (wfe *WebFrontEndImpl) Order(
 
 	// If the order has a cert ID then set the certificate URL by constructing
 	// a relative path based on the HTTP request & the cert ID
-	if order.CertID != "" {
-		order.Certificate = wfe.relativeEndpoint(request, certPath+order.CertID)
+	if order.CertificateObject != nil {
+		order.Certificate = wfe.relativeEndpoint(
+			request,
+			certPath+order.CertificateObject.ID)
 	}
 
 	// Return only the initial OrderRequest not the internal object with the

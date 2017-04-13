@@ -21,7 +21,7 @@ type Order struct {
 	ParsedCSR            *x509.CertificateRequest
 	ExpiresDate          time.Time
 	AuthorizationObjects []*Authorization
-	CertID               string
+	CertificateObject    *Certificate
 }
 
 type Registration struct {

@@ -258,5 +258,5 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	// Update the order to valid status and store a cert ID for the wfe to use to
 	// render the certificate URL for the order
 	order.Status = acme.StatusValid
-	order.CertID = cert.ID
+	order.CertificateObject = cert
 }
