@@ -1,6 +1,7 @@
 {
   "pebble": {
     "listenAddress": "0.0.0.0:14000",
-    "httpPort": 5002
+    "httpPort": 5002,
+    "tlsPort": 5003
   }
 }
