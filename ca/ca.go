@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 )
@@ -152,7 +153,7 @@ func (ca *CAImpl) newIntermediateIssuer() error {
 	return nil
 }
 
-func (ca *CAImpl) NewCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
@@ -217,4 +218,44 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
 	return ca
+}
+
+func (ca *CAImpl) CompleteOrder(order *core.Order) {
+	// Update the order to reflect that we're now processing it
+	order.Lock()
+	defer order.Unlock()
+
+	// Check the authorizations - this is done by the VA before calling
+	// CompleteOrder but we do it again for robustness sake.
+	for _, authz := range order.AuthorizationObjects {
+		// Lock the authorization for reading
+		authz.RLock()
+		if authz.Status != acme.StatusValid {
+			return
+		}
+		authz.RUnlock()
+	}
+
+	if order.Status != acme.StatusPending {
+		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
+			order.ID, order.Status)
+		return
+	}
+
+	ca.log.Printf("Order %s is fully authorized. Ready to issue", order.ID)
+	order.Status = acme.StatusProcessing
+
+	csr := order.ParsedCSR
+	// issue a certificate for the csr
+	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey)
+	if err != nil {
+		ca.log.Printf("Error: unable to issue order: %s", err.Error())
+		return
+	}
+	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, order.ID)
+
+	// Update the order to valid status and store a cert ID for the wfe to use to
+	// render the certificate URL for the order
+	order.Status = acme.StatusValid
+	order.CertificateObject = cert
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -14,11 +15,13 @@ import (
 )
 
 type Order struct {
+	sync.RWMutex
 	acme.Order
 	ID                   string
 	ParsedCSR            *x509.CertificateRequest
 	ExpiresDate          time.Time
 	AuthorizationObjects []*Authorization
+	CertificateObject    *Certificate
 }
 
 type Registration struct {
@@ -28,6 +31,7 @@ type Registration struct {
 }
 
 type Authorization struct {
+	sync.RWMutex
 	acme.Authorization
 	ID          string
 	URL         string
@@ -36,6 +40,7 @@ type Authorization struct {
 }
 
 type Challenge struct {
+	sync.RWMutex
 	acme.Challenge
 	ID            string
 	Authz         *Authorization
@@ -97,4 +102,10 @@ func (c Certificate) Chain() []byte {
 
 	// Return the chain, leaf cert first
 	return bytes.Join(chain, nil)
+}
+
+type ValidationRecord struct {
+	URL         string
+	Error       *acme.ProblemDetails
+	ValidatedAt time.Time
 }

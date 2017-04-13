@@ -41,9 +41,9 @@ func main() {
 
 	clk := clock.Default()
 	db := db.NewMemoryStore()
-	va := va.New(logger, clk, c.Pebble.HTTPPort)
 	ca := ca.New(logger, db)
-	wfe := wfe.New(logger, clk, db, va, ca)
+	va := va.New(logger, clk, c.Pebble.HTTPPort, ca)
+	wfe := wfe.New(logger, clk, db, va)
 	muxHandler := wfe.Handler()
 
 	srv := &http.Server{

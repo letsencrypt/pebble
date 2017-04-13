@@ -22,7 +22,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
@@ -84,7 +83,6 @@ type WebFrontEndImpl struct {
 	nonce *nonceMap
 	clk   clock.Clock
 	va    *va.VAImpl
-	ca    *ca.CAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -93,15 +91,13 @@ func New(
 	log *log.Logger,
 	clk clock.Clock,
 	db *db.MemoryStore,
-	va *va.VAImpl,
-	ca *ca.CAImpl) WebFrontEndImpl {
+	va *va.VAImpl) WebFrontEndImpl {
 	return WebFrontEndImpl{
 		log:   log,
 		db:    db,
 		nonce: newNonceMap(),
 		clk:   clk,
 		va:    va,
-		ca:    ca,
 	}
 }
 
@@ -410,17 +406,18 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	// createdReg is the internal Pebble account object
 	createdReg := core.Registration{
 		Registration: newReg,
+		Key:          key,
 	}
-	createdReg.Key = key
-
-	regID, err := keyToID(key)
+	keyID, err := keyToID(key)
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
 	}
-	createdReg.ID = regID
+	createdReg.ID = keyID
 
-	if existingReg := wfe.db.GetRegistrationByID(regID); existingReg != nil {
+	// NOTE: We don't use wfe.getRegByKey here because we want to treat a
+	//       "missing" reg as a non-error
+	if existingReg := wfe.db.GetRegistrationByID(createdReg.ID); existingReg != nil {
 		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
 		response.Header().Set("Location", regURL)
 		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
@@ -443,7 +440,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	}
 	wfe.log.Printf("There are now %d registrations in memory\n", count)
 
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, regID))
+	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, createdReg.ID))
 
 	response.Header().Add("Location", regURL)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
@@ -454,6 +451,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 }
 
 func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registration) *acme.ProblemDetails {
+	// Lock the order for reading
+	order.RLock()
+	defer order.RUnlock()
+
 	// Shouldn't happen - defensive check
 	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
@@ -484,11 +485,10 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	var auths []string
 	var authObs []*core.Authorization
 
-	names := make([]string, len(order.ParsedCSR.DNSNames))
-	copy(names, order.ParsedCSR.DNSNames)
-
-	// Create one authz for each name in the CSR
-	for _, name := range names {
+	// Lock the order for reading
+	order.RLock()
+	// Create one authz for each name in the order's parsed CSR
+	for _, name := range order.ParsedCSR.DNSNames {
 		ident := acme.Identifier{
 			Type:  acme.IdentifierDNS,
 			Value: name,
@@ -521,9 +521,14 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 		auths = append(auths, authzURL)
 		authObs = append(authObs, authz)
 	}
+	// Unlock the order from reading
+	order.RUnlock()
 
+	// Lock the order for writing & update the order's authorizations
+	order.Lock()
 	order.Authorizations = auths
 	order.AuthorizationObjects = authObs
+	order.Unlock()
 	return nil
 }
 
@@ -552,10 +557,13 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	wfe.log.Printf("There are now %d challenges in the db\n", count)
 	chals = append(chals, chal)
 
+	// Lock the authorization for writing to update the challenges
+	authz.Lock()
 	authz.Challenges = nil
 	for _, c := range chals {
 		authz.Challenges = append(authz.Challenges, &c.Challenge)
 	}
+	authz.Unlock()
 	return nil
 }
 
@@ -572,27 +580,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Compute the registration ID for the signer's key
-	regID, err := keyToID(key)
-	if err != nil {
-		wfe.log.Printf("keyToID err: %s\n", err.Error())
-		wfe.sendError(acme.MalformedProblem("Error computing key digest"), response)
-		return
-	}
-	wfe.log.Printf("received new-order req from reg ID %s\n", regID)
-
-	// Find the existing registration object for that key ID
-	var existingReg *core.Registration
-	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
-		wfe.sendError(
-			acme.MalformedProblem("No existing registration for signer's public key"),
-			response)
+	existingReg, prob := wfe.getRegByKey(key)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
 	// Unpack the order request body
 	var newOrder acme.Order
-	err = json.Unmarshal(body, &newOrder)
+	err := json.Unmarshal(body, &newOrder)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON: "+err.Error()), response)
@@ -675,6 +671,18 @@ func (wfe *WebFrontEndImpl) Order(
 		return
 	}
 
+	// Lock the order for reading
+	order.RLock()
+	defer order.RUnlock()
+
+	// If the order has a cert ID then set the certificate URL by constructing
+	// a relative path based on the HTTP request & the cert ID
+	if order.CertificateObject != nil {
+		order.Certificate = wfe.relativeEndpoint(
+			request,
+			certPath+order.CertificateObject.ID)
+	}
+
 	// Return only the initial OrderRequest not the internal object with the
 	// parsedCSR
 	orderReq := order.Order
@@ -733,11 +741,103 @@ func (wfe *WebFrontEndImpl) getChallenge(
 		return
 	}
 
+	// Lock the challenge for reading in order to write the response
+	chal.RLock()
+	defer chal.RUnlock()
+
 	err := wfe.writeJsonResponse(response, http.StatusOK, chal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
+}
+
+// getRegByKey finds a registration by key or returns a problem pointer if an
+// existing reg can't be found or the key is invalid.
+func (wfe *WebFrontEndImpl) getRegByKey(key crypto.PublicKey) (*core.Registration, *acme.ProblemDetails) {
+	// Compute the registration ID for the signer's key
+	regID, err := keyToID(key)
+	if err != nil {
+		wfe.log.Printf("keyToID err: %s\n", err.Error())
+		return nil, acme.MalformedProblem("Error computing key digest")
+	}
+
+	// Find the existing registration object for that key ID
+	var existingReg *core.Registration
+	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
+		return nil, acme.MalformedProblem("No existing registration for signer's public key")
+	}
+	return existingReg, nil
+}
+
+func (wfe *WebFrontEndImpl) validateChallengeUpdate(
+	chal *core.Challenge,
+	update *acme.Challenge,
+	reg *core.Registration) (*core.Authorization, *acme.ProblemDetails) {
+	// Lock the challenge for reading to do validation
+	chal.RLock()
+	defer chal.RUnlock()
+
+	// Check that the challenge update is the same type as the challenge
+	// NOTE: Boulder doesn't do this at the time of writing and instead increments
+	//       a "StartChallengeWrongType" stat
+	if update.Type != chal.Type {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("Challenge update was type %s, existing challenge is type %s",
+				update.Type, chal.Type))
+	}
+
+	// Check that the existing challenge is Pending
+	if chal.Status != acme.StatusPending {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("Cannot update challenge with status %s, only status %s",
+				chal.Status, acme.StatusPending))
+	}
+
+	// Calculate the expected key authorization for the owning registration's key
+	expectedKeyAuth := chal.ExpectedKeyAuthorization(reg.Key)
+
+	// Validate the expected key auth matches the provided key auth
+	if expectedKeyAuth != update.KeyAuthorization {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("Incorrect key authorization: %q",
+				update.KeyAuthorization))
+	}
+
+	return chal.Authz, nil
+}
+
+// validateAuthzForChallenge checks an authz is:
+// 1) for a supported identifier type
+// 2) not expired
+// 3) associated to an order
+// The associated order is returned when no problems are found to avoid needing
+// another RLock() for the caller to get the order pointer later.
+func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization) (*core.Order, *acme.ProblemDetails) {
+	// Lock the authz for reading
+	authz.RLock()
+	defer authz.RUnlock()
+
+	ident := authz.Identifier
+	if ident.Type != acme.IdentifierDNS {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("Authorization identifier was type %s, only %s is supported",
+				ident.Type, acme.IdentifierDNS))
+	}
+
+	now := wfe.clk.Now()
+	if now.After(authz.ExpiresDate) {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("Authorization expired %s %s",
+				authz.ExpiresDate.Format(time.RFC3339)))
+	}
+
+	existingOrder := authz.Order
+	if existingOrder == nil {
+		return nil, acme.InternalErrorProblem("authz missing associated order")
+	}
+
+	return existingOrder, nil
 }
 
 func (wfe *WebFrontEndImpl) updateChallenge(
@@ -752,26 +852,14 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	// Compute the registration ID for the signer's key
-	regID, err := keyToID(key)
-	if err != nil {
-		wfe.log.Printf("keyToID err: %s\n", err.Error())
-		wfe.sendError(acme.MalformedProblem("Error computing key digest"), response)
-		return
-	}
-	wfe.log.Printf("received update-challenge req from reg ID %s\n", regID)
-
-	// Find the existing registration object for that key ID
-	var existingReg *core.Registration
-	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
-		wfe.sendError(
-			acme.MalformedProblem("No existing registration for signer's public key"),
-			response)
+	existingReg, prob := wfe.getRegByKey(key)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
 	var chalResp acme.Challenge
-	err = json.Unmarshal(body, &chalResp)
+	err := json.Unmarshal(body, &chalResp)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
@@ -785,149 +873,51 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	existingAuthz := existingChal.Authz
-	if existingAuthz == nil {
+	authz, prob := wfe.validateChallengeUpdate(existingChal, &chalResp, existingReg)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+	if authz == nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("challenge missing associated authz"), response)
 		return
 	}
 
-	ident := existingAuthz.Identifier
-	if ident.Type != acme.IdentifierDNS {
-		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("Authorization identifier was type %s, only %s is supported",
-					ident.Type, acme.IdentifierDNS)), response)
+	existingOrder, prob := wfe.validateAuthzForChallenge(authz)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
+	// Lock the order for reading to check the expiry date
+	existingOrder.RLock()
 	now := wfe.clk.Now()
-	if now.After(existingAuthz.ExpiresDate) {
-		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("Authorization expired %s %s",
-				existingAuthz.ExpiresDate.Format(time.RFC3339))), response)
-		return
-	}
-
-	existingOrder := existingAuthz.Order
-	if existingOrder == nil {
-		wfe.sendError(
-			acme.InternalErrorProblem("authz missing associated order"), response)
-		return
-	}
-
 	if now.After(existingOrder.ExpiresDate) {
 		wfe.sendError(
 			acme.MalformedProblem(fmt.Sprintf("order expired %s %s",
 				existingOrder.ExpiresDate.Format(time.RFC3339))), response)
 		return
 	}
+	existingOrder.RUnlock()
 
-	// Check that the challenge response is the same type as the challenge
-	// NOTE: Boulder doesn't do this at the time of writing and instead increments
-	//       a "StartChallengeWrongType" stat
-	if chalResp.Type != existingChal.Type {
-		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("Challenge update was type %s, existing challenge is type %s",
-					chalResp.Type, existingChal.Type)), response)
-		return
-	}
+	// Lock the authorization to get the identifier value
+	authz.RLock()
+	ident := authz.Identifier.Value
+	authz.RUnlock()
 
-	// Check that the existing challenge is Pending
-	if existingChal.Status != acme.StatusPending {
-		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("Cannot update challenge with status %s, only status %s",
-					existingChal.Status, acme.StatusPending)), response)
-		return
-	}
+	// Submit a validation job to the VA, this will be processed asynchronously
+	wfe.va.ValidateChallenge(ident, existingChal, existingReg)
 
-	// Calculate the expected key authorization for the owning registration's key
-	expectedKeyAuth := existingChal.ExpectedKeyAuthorization(existingReg.Key)
-
-	// Validate the expected key auth matches the provided key auth
-	if expectedKeyAuth != chalResp.KeyAuthorization {
-		wfe.sendError(
-			acme.MalformedProblem(
-				fmt.Sprintf("Incorrect key authorization: %q",
-					chalResp.KeyAuthorization)), response)
-		return
-	}
-
-	err = wfe.va.Validate(ident.Value, existingChal, existingReg)
-	if err != nil {
-		wfe.sendError(
-			acme.InternalErrorProblem(
-				fmt.Sprintf("Failed to validate challenge: %q", err)), response)
-		return
-	}
-
-	// TODO(@cpu): call maybeIssue on a separate goroutine
-	err = wfe.maybeIssue(request, existingOrder)
-	if err != nil {
-		wfe.sendError(
-			acme.InternalErrorProblem(
-				fmt.Sprintf("Failed to attempt proactive issuance: %q", err)), response)
-		return
-	}
-
+	// Lock the challenge for reading in order to write the response
+	existingChal.RLock()
+	defer existingChal.RUnlock()
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
 	err = wfe.writeJsonResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
 	}
-}
-
-func (wfe *WebFrontEndImpl) maybeIssue(request *http.Request, order *core.Order) error {
-	// We can only process orders that are pending
-	if order.Status != acme.StatusPending {
-		return fmt.Errorf("Order %s is not status pending, was status %s\n",
-			order.ID, order.Status)
-	}
-
-	// Check the order to see if all of its authorizations are valid
-	for _, authz := range order.AuthorizationObjects {
-		// If any of the authorizations are invalid the order isn't ready to issue
-		if authz.Status != acme.StatusValid {
-			return nil
-		}
-	}
-
-	return wfe.issue(request, order)
-}
-
-func (wfe *WebFrontEndImpl) issue(request *http.Request, order *core.Order) error {
-	wfe.log.Printf("Order %s is fully authorized. Ready to issue\n", order.ID)
-	// Update the order to reflect that we're now processing it
-	order.Status = acme.StatusProcessing
-
-	csr := order.ParsedCSR
-	domains := make([]string, len(csr.DNSNames))
-	copy(domains, csr.DNSNames)
-
-	// issue a certificate for the csr
-	cert, err := wfe.ca.NewCertificate(domains, csr.PublicKey)
-	if err != nil {
-		return err
-	}
-	wfe.log.Printf("Issued certificate serial %s\n", cert.ID)
-	order.Status = acme.StatusValid
-
-	/*
-	 * Update the Order with the URL to retrieve the certificate from.
-	 *
-	 * NOTE: We had to pipe through a `http.Request` to be able to use
-	 * `relativeEndpoint` here. This works for now but will be a problem if we
-	 * start running the issuance in a separate goroutine. At that point we might
-	 * have to work around this by having the Order object stash a URL prefix to
-	 * be used by the issuance go routine to construct the order's certificate
-	 * URL without an associated HTTP request.
-	 */
-	order.Certificate = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, cert.ID))
-
-	return nil
 }
 
 func (wfe *WebFrontEndImpl) Certificate(
