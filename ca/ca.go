@@ -221,6 +221,10 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 }
 
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
+	// Update the order to reflect that we're now processing it
+	order.Lock()
+	defer order.Unlock()
+
 	// Check the authorizations - this is done by the VA before calling
 	// CompleteOrder but we do it again for robustness sake.
 	for _, authz := range order.AuthorizationObjects {
@@ -232,17 +236,12 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		authz.RUnlock()
 	}
 
-	order.RLock()
 	if order.Status != acme.StatusPending {
 		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
 			order.ID, order.Status)
 		return
 	}
-	order.RUnlock()
 
-	// Update the order to reflect that we're now processing it
-	order.Lock()
-	defer order.Unlock()
 	ca.log.Printf("Order %s is fully authorized. Ready to issue", order.ID)
 	order.Status = acme.StatusProcessing
 
