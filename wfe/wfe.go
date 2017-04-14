@@ -898,7 +898,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	existingOrder, prob := wfe.validateAuthzForChallenge(authz)
+  existingOrder, prob := wfe.validateAuthzForChallenge(authz)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return

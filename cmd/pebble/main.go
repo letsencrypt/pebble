@@ -44,6 +44,7 @@ func main() {
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db)
 	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, ca)
+
 	wfe := wfe.New(logger, clk, db, va)
 	muxHandler := wfe.Handler()
 
