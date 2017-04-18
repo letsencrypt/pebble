@@ -532,17 +532,16 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	return nil
 }
 
-// makeChallenges populates an authz with new challenges. The request parameter
-// is required to make the challenge URL's absolute based on the request host
-func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
-	var chals []*core.Challenge
-
-	// TODO(@cpu): construct challenges for DNS-01 and TLS-SNI-02
+func (wfe *WebFrontEndImpl) makeChallenge(
+	chalType string,
+	authz *core.Authorization,
+	request *http.Request) (*core.Challenge, error) {
+	// Create a new challenge of the requested type
 	id := newToken()
 	chal := &core.Challenge{
 		ID: id,
 		Challenge: acme.Challenge{
-			Type:   acme.ChallengeHTTP01,
+			Type:   chalType,
 			Token:  newToken(),
 			URI:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
@@ -550,12 +549,27 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		Authz: authz,
 	}
 
-	count, err := wfe.db.AddChallenge(chal)
+	// Add it to the in-memory database
+	_, err := wfe.db.AddChallenge(chal)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	wfe.log.Printf("There are now %d challenges in the db\n", count)
-	chals = append(chals, chal)
+	return chal, nil
+}
+
+// makeChallenges populates an authz with new challenges. The request parameter
+// is required to make the challenge URL's absolute based on the request host
+func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
+	var chals []*core.Challenge
+
+	// TODO(@cpu): construct challenges for DNS-01
+	for _, chalType := range []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02} {
+		chal, err := wfe.makeChallenge(chalType, authz, request)
+		if err != nil {
+			return err
+		}
+		chals = append(chals, chal)
+	}
 
 	// Lock the authorization for writing to update the challenges
 	authz.Lock()
@@ -884,7 +898,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	existingOrder, prob := wfe.validateAuthzForChallenge(authz)
+  existingOrder, prob := wfe.validateAuthzForChallenge(authz)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
