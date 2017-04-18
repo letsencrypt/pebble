@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -47,33 +46,14 @@ func userAgent() string {
 }
 
 // certNames collects up all of a certificate's subject names (Subject CN and
-// Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
-// error message
-func certNames(cert *x509.Certificate) []string {
+// Subject Alternate Names) and reduces them to a comma joined string.
+func certNames(cert *x509.Certificate) string {
 	var names []string
 	if cert.Subject.CommonName != "" {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
-	names = uniqueLowerNames(names)
-	return names
-}
-
-// uniqueLowerNames returns the set of all unique names in the input after all
-// of them are lowercased. The returned names will be in their lowercased form
-// and sorted alphabetically.
-func uniqueLowerNames(names []string) (unique []string) {
-	nameMap := make(map[string]int, len(names))
-	for _, name := range names {
-		nameMap[strings.ToLower(name)] = 1
-	}
-
-	unique = make([]string, 0, len(nameMap))
-	for name := range nameMap {
-		unique = append(unique, name)
-	}
-	sort.Strings(unique)
-	return
+	return strings.Join(names, ", ")
 }
 
 type vaTask struct {
@@ -270,7 +250,7 @@ func (va VAImpl) validateTLSSNI02WithNames(hostPort string, sanAName, sanBName s
 
 	leafCert := certs[0]
 	if len(leafCert.DNSNames) != 2 {
-		names := strings.Join(certNames(leafCert), ", ")
+		names := certNames(leafCert)
 		msg := fmt.Sprintf(
 			"%s challenge certificate doesn't include exactly 2 DNSName entries. "+
 				"Received %d certificate(s), first certificate had names %q",
@@ -290,7 +270,7 @@ func (va VAImpl) validateTLSSNI02WithNames(hostPort string, sanAName, sanBName s
 	}
 
 	if !validSanAName || !validSanBName {
-		names := strings.Join(certNames(leafCert), ", ")
+		names := certNames(leafCert)
 		msg := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
