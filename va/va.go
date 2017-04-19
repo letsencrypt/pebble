@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -71,7 +72,11 @@ type VAImpl struct {
 	ca       *ca.CAImpl
 }
 
-func New(log *log.Logger, clk clock.Clock, httpPort, tlsPort int, ca *ca.CAImpl) *VAImpl {
+func New(
+	log *log.Logger,
+	clk clock.Clock,
+	httpPort, tlsPort int,
+	ca *ca.CAImpl) *VAImpl {
 	va := &VAImpl{
 		log:      log,
 		clk:      clk,
@@ -199,15 +204,54 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 	va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
 	va.clk.Sleep(time.Second * len)
 
-	// TODO(@cpu): Implement validation for DNS-01
 	switch task.Challenge.Type {
 	case acme.ChallengeHTTP01:
 		results <- va.validateHTTP01(task)
 	case acme.ChallengeTLSSNI02:
 		results <- va.validateTLSSNI02(task)
+	case acme.ChallengeDNS01:
+		results <- va.validateDNS01(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
+}
+
+func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
+	const dns01Prefix = "_acme-challenge"
+	challengeSubdomain := fmt.Sprintf("%s.%s", dns01Prefix, task.Identifier)
+
+	result := &core.ValidationRecord{
+		URL:         challengeSubdomain,
+		ValidatedAt: va.clk.Now(),
+	}
+
+	txts, err := net.LookupTXT(challengeSubdomain)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem("Error retrieving TXT records for DNS challenge")
+		return result
+	}
+
+	if len(txts) == 0 {
+		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		result.Error = acme.UnauthorizedProblem(msg)
+		return result
+	}
+
+	h := sha256.New()
+	task.Challenge.RLock()
+	h.Write([]byte(task.Challenge.KeyAuthorization))
+	task.Challenge.RUnlock()
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+			return result
+		}
+	}
+
+	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	result.Error = acme.UnauthorizedProblem(msg)
+	return result
 }
 
 func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {

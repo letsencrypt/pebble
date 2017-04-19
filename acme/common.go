@@ -21,6 +21,7 @@ const (
 
 	ChallengeHTTP01   = "http-01"
 	ChallengeTLSSNI02 = "tls-sni-02"
+	ChallengeDNS01    = "dns-01"
 
 	HTTP01BaseURL = ".well-known/acme-challenge/"
 )

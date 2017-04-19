@@ -562,8 +562,8 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
 
-	// TODO(@cpu): construct challenges for DNS-01
-	for _, chalType := range []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02} {
+	enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02, acme.ChallengeDNS01}
+	for _, chalType := range enabledChallenges {
 		chal, err := wfe.makeChallenge(chalType, authz, request)
 		if err != nil {
 			return err
