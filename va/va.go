@@ -244,7 +244,6 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	for _, element := range txts {
-		va.log.Printf("TXT: %q", element)
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			return result
 		}
