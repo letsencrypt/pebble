@@ -19,7 +19,6 @@ type config struct {
 		ListenAddress string
 		HTTPPort      int
 		TLSPort       int
-		DNSServers    []string
 	}
 }
 
@@ -44,7 +43,7 @@ func main() {
 	clk := clock.Default()
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db)
-	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, ca, c.Pebble.DNSServers)
+	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, ca)
 
 	wfe := wfe.New(logger, clk, db, va)
 	muxHandler := wfe.Handler()

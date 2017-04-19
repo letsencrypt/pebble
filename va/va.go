@@ -1,7 +1,6 @@
 package va
 
 import (
-	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -24,7 +23,6 @@ import (
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
-	"github.com/miekg/dns"
 )
 
 const (
@@ -40,9 +38,6 @@ const (
 
 	// How many concurrent validations are performed?
 	concurrentValidations = 3
-
-	// How many tries will the VA make on a DNS query before giving up?
-	dnsMaxTries = 3
 )
 
 func userAgent() string {
@@ -75,26 +70,20 @@ type VAImpl struct {
 	tlsPort  int
 	tasks    chan *vaTask
 	ca       *ca.CAImpl
-
-	dnsClient  *dns.Client
-	dnsServers []string
 }
 
 func New(
 	log *log.Logger,
 	clk clock.Clock,
 	httpPort, tlsPort int,
-	ca *ca.CAImpl,
-	dnsServers []string) *VAImpl {
+	ca *ca.CAImpl) *VAImpl {
 	va := &VAImpl{
-		log:        log,
-		clk:        clk,
-		httpPort:   httpPort,
-		tlsPort:    tlsPort,
-		tasks:      make(chan *vaTask, taskQueueSize),
-		ca:         ca,
-		dnsClient:  new(dns.Client),
-		dnsServers: dnsServers,
+		log:      log,
+		clk:      clk,
+		httpPort: httpPort,
+		tlsPort:  tlsPort,
+		tasks:    make(chan *vaTask, taskQueueSize),
+		ca:       ca,
 	}
 
 	go va.processTasks()
@@ -236,7 +225,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: va.clk.Now(),
 	}
 
-	txts, err := va.lookupTXT(challengeSubdomain)
+	txts, err := net.LookupTXT(challengeSubdomain)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem("Error retrieving TXT records for DNS challenge")
 		return result
@@ -255,6 +244,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	for _, element := range txts {
+		va.log.Printf("TXT: %q", element)
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			return result
 		}
@@ -263,67 +253,6 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	msg := fmt.Sprintf("Correct value not found for DNS challenge")
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
-}
-
-func (va VAImpl) lookupTXT(hostname string) ([]string, error) {
-	const qtype = dns.TypeTXT
-	var txt []string
-
-	dnsTimeout := time.Second * 5
-	ctx, _ := context.WithDeadline(context.Background(), va.clk.Now().Add(dnsTimeout))
-
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(hostname), qtype)
-	// Set DNSSEC OK bit for resolver
-	m.SetEdns0(4096, true)
-
-	if len(va.dnsServers) < 1 {
-		return nil, fmt.Errorf("VA not configured with at least one DNS Server")
-	}
-
-	type dnsResp struct {
-		m   *dns.Msg
-		err error
-	}
-
-	// Randomly pick a server
-	chosenServer := va.dnsServers[rand.Intn(len(va.dnsServers))]
-
-	client := va.dnsClient
-	tries := 1
-	for {
-		ch := make(chan dnsResp, 1)
-
-		go func() {
-			resp, _, err := client.Exchange(m, chosenServer)
-			ch <- dnsResp{m: resp, err: err}
-		}()
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case r := <-ch:
-			if r.err != nil {
-				operr, ok := r.err.(*net.OpError)
-				isRetryable := ok && operr.Temporary()
-				hasRetriesLeft := tries < dnsMaxTries
-				if isRetryable && hasRetriesLeft {
-					tries++
-					continue
-				}
-				return nil, r.err
-			} else {
-				for _, answer := range r.m.Answer {
-					if answer.Header().Rrtype == qtype {
-						if txtRec, ok := answer.(*dns.TXT); ok {
-							txt = append(txt, strings.Join(txtRec.Txt, ""))
-						}
-					}
-				}
-				return txt, nil
-			}
-		}
-	}
 }
 
 func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
