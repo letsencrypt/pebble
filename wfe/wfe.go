@@ -30,15 +30,15 @@ import (
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
-	directoryPath = "/dir"
-	noncePath     = "/nonce-plz"
-	newRegPath    = "/sign-me-up"
-	regPath       = "/my-reg/"
-	newOrderPath  = "/order-plz"
-	orderPath     = "/my-order/"
-	authzPath     = "/authZ/"
-	challengePath = "/chalZ/"
-	certPath      = "/certZ/"
+	directoryPath  = "/dir"
+	noncePath      = "/nonce-plz"
+	newAccountPath = "/sign-me-up"
+	regPath        = "/my-reg/"
+	newOrderPath   = "/order-plz"
+	orderPath      = "/my-order/"
+	authzPath      = "/authZ/"
+	challengePath  = "/chalZ/"
+	certPath       = "/certZ/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -165,7 +165,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
@@ -183,9 +183,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request) {
 
 	directoryEndpoints := map[string]string{
-		"new-nonce": noncePath,
-		"new-reg":   newRegPath,
-		"new-order": newOrderPath,
+		"new-nonce":   noncePath,
+		"new-account": newAccountPath,
+		"new-order":   newOrderPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
