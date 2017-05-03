@@ -543,7 +543,7 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 		Challenge: acme.Challenge{
 			Type:   chalType,
 			Token:  newToken(),
-			URI:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
+			URL:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
 		Authz: authz,
