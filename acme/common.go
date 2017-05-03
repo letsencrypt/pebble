@@ -61,7 +61,7 @@ type Authorization struct {
 // A Challenge is used to validate an Authorization
 type Challenge struct {
 	Type             string          `json:"type"`
-	URI              string          `json:"uri"`
+	URL              string          `json:"url"`
 	Token            string          `json:"token"`
 	Status           string          `json:"status"`
 	Validated        string          `json:"validated,omitempty"`
