@@ -294,8 +294,12 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 	return parsedJWS, nil
 }
 
-func (wfe *WebFrontEndImpl) extractJWSKey(parsedJWS *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
-	key := parsedJWS.Signatures[0].Header.JSONWebKey
+func (wfe *WebFrontEndImpl) extractJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+	header := jws.Signatures[0].Header
+	if header.KeyID != "" {
+		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+	}
+	key := header.JSONWebKey
 	if key == nil {
 		return nil, errors.New("No JWK in JWS header")
 	}
@@ -307,13 +311,34 @@ func (wfe *WebFrontEndImpl) extractJWSKey(parsedJWS *jose.JSONWebSignature) (*jo
 	return key, nil
 }
 
+func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+	header := jws.Signatures[0].Header
+	if header.JSONWebKey != nil {
+		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+	}
+	accountURL := header.KeyID
+	prefix := wfe.relativeEndpoint(request, regPath)
+	accountID := strings.TrimPrefix(accountURL, prefix)
+	account := wfe.db.GetRegistrationByID(accountID)
+	if account == nil {
+		return nil, fmt.Errorf("Account %s not found.", accountURL)
+	}
+	return account.Key, nil
+}
+
+// keyExtractor is a function that returns a JSONWebKey based on input from a
+// user-provided JSONWebSignature, for instance by extracting it from the input,
+// or by looking it up in a database based on the input.
+type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, error)
+
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
 // presently handle the `regCheck` parameter or do any lookups for existing
 // registrations.
 func (wfe *WebFrontEndImpl) verifyPOST(
 	ctx context.Context,
 	logEvent *requestEvent,
-	request *http.Request) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
+	request *http.Request,
+	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
 	if _, ok := request.Header["Content-Length"]; !ok {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
@@ -334,19 +359,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, nil, acme.MalformedProblem(err.Error())
 	}
 
-	keyID := parsedJWS.Signatures[0].Header.KeyID
-	var pubKey *jose.JSONWebKey
-	if len(keyID) > 0 {
-		account := wfe.db.GetRegistrationByID(keyID)
-		if account == nil {
-			return nil, nil, acme.MalformedProblem(fmt.Sprintf(
-				"Account %s not found.", keyID))
-		}
-	} else {
-		pubKey, err = wfe.extractJWSKey(parsedJWS)
-		if err != nil {
-			return nil, nil, acme.MalformedProblem(err.Error())
-		}
+	pubKey, err := kx(request, parsedJWS)
+	if err != nil {
+		return nil, nil, acme.MalformedProblem(err.Error())
 	}
 
 	// TODO(@cpu): `checkAlgorithm()`
@@ -388,7 +403,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -588,7 +603,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -860,7 +875,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request)
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -898,7 +913,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-  existingOrder, prob := wfe.validateAuthzForChallenge(authz)
+	existingOrder, prob := wfe.validateAuthzForChallenge(authz)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
