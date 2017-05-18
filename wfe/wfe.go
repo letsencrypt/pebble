@@ -294,7 +294,8 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 	return parsedJWS, nil
 }
 
-func (wfe *WebFrontEndImpl) extractJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+// extractJWK returns a JSONWebKey embedded in a JWS header.
+func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
 	header := jws.Signatures[0].Header
 	if header.KeyID != "" {
 		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
@@ -311,6 +312,7 @@ func (wfe *WebFrontEndImpl) extractJWK(request *http.Request, jws *jose.JSONWebS
 	return key, nil
 }
 
+// lookupJWK returns a JSONWebKey referenced by the "kid" (key id) field in a JWS header.
 func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
 	header := jws.Signatures[0].Header
 	if header.JSONWebKey != nil {
@@ -403,6 +405,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	// We use extractJWK rather than lookupJWK here because the account is not yet
+	// created, so the user provides the full key in a JWS header rather than
+	// referring to an existing key.
 	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
