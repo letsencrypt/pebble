@@ -30,15 +30,15 @@ import (
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
-	directoryPath = "/dir"
-	noncePath     = "/nonce-plz"
-	newRegPath    = "/sign-me-up"
-	regPath       = "/my-reg/"
-	newOrderPath  = "/order-plz"
-	orderPath     = "/my-order/"
-	authzPath     = "/authZ/"
-	challengePath = "/chalZ/"
-	certPath      = "/certZ/"
+	directoryPath  = "/dir"
+	noncePath      = "/nonce-plz"
+	newAccountPath = "/sign-me-up"
+	regPath        = "/my-reg/"
+	newOrderPath   = "/order-plz"
+	orderPath      = "/my-order/"
+	authzPath      = "/authZ/"
+	challengePath  = "/chalZ/"
+	certPath       = "/certZ/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -165,7 +165,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, newRegPath, wfe.NewRegistration, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
@@ -183,9 +183,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request) {
 
 	directoryEndpoints := map[string]string{
-		"new-nonce": noncePath,
-		"new-reg":   newRegPath,
-		"new-order": newOrderPath,
+		"new-nonce":   noncePath,
+		"new-account": newAccountPath,
+		"new-order":   newOrderPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json")
@@ -294,7 +294,8 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 	return parsedJWS, nil
 }
 
-func (wfe *WebFrontEndImpl) extractJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+// extractJWK returns a JSONWebKey embedded in a JWS header.
+func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
 	header := jws.Signatures[0].Header
 	if header.KeyID != "" {
 		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
@@ -311,6 +312,7 @@ func (wfe *WebFrontEndImpl) extractJWK(request *http.Request, jws *jose.JSONWebS
 	return key, nil
 }
 
+// lookupJWK returns a JSONWebKey referenced by the "kid" (key id) field in a JWS header.
 func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
 	header := jws.Signatures[0].Header
 	if header.JSONWebKey != nil {
@@ -403,6 +405,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	// We use extractJWK rather than lookupJWK here because the account is not yet
+	// created, so the user provides the full key in a JWS header rather than
+	// referring to an existing key.
 	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -558,7 +563,7 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 		Challenge: acme.Challenge{
 			Type:   chalType,
 			Token:  newToken(),
-			URI:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
+			URL:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
 		Authz: authz,

@@ -237,11 +237,11 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		return result
 	}
 
-	h := sha256.New()
 	task.Challenge.RLock()
-	h.Write([]byte(task.Challenge.KeyAuthorization))
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	task.Challenge.RUnlock()
-	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
 
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
@@ -277,7 +277,8 @@ func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
 	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, tlsSNISuffix)
 
 	// Compute the digest for the SAN B that will appear in the certificate
-	hb := sha256.Sum256([]byte(task.Challenge.KeyAuthorization))
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	hb := sha256.Sum256([]byte(expectedKeyAuthorization))
 	zb := hex.EncodeToString(hb[:])
 	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, tlsSNISuffix)
 
