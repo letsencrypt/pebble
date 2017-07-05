@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) test
+is a small [ACME-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,7 +16,7 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) experience
+2. Move rapidly to gain [ACME draft-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
