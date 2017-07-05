@@ -6,13 +6,15 @@ import (
 )
 
 const (
-	errNS             = "urn:ietf:params:acme:error:"
-	serverInternalErr = errNS + "serverInternal"
-	malformedErr      = errNS + "malformedRequest"
-	badNonceErr       = errNS + "badNonce"
-	agreementReqErr   = errNS + "agreementRequired"
-	connectionErr     = errNS + "connection"
-	unauthorizedErr   = errNS + "unauthorized"
+	errNS                 = "urn:ietf:params:acme:error:"
+	serverInternalErr     = errNS + "serverInternal"
+	malformedErr          = errNS + "malformedRequest"
+	badNonceErr           = errNS + "badNonce"
+	agreementReqErr       = errNS + "agreementRequired"
+	connectionErr         = errNS + "connection"
+	unauthorizedErr       = errNS + "unauthorized"
+	invalidContactErr     = errNS + "invalidContact"
+	unsupportedContactErr = errNS + "unsupportedContact"
 )
 
 type ProblemDetails struct {
@@ -83,6 +85,20 @@ func ConnectionProblem(detail string) *ProblemDetails {
 func UnauthorizedProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:   unauthorizedErr,
+		Detail: detail,
+	}
+}
+
+func InvalidContactProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:   invalidContactErr,
+		Detail: detail,
+	}
+}
+
+func UnsupportedContactProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:   unsupportedContactErr,
 		Detail: detail,
 	}
 }

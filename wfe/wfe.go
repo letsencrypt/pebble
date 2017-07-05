@@ -13,10 +13,12 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/square/go-jose.v2"
 
@@ -42,6 +44,9 @@ const (
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
+
+	// How many contacts is an account allowed to have?
+	maxContactsPerAcct = 2
 )
 
 type requestEvent struct {
@@ -399,6 +404,62 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return []byte(payload), pubKey, nil
 }
 
+// isASCII determines if every character in a string is encoded in
+// the ASCII character set.
+func isASCII(str string) bool {
+	for _, r := range str {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetails {
+	contacts := acct.Contact
+
+	// Providing no Contacts is perfectly acceptable
+	if contacts == nil || len(contacts) == 0 {
+		return nil
+	}
+
+	if len(contacts) > maxContactsPerAcct {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"too many contacts provided: %d > %d", len(contacts), maxContactsPerAcct))
+	}
+
+	for _, c := range contacts {
+		parsed, err := url.Parse(c)
+		if err != nil {
+			return acme.InvalidContactProblem(fmt.Sprintf("contact %q is invalid", c))
+		}
+		if parsed.Scheme != "mailto" {
+			return acme.UnsupportedContactProblem(fmt.Sprintf(
+				"contact method %q is not supported", parsed.Scheme))
+		}
+		email := parsed.Opaque
+		// An empty or ommitted Contact array should be used instead of an empty contact
+		if email == "" {
+			return acme.InvalidContactProblem("empty contact email")
+		}
+		if !isASCII(email) {
+			return acme.InvalidContactProblem(fmt.Sprintf(
+				"contact email %q contains non-ASCII characters", email))
+		}
+		// NOTE(@cpu): ParseAddress may allow invalid emails since it supports RFC 5322
+		// display names. This is sufficient for Pebble because we don't intend to
+		// use the emails for anything and check this as a best effort for client
+		// developers to test invalid contact problems.
+		_, err = mail.ParseAddress(email)
+		if err != nil {
+			return acme.InvalidContactProblem(fmt.Sprintf(
+				"contact email %q is invalid", email))
+		}
+	}
+
+	return nil
+}
+
 func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -420,6 +481,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	// Verify that the contact information provided is supported & valid
+	prob = wfe.verifyContacts(newAcct)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
