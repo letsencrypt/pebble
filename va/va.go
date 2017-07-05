@@ -58,9 +58,9 @@ func certNames(cert *x509.Certificate) string {
 }
 
 type vaTask struct {
-	Identifier   string
-	Challenge    *core.Challenge
-	Registration *core.Registration
+	Identifier string
+	Challenge  *core.Challenge
+	Account    *core.Account
 }
 
 type VAImpl struct {
@@ -90,11 +90,11 @@ func New(
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, reg *core.Registration) {
+func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account) {
 	task := &vaTask{
-		Identifier:   ident,
-		Challenge:    chal,
-		Registration: reg,
+		Identifier: ident,
+		Challenge:  chal,
+		Account:    acct,
 	}
 	// Submit the task for validation
 	va.tasks <- task
@@ -238,7 +238,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	task.Challenge.RLock()
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	task.Challenge.RUnlock()
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
@@ -277,7 +277,7 @@ func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
 	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, tlsSNISuffix)
 
 	// Compute the digest for the SAN B that will appear in the certificate
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	hb := sha256.Sum256([]byte(expectedKeyAuthorization))
 	zb := hex.EncodeToString(hb[:])
 	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, tlsSNISuffix)
@@ -367,7 +367,7 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 		return result
 	}
 
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	// The server SHOULD ignore whitespace characters at the end of the body
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 	if payload != expectedKeyAuthorization {
