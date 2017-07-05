@@ -24,8 +24,8 @@ type Order struct {
 	CertificateObject    *Certificate
 }
 
-type Registration struct {
-	acme.Registration
+type Account struct {
+	acme.Account
 	Key *jose.JSONWebKey `json:"key"`
 	ID  string
 }
