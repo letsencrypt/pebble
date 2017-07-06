@@ -115,10 +115,3 @@ func AccountDoesNotExistProblem(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
-
-func AccountDoesNotExistProblem(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:   accountDoesNotExistErr,
-		Detail: detail,
-	}
-}
