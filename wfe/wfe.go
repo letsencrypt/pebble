@@ -300,35 +300,36 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 }
 
 // extractJWK returns a JSONWebKey embedded in a JWS header.
-func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
 	if header.KeyID != "" {
-		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
 	}
 	key := header.JSONWebKey
 	if key == nil {
-		return nil, errors.New("No JWK in JWS header")
+		return nil, acme.MalformedProblem("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
-		return nil, errors.New("Invalid JWK in JWS header")
+		return nil, acme.MalformedProblem("Invalid JWK in JWS header")
 	}
 
 	return key, nil
 }
 
 // lookupJWK returns a JSONWebKey referenced by the "kid" (key id) field in a JWS header.
-func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
 	if header.JSONWebKey != nil {
-		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
 	}
 	accountURL := header.KeyID
 	prefix := wfe.relativeEndpoint(request, acctPath)
 	accountID := strings.TrimPrefix(accountURL, prefix)
 	account := wfe.db.GetAccountByID(accountID)
 	if account == nil {
-		return nil, fmt.Errorf("Account %s not found.", accountURL)
+		return nil, acme.AccountDoesNotExistProblem(fmt.Sprintf(
+			"Account %s not found.", accountURL))
 	}
 	return account.Key, nil
 }
@@ -336,7 +337,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 // keyExtractor is a function that returns a JSONWebKey based on input from a
 // user-provided JSONWebSignature, for instance by extracting it from the input,
 // or by looking it up in a database based on the input.
-type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, error)
+type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails)
 
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
 // presently handle the `regCheck` parameter or do any lookups for existing
@@ -347,8 +348,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
-	if _, ok := request.Header["Content-Length"]; !ok {
+	if _, present := request.Header["Content-Length"]; !present {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
+	}
+
+	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
+	// the HTTP request, it needs to be part of the signed JWS request body
+	if _, present := request.Header["Replay-Nonce"]; present {
+		return nil, nil, acme.MalformedProblem("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
 	}
 
 	if request.Body == nil {
@@ -366,9 +373,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, nil, acme.MalformedProblem(err.Error())
 	}
 
-	pubKey, err := kx(request, parsedJWS)
+	pubKey, prob := kx(request, parsedJWS)
 	if err != nil {
-		return nil, nil, acme.MalformedProblem(err.Error())
+		return nil, nil, prob
 	}
 
 	// TODO(@cpu): `checkAlgorithm()`
@@ -877,7 +884,8 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 	// Find the existing account object for that key ID
 	var existingAcct *core.Account
 	if existingAcct = wfe.db.GetAccountByID(regID); existingAcct == nil {
-		return nil, acme.MalformedProblem("No existing account for signer's public key")
+		return nil, acme.AccountDoesNotExistProblem(
+			"No existing account for signer's public key")
 	}
 	return existingAcct, nil
 }

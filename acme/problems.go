@@ -6,15 +6,16 @@ import (
 )
 
 const (
-	errNS                 = "urn:ietf:params:acme:error:"
-	serverInternalErr     = errNS + "serverInternal"
-	malformedErr          = errNS + "malformedRequest"
-	badNonceErr           = errNS + "badNonce"
-	agreementReqErr       = errNS + "agreementRequired"
-	connectionErr         = errNS + "connection"
-	unauthorizedErr       = errNS + "unauthorized"
-	invalidContactErr     = errNS + "invalidContact"
-	unsupportedContactErr = errNS + "unsupportedContact"
+	errNS                  = "urn:ietf:params:acme:error:"
+	serverInternalErr      = errNS + "serverInternal"
+	malformedErr           = errNS + "malformedRequest"
+	badNonceErr            = errNS + "badNonce"
+	agreementReqErr        = errNS + "agreementRequired"
+	connectionErr          = errNS + "connection"
+	unauthorizedErr        = errNS + "unauthorized"
+	invalidContactErr      = errNS + "invalidContact"
+	unsupportedContactErr  = errNS + "unsupportedContact"
+	accountDoesNotExistErr = errNS + "accountDoesNotExist"
 )
 
 type ProblemDetails struct {
@@ -112,5 +113,12 @@ func AccountDoesNotExistProblem(detail string) *ProblemDetails {
 		Type:       accountDoesNotExistErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func AccountDoesNotExistProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:   accountDoesNotExistErr,
+		Detail: detail,
 	}
 }
