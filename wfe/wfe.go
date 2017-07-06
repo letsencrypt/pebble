@@ -347,8 +347,14 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
-	if _, ok := request.Header["Content-Length"]; !ok {
+	if _, present := request.Header["Content-Length"]; !present {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
+	}
+
+	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
+	// the HTTP request, it needs to be part of the signed JWS request body
+	if _, present := request.Header["Replay-Nonce"]; present {
+		return nil, nil, acme.MalformedProblem("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
 	}
 
 	if request.Body == nil {
