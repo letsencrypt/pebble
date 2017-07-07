@@ -78,35 +78,40 @@ func AgreementRequiredProblem(detail string) *ProblemDetails {
 
 func ConnectionProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   connectionErr,
-		Detail: detail,
+		Type:       connectionErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 func UnauthorizedProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   unauthorizedErr,
-		Detail: detail,
+		Type:       unauthorizedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
 	}
 }
 
 func InvalidContactProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   invalidContactErr,
-		Detail: detail,
+		Type:       invalidContactErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 func UnsupportedContactProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   unsupportedContactErr,
-		Detail: detail,
+		Type:       unsupportedContactErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 func AccountDoesNotExistProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   accountDoesNotExistErr,
-		Detail: detail,
+		Type:       accountDoesNotExistErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }

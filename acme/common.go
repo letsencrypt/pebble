@@ -32,10 +32,11 @@ type Identifier struct {
 }
 
 type Account struct {
-	Status    string   `json:"status"`
-	Contact   []string `json:"contact"`
-	ToSAgreed bool     `json:"terms-of-service-agreed"`
-	Orders    string   `json:"orders"`
+	Status             string   `json:"status"`
+	Contact            []string `json:"contact"`
+	ToSAgreed          bool     `json:"terms-of-service-agreed"`
+	Orders             string   `json:"orders"`
+	OnlyReturnExisting bool     `json:"only-return-existing"`
 }
 
 // An Order is created to request issuance for a CSR

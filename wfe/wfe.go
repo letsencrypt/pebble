@@ -512,10 +512,20 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
 	//       "missing" account as a non-error
-	if existingAcct := wfe.db.GetAccountByID(createdAcct.ID); existingAcct != nil {
+	existingAcct := wfe.db.GetAccountByID(createdAcct.ID)
+	if existingAcct != nil {
+		// If there is an existing account then return a Location header pointing to
+		// the account and a 200 OK response
 		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
 		response.Header().Set("Location", acctURL)
-		wfe.sendError(acme.Conflict("Account key is already in use"), response)
+		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
+		return
+	} else if existingAcct == nil && createdAcct.OnlyReturnExisting {
+		// If there *isn't* an existing account and the created account request
+		// contained OnlyReturnExisting then this is an error - return now before
+		// creating a new account with the key
+		wfe.sendError(acme.AccountDoesNotExistProblem(
+			"unable to find existing account for only-return-existing request"), response)
 		return
 	}
 
