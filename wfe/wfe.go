@@ -885,7 +885,7 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 	var existingAcct *core.Account
 	if existingAcct = wfe.db.GetAccountByID(regID); existingAcct == nil {
 		return nil, acme.AccountDoesNotExistProblem(
-			"No existing account for signer's public key")
+			"URL in JWS 'kid' field does not correspond to an account")
 	}
 	return existingAcct, nil
 }
