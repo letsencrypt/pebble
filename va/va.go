@@ -64,12 +64,13 @@ type vaTask struct {
 }
 
 type VAImpl struct {
-	log      *log.Logger
-	clk      clock.Clock
-	httpPort int
-	tlsPort  int
-	tasks    chan *vaTask
-	ca       *ca.CAImpl
+	log             *log.Logger
+	clk             clock.Clock
+	httpPort        int
+	tlsPort         int
+	validationSleep core.ConfigDuration
+	tasks           chan *vaTask
+	ca              *ca.CAImpl
 }
 
 func New(
@@ -78,13 +79,19 @@ func New(
 	config core.Config,
 	ca *ca.CAImpl) *VAImpl {
 	va := &VAImpl{
-		log:      log,
-		clk:      clk,
-		httpPort: config.Pebble.HTTPPort,
-		tlsPort:  config.Pebble.TLSPort,
-		tasks:    make(chan *vaTask, taskQueueSize),
-		ca:       ca,
+		log:             log,
+		clk:             clk,
+		httpPort:        config.Pebble.HTTPPort,
+		tlsPort:         config.Pebble.TLSPort,
+		validationSleep: config.Pebble.ValidationSleep,
+		tasks:           make(chan *vaTask, taskQueueSize),
+		ca:              ca,
 	}
+
+	// Seed the rand package for the random validation sleep.
+	// NOTE: this is obviously not a CSRNG! We only use this for determining the
+	// time between validation attempts
+	rand.Seed(time.Now().Unix())
 
 	go va.processTasks()
 	return va
@@ -199,8 +206,9 @@ func (va VAImpl) maybeIssue(order *core.Order) {
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
-	// Sleep for a random amount of time between 1-15s
-	len := time.Duration(rand.Intn(15))
+	// Sleep for a random amount of time between 0 and the configured validationSleep
+	maxSleep := (int)(va.validationSleep.Seconds())
+	len := time.Duration(rand.Intn(maxSleep))
 	va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
 	va.clk.Sleep(time.Second * len)
 
