@@ -1,11 +1,17 @@
-package cmd
+package core
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-	"os"
 )
+
+type Config struct {
+	Pebble struct {
+		ListenAddress string
+		HTTPPort      int
+		TLSPort       int
+	}
+}
 
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
@@ -19,15 +25,4 @@ func ReadConfigFile(filename string, out interface{}) error {
 		return err
 	}
 	return json.Unmarshal(configData, out)
-}
-
-// FailOnError exits and prints an error message if we encountered a problem
-//
-// Lifted from
-//   https://raw.githubusercontent.com/letsencrypt/boulder/master/cmd/shell.go
-func FailOnError(err error, msg string) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
-		os.Exit(1)
-	}
 }

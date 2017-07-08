@@ -75,13 +75,13 @@ type VAImpl struct {
 func New(
 	log *log.Logger,
 	clk clock.Clock,
-	httpPort, tlsPort int,
+	config core.Config,
 	ca *ca.CAImpl) *VAImpl {
 	va := &VAImpl{
 		log:      log,
 		clk:      clk,
-		httpPort: httpPort,
-		tlsPort:  tlsPort,
+		httpPort: config.Pebble.HTTPPort,
+		tlsPort:  config.Pebble.TLSPort,
 		tasks:    make(chan *vaTask, taskQueueSize),
 		ca:       ca,
 	}

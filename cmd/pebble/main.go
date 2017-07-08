@@ -9,18 +9,11 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/cmd"
+	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
 	"github.com/letsencrypt/pebble/wfe"
 )
-
-type config struct {
-	Pebble struct {
-		ListenAddress string
-		HTTPPort      int
-		TLSPort       int
-	}
-}
 
 func main() {
 	configFile := flag.String(
@@ -36,14 +29,14 @@ func main() {
 	// Log to stdout
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 
-	var c config
-	err := cmd.ReadConfigFile(*configFile, &c)
+	var c core.Config
+	err := core.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	clk := clock.Default()
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db)
-	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, ca)
+	va := va.New(logger, clk, c, ca)
 
 	wfe := wfe.New(logger, clk, db, va)
 	muxHandler := wfe.Handler()
