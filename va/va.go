@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -38,6 +39,12 @@ const (
 
 	// How many concurrent validations are performed?
 	concurrentValidations = 3
+
+	// noSleepEnvVar defines the environment variable name used to signal that the
+	// VA should *not* sleep between validation attempts. Set this to 1 when you
+	// invoke Pebble if you wish validation to be done at full speed, e.g.:
+	//   PEBBLE_VA_NOSLEEP=1 pebble
+	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
 )
 
 func userAgent() string {
@@ -70,6 +77,7 @@ type VAImpl struct {
 	tlsPort  int
 	tasks    chan *vaTask
 	ca       *ca.CAImpl
+	sleep    bool
 }
 
 func New(
@@ -84,6 +92,16 @@ func New(
 		tlsPort:  tlsPort,
 		tasks:    make(chan *vaTask, taskQueueSize),
 		ca:       ca,
+		sleep:    true,
+	}
+
+	// Read the PEBBLE_VA_NOSLEEP environment variable string
+	noSleep := os.Getenv(noSleepEnvVar)
+	// If it is set to something true-like, then the VA shouldn't sleep
+	switch noSleep {
+	case "1", "true", "True", "TRUE":
+		va.sleep = false
+		va.log.Printf("Disabling random VA sleeps")
 	}
 
 	go va.processTasks()
@@ -199,10 +217,12 @@ func (va VAImpl) maybeIssue(order *core.Order) {
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
-	// Sleep for a random amount of time between 1-15s
-	len := time.Duration(rand.Intn(15))
-	va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
-	va.clk.Sleep(time.Second * len)
+	if va.sleep {
+		// Sleep for a random amount of time between 1-15s
+		len := time.Duration(rand.Intn(15))
+		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
+		va.clk.Sleep(time.Second * len)
+	}
 
 	switch task.Challenge.Type {
 	case acme.ChallengeHTTP01:
