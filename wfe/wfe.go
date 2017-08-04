@@ -284,6 +284,22 @@ func keyToID(key crypto.PublicKey) (string, error) {
 }
 
 func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
+	// Parse the raw JWS JSON to check that the unprotected Header field is not
+	// being used for a key ID or a JWK. This must be done prior to
+	// `jose.parseSigned` since it will strip away these headers.
+	var unprotected struct {
+		Header map[string]string
+	}
+	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
+		return nil, errors.New("Parse error reading JWS")
+	}
+
+	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
+	// include unprotected headers.
+	if unprotected.Header != nil {
+		return nil, errors.New("Unprotected headers included in JWS")
+	}
+
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
 		return nil, errors.New("Parse error reading JWS")
@@ -374,7 +390,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	}
 
 	pubKey, prob := kx(request, parsedJWS)
-	if err != nil {
+	if prob != nil {
 		return nil, nil, prob
 	}
 
