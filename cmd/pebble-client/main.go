@@ -137,11 +137,11 @@ func (c *client) updateNonce() error {
 }
 
 func (c *client) register() error {
-	regURL := c.directory["new-reg"].(string)
-	if regURL == "" {
-		return fmt.Errorf("Missing \"new-reg\" entry in server directory")
+	if acctURL, ok := c.directory["new-account"]; !ok || acctURL.(string) == "" {
+		return fmt.Errorf("Missing \"new-account\" entry in server directory")
 	}
-	fmt.Printf("Registering new account with %q\n", regURL)
+	acctURL := c.directory["new-account"].(string)
+	fmt.Printf("Registering new account with %q\n", acctURL)
 
 	reqBody := struct {
 		ToSAgreed bool `json:"terms-of-service-agreed"`
@@ -156,7 +156,7 @@ func (c *client) register() error {
 		return err
 	}
 
-	_, resp, err := c.postAPI(regURL, reqBodyStr)
+	_, resp, err := c.postAPI(acctURL, reqBodyStr)
 	if err != nil {
 		return err
 	}

@@ -6,13 +6,16 @@ import (
 )
 
 const (
-	errNS             = "urn:ietf:params:acme:error:"
-	serverInternalErr = errNS + "serverInternal"
-	malformedErr      = errNS + "malformedRequest"
-	badNonceErr       = errNS + "badNonce"
-	agreementReqErr   = errNS + "agreementRequired"
-	connectionErr     = errNS + "connection"
-	unauthorizedErr   = errNS + "unauthorized"
+	errNS                  = "urn:ietf:params:acme:error:"
+	serverInternalErr      = errNS + "serverInternal"
+	malformedErr           = errNS + "malformedRequest"
+	badNonceErr            = errNS + "badNonce"
+	agreementReqErr        = errNS + "agreementRequired"
+	connectionErr          = errNS + "connection"
+	unauthorizedErr        = errNS + "unauthorized"
+	invalidContactErr      = errNS + "invalidContact"
+	unsupportedContactErr  = errNS + "unsupportedContact"
+	accountDoesNotExistErr = errNS + "accountDoesNotExist"
 )
 
 type ProblemDetails struct {
@@ -75,14 +78,40 @@ func AgreementRequiredProblem(detail string) *ProblemDetails {
 
 func ConnectionProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   connectionErr,
-		Detail: detail,
+		Type:       connectionErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 func UnauthorizedProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:   unauthorizedErr,
-		Detail: detail,
+		Type:       unauthorizedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+func InvalidContactProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       invalidContactErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func UnsupportedContactProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       unsupportedContactErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func AccountDoesNotExistProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       accountDoesNotExistErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }

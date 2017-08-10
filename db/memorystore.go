@@ -7,15 +7,15 @@ import (
 	"github.com/letsencrypt/pebble/core"
 )
 
-// Pebble keeps all of its various objects (registrations, orders, etc)
+// Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
 // "database"
 type MemoryStore struct {
 	sync.RWMutex
 
-	// Each Registration's ID is the hex encoding of a SHA256 sum over its public
+	// Each Accounts's ID is the hex encoding of a SHA256 sum over its public
 	// key bytes.
-	registrationsByID map[string]*core.Registration
+	accountsByID map[string]*core.Account
 
 	ordersByID map[string]*core.Order
 
@@ -28,7 +28,7 @@ type MemoryStore struct {
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		registrationsByID:  make(map[string]*core.Registration),
+		accountsByID:       make(map[string]*core.Account),
 		ordersByID:         make(map[string]*core.Order),
 		authorizationsByID: make(map[string]*core.Authorization),
 		challengesByID:     make(map[string]*core.Challenge),
@@ -36,31 +36,31 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (m *MemoryStore) GetRegistrationByID(id string) *core.Registration {
+func (m *MemoryStore) GetAccountByID(id string) *core.Account {
 	m.RLock()
 	defer m.RUnlock()
-	return m.registrationsByID[id]
+	return m.accountsByID[id]
 }
 
-func (m *MemoryStore) AddRegistration(reg *core.Registration) (int, error) {
+func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	regID := reg.ID
-	if len(regID) == 0 {
-		return 0, fmt.Errorf("registration must have a non-empty ID to add to MemoryStore")
+	acctID := acct.ID
+	if len(acctID) == 0 {
+		return 0, fmt.Errorf("account must have a non-empty ID to add to MemoryStore")
 	}
 
-	if reg.Key == nil {
-		return 0, fmt.Errorf("registration must not have a nil Key")
+	if acct.Key == nil {
+		return 0, fmt.Errorf("account must not have a nil Key")
 	}
 
-	if _, present := m.registrationsByID[regID]; present {
-		return 0, fmt.Errorf("registration %q already exists", regID)
+	if _, present := m.accountsByID[acctID]; present {
+		return 0, fmt.Errorf("account %q already exists", acctID)
 	}
 
-	m.registrationsByID[regID] = reg
-	return len(m.registrationsByID), nil
+	m.accountsByID[acctID] = acct
+	return len(m.accountsByID), nil
 }
 
 func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {

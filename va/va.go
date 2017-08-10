@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -38,6 +39,12 @@ const (
 
 	// How many concurrent validations are performed?
 	concurrentValidations = 3
+
+	// noSleepEnvVar defines the environment variable name used to signal that the
+	// VA should *not* sleep between validation attempts. Set this to 1 when you
+	// invoke Pebble if you wish validation to be done at full speed, e.g.:
+	//   PEBBLE_VA_NOSLEEP=1 pebble
+	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
 )
 
 func userAgent() string {
@@ -58,9 +65,9 @@ func certNames(cert *x509.Certificate) string {
 }
 
 type vaTask struct {
-	Identifier   string
-	Challenge    *core.Challenge
-	Registration *core.Registration
+	Identifier string
+	Challenge  *core.Challenge
+	Account    *core.Account
 }
 
 type VAImpl struct {
@@ -70,6 +77,7 @@ type VAImpl struct {
 	tlsPort  int
 	tasks    chan *vaTask
 	ca       *ca.CAImpl
+	sleep    bool
 }
 
 func New(
@@ -84,17 +92,27 @@ func New(
 		tlsPort:  tlsPort,
 		tasks:    make(chan *vaTask, taskQueueSize),
 		ca:       ca,
+		sleep:    true,
+	}
+
+	// Read the PEBBLE_VA_NOSLEEP environment variable string
+	noSleep := os.Getenv(noSleepEnvVar)
+	// If it is set to something true-like, then the VA shouldn't sleep
+	switch noSleep {
+	case "1", "true", "True", "TRUE":
+		va.sleep = false
+		va.log.Printf("Disabling random VA sleeps")
 	}
 
 	go va.processTasks()
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, reg *core.Registration) {
+func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account) {
 	task := &vaTask{
-		Identifier:   ident,
-		Challenge:    chal,
-		Registration: reg,
+		Identifier: ident,
+		Challenge:  chal,
+		Account:    acct,
 	}
 	// Submit the task for validation
 	va.tasks <- task
@@ -199,10 +217,12 @@ func (va VAImpl) maybeIssue(order *core.Order) {
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
-	// Sleep for a random amount of time between 1-15s
-	len := time.Duration(rand.Intn(15))
-	va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
-	va.clk.Sleep(time.Second * len)
+	if va.sleep {
+		// Sleep for a random amount of time between 1-15s
+		len := time.Duration(rand.Intn(15))
+		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
+		va.clk.Sleep(time.Second * len)
+	}
 
 	switch task.Challenge.Type {
 	case acme.ChallengeHTTP01:
@@ -238,7 +258,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	task.Challenge.RLock()
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	task.Challenge.RUnlock()
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
@@ -277,7 +297,7 @@ func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
 	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, tlsSNISuffix)
 
 	// Compute the digest for the SAN B that will appear in the certificate
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	hb := sha256.Sum256([]byte(expectedKeyAuthorization))
 	zb := hex.EncodeToString(hb[:])
 	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, tlsSNISuffix)
@@ -367,7 +387,7 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 		return result
 	}
 
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Registration.Key)
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	// The server SHOULD ignore whitespace characters at the end of the body
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 	if payload != expectedKeyAuthorization {

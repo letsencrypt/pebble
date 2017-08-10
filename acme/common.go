@@ -4,9 +4,9 @@ package acme
 type Resource string
 
 const (
-	ResourceNewNonce = Resource("new-nonce")
-	ResourceNewReg   = Resource("new-reg")
-	ResourceNewOrder = Resource("new-order")
+	ResourceNewNonce   = Resource("new-nonce")
+	ResourceNewAccount = Resource("new-account")
+	ResourceNewOrder   = Resource("new-order")
 	// TODO(@cpu): Should there be a resource for challenge or just use 'authz'?
 	ResourceChallenge = Resource("challenge")
 )
@@ -31,12 +31,12 @@ type Identifier struct {
 	Value string `json:"value"`
 }
 
-// TODO(@cpu) - Rename Registration to Account, update refs
-type Registration struct {
-	Status    string   `json:"status"`
-	Contact   []string `json:"contact"`
-	ToSAgreed bool     `json:"terms-of-service-agreed"`
-	Orders    string   `json:"orders"`
+type Account struct {
+	Status             string   `json:"status"`
+	Contact            []string `json:"contact"`
+	ToSAgreed          bool     `json:"terms-of-service-agreed"`
+	Orders             string   `json:"orders"`
+	OnlyReturnExisting bool     `json:"only-return-existing"`
 }
 
 // An Order is created to request issuance for a CSR

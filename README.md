@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) test
+is a small [ACME-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,7 +16,7 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-06](https://tools.ietf.org/html/draft-ietf-acme-acme-06) experience
+2. Move rapidly to gain [ACME draft-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
@@ -54,6 +54,19 @@ clients are not hardcoding URLs.)
 ## Usage
 
 `pebble -config ./test/config/pebble-config.json`
+
+### Testing at full speed
+
+By default Pebble will sleep a random number of seconds (from 1 to 15) between
+individual challenge validation attempts. This ensures clients don't make
+assumptions about when the challenge is solved from the CA side by observing
+a single request for a challenge response. Instead clients must poll the
+challenge to observe the state since the CA may send many validation requests.
+
+To test issuance "at full speed" with no artificial sleeps set the environment
+variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
+
+`PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
 
 ## Issuance
 

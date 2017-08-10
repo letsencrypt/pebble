@@ -13,10 +13,12 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+	"unicode"
 
 	"gopkg.in/square/go-jose.v2"
 
@@ -33,7 +35,7 @@ const (
 	directoryPath  = "/dir"
 	noncePath      = "/nonce-plz"
 	newAccountPath = "/sign-me-up"
-	regPath        = "/my-reg/"
+	acctPath       = "/my-account/"
 	newOrderPath   = "/order-plz"
 	orderPath      = "/my-order/"
 	authzPath      = "/authZ/"
@@ -42,6 +44,9 @@ const (
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
+
+	// How many contacts is an account allowed to have?
+	maxContactsPerAcct = 2
 )
 
 type requestEvent struct {
@@ -165,14 +170,14 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, newAccountPath, wfe.NewRegistration, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 
-	// TODO(@cpu): Handle regPath for existing reg updates
+	// TODO(@cpu): Handle POST to acctPath for existing account updates
 	return m
 }
 
@@ -254,9 +259,9 @@ func (wfe *WebFrontEndImpl) Nonce(
 
 /*
  * keyToID produces a string with the hex representation of the SHA256 digest
- * over a provided public key. We use this for acme.Registration ID values
- * because it makes looking up a registration by key easy (required by the spec
- * for retreiving existing registrations), and becauase it makes the reg URLs
+ * over a provided public key. We use this for acme.Account ID values
+ * because it makes looking up a account by key easy (required by the spec
+ * for retreiving existing account), and becauase it makes the reg URLs
  * somewhat human digestable/comparable.
  */
 func keyToID(key crypto.PublicKey) (string, error) {
@@ -279,6 +284,22 @@ func keyToID(key crypto.PublicKey) (string, error) {
 }
 
 func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
+	// Parse the raw JWS JSON to check that the unprotected Header field is not
+	// being used for a key ID or a JWK. This must be done prior to
+	// `jose.parseSigned` since it will strip away these headers.
+	var unprotected struct {
+		Header map[string]string
+	}
+	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
+		return nil, errors.New("Parse error reading JWS")
+	}
+
+	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
+	// include unprotected headers.
+	if unprotected.Header != nil {
+		return nil, errors.New("Unprotected headers included in JWS")
+	}
+
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
 		return nil, errors.New("Parse error reading JWS")
@@ -295,35 +316,36 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 }
 
 // extractJWK returns a JSONWebKey embedded in a JWS header.
-func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
 	if header.KeyID != "" {
-		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
 	}
 	key := header.JSONWebKey
 	if key == nil {
-		return nil, errors.New("No JWK in JWS header")
+		return nil, acme.MalformedProblem("No JWK in JWS header")
 	}
 
 	if !key.Valid() {
-		return nil, errors.New("Invalid JWK in JWS header")
+		return nil, acme.MalformedProblem("Invalid JWK in JWS header")
 	}
 
 	return key, nil
 }
 
 // lookupJWK returns a JSONWebKey referenced by the "kid" (key id) field in a JWS header.
-func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, error) {
+func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
 	if header.JSONWebKey != nil {
-		return nil, errors.New("jwk and kid header fields are mutually exclusive.")
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
 	}
 	accountURL := header.KeyID
-	prefix := wfe.relativeEndpoint(request, regPath)
+	prefix := wfe.relativeEndpoint(request, acctPath)
 	accountID := strings.TrimPrefix(accountURL, prefix)
-	account := wfe.db.GetRegistrationByID(accountID)
+	account := wfe.db.GetAccountByID(accountID)
 	if account == nil {
-		return nil, fmt.Errorf("Account %s not found.", accountURL)
+		return nil, acme.AccountDoesNotExistProblem(fmt.Sprintf(
+			"Account %s not found.", accountURL))
 	}
 	return account.Key, nil
 }
@@ -331,19 +353,25 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 // keyExtractor is a function that returns a JSONWebKey based on input from a
 // user-provided JSONWebSignature, for instance by extracting it from the input,
 // or by looking it up in a database based on the input.
-type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, error)
+type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails)
 
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
 // presently handle the `regCheck` parameter or do any lookups for existing
-// registrations.
+// accounts.
 func (wfe *WebFrontEndImpl) verifyPOST(
 	ctx context.Context,
 	logEvent *requestEvent,
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
-	if _, ok := request.Header["Content-Length"]; !ok {
+	if _, present := request.Header["Content-Length"]; !present {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
+	}
+
+	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
+	// the HTTP request, it needs to be part of the signed JWS request body
+	if _, present := request.Header["Replay-Nonce"]; present {
+		return nil, nil, acme.MalformedProblem("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
 	}
 
 	if request.Body == nil {
@@ -361,9 +389,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, nil, acme.MalformedProblem(err.Error())
 	}
 
-	pubKey, err := kx(request, parsedJWS)
-	if err != nil {
-		return nil, nil, acme.MalformedProblem(err.Error())
+	pubKey, prob := kx(request, parsedJWS)
+	if prob != nil {
+		return nil, nil, prob
 	}
 
 	// TODO(@cpu): `checkAlgorithm()`
@@ -399,7 +427,63 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return []byte(payload), pubKey, nil
 }
 
-func (wfe *WebFrontEndImpl) NewRegistration(
+// isASCII determines if every character in a string is encoded in
+// the ASCII character set.
+func isASCII(str string) bool {
+	for _, r := range str {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetails {
+	contacts := acct.Contact
+
+	// Providing no Contacts is perfectly acceptable
+	if contacts == nil || len(contacts) == 0 {
+		return nil
+	}
+
+	if len(contacts) > maxContactsPerAcct {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"too many contacts provided: %d > %d", len(contacts), maxContactsPerAcct))
+	}
+
+	for _, c := range contacts {
+		parsed, err := url.Parse(c)
+		if err != nil {
+			return acme.InvalidContactProblem(fmt.Sprintf("contact %q is invalid", c))
+		}
+		if parsed.Scheme != "mailto" {
+			return acme.UnsupportedContactProblem(fmt.Sprintf(
+				"contact method %q is not supported", parsed.Scheme))
+		}
+		email := parsed.Opaque
+		// An empty or ommitted Contact array should be used instead of an empty contact
+		if email == "" {
+			return acme.InvalidContactProblem("empty contact email")
+		}
+		if !isASCII(email) {
+			return acme.InvalidContactProblem(fmt.Sprintf(
+				"contact email %q contains non-ASCII characters", email))
+		}
+		// NOTE(@cpu): ParseAddress may allow invalid emails since it supports RFC 5322
+		// display names. This is sufficient for Pebble because we don't intend to
+		// use the emails for anything and check this as a best effort for client
+		// developers to test invalid contact problems.
+		_, err = mail.ParseAddress(email)
+		if err != nil {
+			return acme.InvalidContactProblem(fmt.Sprintf(
+				"contact email %q is invalid", email))
+		}
+	}
+
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
 	logEvent *requestEvent,
 	response http.ResponseWriter,
@@ -414,63 +498,80 @@ func (wfe *WebFrontEndImpl) NewRegistration(
 		return
 	}
 
-	// newReg is the ACME registration information submitted by the client
-	var newReg acme.Registration
-	err := json.Unmarshal(body, &newReg)
+	// newAcct is the ACME account information submitted by the client
+	var newAcct acme.Account
+	err := json.Unmarshal(body, &newAcct)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
 		return
 	}
 
-	// createdReg is the internal Pebble account object
-	createdReg := core.Registration{
-		Registration: newReg,
-		Key:          key,
+	// Verify that the contact information provided is supported & valid
+	prob = wfe.verifyContacts(newAcct)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// createdAcct is the internal Pebble account object
+	createdAcct := core.Account{
+		Account: newAcct,
+		Key:     key,
 	}
 	keyID, err := keyToID(key)
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
 	}
-	createdReg.ID = keyID
+	createdAcct.ID = keyID
 
-	// NOTE: We don't use wfe.getRegByKey here because we want to treat a
-	//       "missing" reg as a non-error
-	if existingReg := wfe.db.GetRegistrationByID(createdReg.ID); existingReg != nil {
-		regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, existingReg.ID))
-		response.Header().Set("Location", regURL)
-		wfe.sendError(acme.Conflict("Registration key is already in use"), response)
+	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
+	//       "missing" account as a non-error
+	existingAcct := wfe.db.GetAccountByID(createdAcct.ID)
+	if existingAcct != nil {
+		// If there is an existing account then return a Location header pointing to
+		// the account and a 200 OK response
+		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+		response.Header().Set("Location", acctURL)
+		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
+		return
+	} else if existingAcct == nil && createdAcct.OnlyReturnExisting {
+		// If there *isn't* an existing account and the created account request
+		// contained OnlyReturnExisting then this is an error - return now before
+		// creating a new account with the key
+		wfe.sendError(acme.AccountDoesNotExistProblem(
+			"unable to find existing account for only-return-existing request"), response)
 		return
 	}
 
-	if newReg.ToSAgreed == false {
+	if newAcct.ToSAgreed == false {
 		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
-				"Provided registration did include true terms-of-service-agreed"),
+				"Provided account did not agree to the terms of service"),
 			response)
 		return
 	}
 
-	count, err := wfe.db.AddRegistration(&createdReg)
+	count, err := wfe.db.AddAccount(&createdAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error saving registration"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error saving account"), response)
 		return
 	}
-	wfe.log.Printf("There are now %d registrations in memory\n", count)
+	wfe.log.Printf("There are now %d accounts in memory\n", count)
 
-	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", regPath, createdReg.ID))
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, createdAcct.ID))
 
-	response.Header().Add("Location", regURL)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, newReg)
+	response.Header().Add("Location", acctURL)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, newAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling registration"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 		return
 	}
 }
 
-func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registration) *acme.ProblemDetails {
+func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *acme.ProblemDetails {
 	// Lock the order for reading
 	order.RLock()
 	defer order.RUnlock()
@@ -480,7 +581,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Registratio
 		return acme.InternalErrorProblem("Order is nil")
 	}
 	if reg == nil {
-		return acme.InternalErrorProblem("Registration is nil")
+		return acme.InternalErrorProblem("Account is nil")
 	}
 	csr := order.ParsedCSR
 	if csr == nil {
@@ -614,7 +715,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	existingReg, prob := wfe.getRegByKey(key)
+	existingReg, prob := wfe.getAcctByKey(key)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -786,28 +887,29 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	}
 }
 
-// getRegByKey finds a registration by key or returns a problem pointer if an
-// existing reg can't be found or the key is invalid.
-func (wfe *WebFrontEndImpl) getRegByKey(key crypto.PublicKey) (*core.Registration, *acme.ProblemDetails) {
-	// Compute the registration ID for the signer's key
+// getAcctByKey finds a account by key or returns a problem pointer if an
+// existing account can't be found or the key is invalid.
+func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *acme.ProblemDetails) {
+	// Compute the account ID for the signer's key
 	regID, err := keyToID(key)
 	if err != nil {
 		wfe.log.Printf("keyToID err: %s\n", err.Error())
 		return nil, acme.MalformedProblem("Error computing key digest")
 	}
 
-	// Find the existing registration object for that key ID
-	var existingReg *core.Registration
-	if existingReg = wfe.db.GetRegistrationByID(regID); existingReg == nil {
-		return nil, acme.MalformedProblem("No existing registration for signer's public key")
+	// Find the existing account object for that key ID
+	var existingAcct *core.Account
+	if existingAcct = wfe.db.GetAccountByID(regID); existingAcct == nil {
+		return nil, acme.AccountDoesNotExistProblem(
+			"URL in JWS 'kid' field does not correspond to an account")
 	}
-	return existingReg, nil
+	return existingAcct, nil
 }
 
 func (wfe *WebFrontEndImpl) validateChallengeUpdate(
 	chal *core.Challenge,
 	update *acme.Challenge,
-	reg *core.Registration) (*core.Authorization, *acme.ProblemDetails) {
+	acct *core.Account) (*core.Authorization, *acme.ProblemDetails) {
 	// Lock the challenge for reading to do validation
 	chal.RLock()
 	defer chal.RUnlock()
@@ -828,8 +930,8 @@ func (wfe *WebFrontEndImpl) validateChallengeUpdate(
 				chal.Status, acme.StatusPending))
 	}
 
-	// Calculate the expected key authorization for the owning registration's key
-	expectedKeyAuth := chal.ExpectedKeyAuthorization(reg.Key)
+	// Calculate the expected key authorization for the owning account's key
+	expectedKeyAuth := chal.ExpectedKeyAuthorization(acct.Key)
 
 	// Validate the expected key auth matches the provided key auth
 	if expectedKeyAuth != update.KeyAuthorization {
@@ -886,7 +988,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	existingReg, prob := wfe.getRegByKey(key)
+	existingAcct, prob := wfe.getAcctByKey(key)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -907,7 +1009,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	authz, prob := wfe.validateChallengeUpdate(existingChal, &chalResp, existingReg)
+	authz, prob := wfe.validateChallengeUpdate(existingChal, &chalResp, existingAcct)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -941,7 +1043,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	authz.RUnlock()
 
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingReg)
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()
