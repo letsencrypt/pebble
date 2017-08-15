@@ -84,7 +84,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	log   *log.Logger
-	db    *db.MemoryStore
+	db    db.Storage
 	nonce *nonceMap
 	clk   clock.Clock
 	va    *va.VAImpl
@@ -95,7 +95,7 @@ const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 func New(
 	log *log.Logger,
 	clk clock.Clock,
-	db *db.MemoryStore,
+	db db.Storage,
 	va *va.VAImpl) WebFrontEndImpl {
 	return WebFrontEndImpl{
 		log:   log,
