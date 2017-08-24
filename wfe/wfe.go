@@ -284,11 +284,15 @@ func keyToID(key crypto.PublicKey) (string, error) {
 }
 
 func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
-	// Parse the raw JWS JSON to check that the unprotected Header field is not
-	// being used for a key ID or a JWK. This must be done prior to
-	// `jose.parseSigned` since it will strip away these headers.
+	// Parse the raw JWS JSON to check that:
+	// * the unprotected Header field is not being used.
+	// * the "signatures" member isn't present, just "signature".
+	//
+	// This must be done prior to `jose.parseSigned` since it will strip away
+	// these headers.
 	var unprotected struct {
-		Header map[string]string
+		Header     map[string]string
+		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
 		return nil, errors.New("Parse error reading JWS")
@@ -297,7 +301,15 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
-		return nil, errors.New("Unprotected headers included in JWS")
+		return nil, errors.New(
+			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
+	}
+
+	// ACME v2 never uses the "signatures" array of JSON serialized JWS, just the
+	// mandatory "signature" field. Reject JWS that include the "signatures" array.
+	if len(unprotected.Signatures) > 0 {
+		return nil, errors.New(
+			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
 	parsedJWS, err := jose.ParseSigned(body)
