@@ -200,7 +200,9 @@ func (va VAImpl) process(task *vaTask) {
 func (va VAImpl) maybeIssue(order *core.Order) {
 	// Lock the order for reading to check whether all authorizations are valid
 	order.RLock()
-	for _, authz := range order.AuthorizationObjects {
+	authzs := order.AuthorizationObjects
+	order.RUnlock()
+	for _, authz := range authzs {
 		// Lock the authorization for reading to check its status
 		authz.RLock()
 		authzStatus := authz.Status
@@ -210,7 +212,6 @@ func (va VAImpl) maybeIssue(order *core.Order) {
 			return
 		}
 	}
-	order.RUnlock()
 	// All the authorizations are valid, ask the CA to complete the order in
 	// a separate goroutine
 	go va.ca.CompleteOrder(order)

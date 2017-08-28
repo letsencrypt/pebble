@@ -26,4 +26,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - python ./certbot/tools/chisel2.py example.letsencrypt.org
+  - python ./certbot/tools/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
