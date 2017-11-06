@@ -70,14 +70,24 @@ variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 ## Issuance
 
-The easiest way to test issue with Pebble is to use `chisel2` from the
-`acme-v2` certbot branch (this is a work in progress).
+The easiest way to test issue with Pebble is to use `chisel2.py` from the
+Boulder repo with the `acme-v2` branch of the Certbot repo (both are a work in
+progress).
+
+First, clone the Certbot repo's `acme-v2` branch, install the required
+dependencies, and activate the venv:
 
 1. `git clone -b acme-v2 https://github.com/certbot/certbot`
 2. `cd certbot`
 3. `letsencrypt-auto-source/letsencrypt-auto --os-packages-only`
 4. `./tools/venv.sh`
 5. `. venev/bin/activate`
-6. `python ./tools/chisel2.py example.com`
 
+Next, download the `chisel2.py` script from the Boulder repo:
 
+1.. `wget https://raw.githubusercontent.com/letsencrypt/boulder/master/test/chisel2.py`
+
+Finally, run `chisel2.py` making sure to override the `DIRECTORY` to match
+Pebble's `http://localhost:14000/dir`:
+
+1. `DIRECTORY=http://localhost:14000/dir python ./chisel2.py example.com`
