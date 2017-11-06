@@ -44,6 +44,14 @@ func MalformedProblem(detail string) *ProblemDetails {
 	}
 }
 
+func NotFoundProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       malformedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusNotFound,
+	}
+}
+
 func MethodNotAllowed() *ProblemDetails {
 	return &ProblemDetails{
 		Type:       malformedErr,

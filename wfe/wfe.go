@@ -16,6 +16,7 @@ import (
 	"net/mail"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
@@ -32,15 +34,16 @@ import (
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
-	directoryPath  = "/dir"
-	noncePath      = "/nonce-plz"
-	newAccountPath = "/sign-me-up"
-	acctPath       = "/my-account/"
-	newOrderPath   = "/order-plz"
-	orderPath      = "/my-order/"
-	authzPath      = "/authZ/"
-	challengePath  = "/chalZ/"
-	certPath       = "/certZ/"
+	directoryPath     = "/dir"
+	noncePath         = "/nonce-plz"
+	newAccountPath    = "/sign-me-up"
+	acctPath          = "/my-account/"
+	newOrderPath      = "/order-plz"
+	orderPath         = "/my-order/"
+	orderFinalizePath = "/finalize-order/"
+	authzPath         = "/authZ/"
+	challengePath     = "/chalZ/"
+	certPath          = "/certZ/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -88,6 +91,7 @@ type WebFrontEndImpl struct {
 	nonce *nonceMap
 	clk   clock.Clock
 	va    *va.VAImpl
+	ca    *ca.CAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -96,13 +100,15 @@ func New(
 	log *log.Logger,
 	clk clock.Clock,
 	db *db.MemoryStore,
-	va *va.VAImpl) WebFrontEndImpl {
+	va *va.VAImpl,
+	ca *ca.CAImpl) WebFrontEndImpl {
 	return WebFrontEndImpl{
 		log:   log,
 		db:    db,
 		nonce: newNonceMap(),
 		clk:   clk,
 		va:    va,
+		ca:    ca,
 	}
 }
 
@@ -173,6 +179,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
+	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
@@ -595,19 +602,17 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *a
 	if reg == nil {
 		return acme.InternalErrorProblem("Account is nil")
 	}
-	csr := order.ParsedCSR
-	if csr == nil {
-		return acme.InternalErrorProblem("Parsed CSR is nil")
+	idents := order.Identifiers
+	if idents == nil || len(idents) == 0 {
+		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
-	if len(csr.DNSNames) == 0 {
-		return acme.MalformedProblem("CSR has no names in it")
-	}
-	orderKeyID, err := keyToID(csr.PublicKey)
-	if err != nil {
-		return acme.MalformedProblem("CSR has an invalid PublicKey")
-	}
-	if orderKeyID == reg.ID {
-		return acme.MalformedProblem("Certificate public key must be different than account key")
+	// Check that all of the identifiers in the new-order are DNS type
+	for _, ident := range idents {
+		if ident.Type != acme.IdentifierDNS {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included non-DNS type identifier: type %q, value %q",
+				ident.Type, ident.Value))
+		}
 	}
 	return nil
 }
@@ -621,13 +626,13 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	// Lock the order for reading
 	order.RLock()
 	// Create one authz for each name in the order's parsed CSR
-	for _, name := range order.ParsedCSR.DNSNames {
+	for _, name := range order.Names {
+		now := wfe.clk.Now().UTC()
+		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
 			Type:  acme.IdentifierDNS,
 			Value: name,
 		}
-		now := wfe.clk.Now().UTC()
-		expires := now.Add(pendingAuthzExpire)
 		authz := &core.Authorization{
 			ID:          newToken(),
 			ExpiresDate: expires,
@@ -742,33 +747,20 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Decode and parse the CSR bytes from the order
-	csrBytes, err := base64.RawURLEncoding.DecodeString(newOrder.CSR)
-	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
-		return
-	}
-	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
-	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
-		return
-	}
 	expires := time.Now().AddDate(0, 0, 1)
 	order := &core.Order{
-		ID: newToken(),
+		ID:        newToken(),
+		AccountID: existingReg.ID,
 		Order: acme.Order{
 			Status:  acme.StatusPending,
 			Expires: expires.UTC().Format(time.RFC3339),
-			// Only the CSR, NotBefore and NotAfter fields of the client request are
-			// copied as-is
-			CSR:       newOrder.CSR,
-			NotBefore: newOrder.NotBefore,
-			NotAfter:  newOrder.NotAfter,
+			// Only the Identifiers, NotBefore and NotAfter from the submitted order
+			// are carried forward
+			Identifiers: newOrder.Identifiers,
+			NotBefore:   newOrder.NotBefore,
+			NotAfter:    newOrder.NotAfter,
 		},
 		ExpiresDate: expires,
-		ParsedCSR:   parsedCSR,
 	}
 
 	// Verify the details of the order before creating authorizations
@@ -776,6 +768,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(err, response)
 		return
 	}
+
+	// Collect all of the DNS identifier values up into a []string
+	var orderNames []string
+	for _, ident := range order.Identifiers {
+		orderNames = append(orderNames, ident.Value)
+	}
+
+	// Store the unique lower version of the names on the order ob
+	order.Names = uniqueLowerNames(orderNames)
 
 	// Create the authorizations for the order
 	err = wfe.makeAuthorizations(order, request)
@@ -795,6 +796,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("Added order %q to the db\n", order.ID)
 	wfe.log.Printf("There are now %d orders in the db\n", count)
 
+	// Populate a finalization URL for this order
+	order.FinalizeURL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
+
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, order.Order)
@@ -802,6 +806,31 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
 	}
+}
+
+// orderForDisplay preps a *core.Order for display by populating some fields
+// based on the http.request provided and returning a *acme.Order ready to be
+// rendered to JSON for display to an API client.
+func (wfe *WebFrontEndImpl) orderForDisplay(
+	order *core.Order,
+	request *http.Request) acme.Order {
+	// Lock the order for reading
+	order.RLock()
+	defer order.RUnlock()
+
+	// Populate a finalization URL for this order
+	order.FinalizeURL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
+
+	// If the order has a cert ID then set the certificate URL by constructing
+	// a relative path based on the HTTP request & the cert ID
+	if order.CertificateObject != nil {
+		order.Certificate = wfe.relativeEndpoint(
+			request,
+			certPath+order.CertificateObject.ID)
+	}
+
+	// Return only the initial OrderRequest not the internal object
+	return order.Order
 }
 
 // Order retrieves the details of an existing order
@@ -818,27 +847,180 @@ func (wfe *WebFrontEndImpl) Order(
 		return
 	}
 
-	// Lock the order for reading
-	order.RLock()
-	defer order.RUnlock()
-
-	// If the order has a cert ID then set the certificate URL by constructing
-	// a relative path based on the HTTP request & the cert ID
-	if order.CertificateObject != nil {
-		order.Certificate = wfe.relativeEndpoint(
-			request,
-			certPath+order.CertificateObject.ID)
-	}
-
-	// Return only the initial OrderRequest not the internal object with the
-	// parsedCSR
-	orderReq := order.Order
-
+	// Prepare the order for display as JSON
+	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
 	}
+}
+
+func (wfe *WebFrontEndImpl) FinalizeOrder(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	// Verify the POST request
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Find the account corresponding to the key that authenticated the POST request
+	existingAcct, prob := wfe.getAcctByKey(key)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Accounts must agree to the ToS before finalizing any orders
+	if !existingAcct.ToSAgreed {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Must agree to subscriber agreement before finalizing orders"), response)
+		return
+	}
+
+	// Find the order specified by the order ID
+	orderID := strings.TrimPrefix(request.URL.Path, orderFinalizePath)
+	existingOrder := wfe.db.GetOrderByID(orderID)
+	if existingOrder == nil {
+		response.WriteHeader(http.StatusNotFound)
+		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
+			"No order %q found for account ID %q", orderID, existingAcct.ID)), response)
+		return
+	}
+
+	// Lock the order for reading the properties we need to check
+	existingOrder.RLock()
+	orderAccountID := existingOrder.AccountID
+	orderStatus := existingOrder.Status
+	orderExpires := existingOrder.ExpiresDate
+	orderNames := existingOrder.Names
+	// And then immediately unlock it again - we don't defer() here because
+	// `maybeIssue` will also acquire a read lock and we call that before
+	// returning
+	existingOrder.RUnlock()
+
+	// If the order doesn't belong to the account that authenticted the POST
+	// request then pretend it doesn't exist.
+	if orderAccountID != existingAcct.ID {
+		response.WriteHeader(http.StatusNotFound)
+		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
+			"No order %q found for account ID %q", orderID, existingAcct.ID)), response)
+		return
+	}
+
+	// The existing order must be in a pending status to finalize it
+	if orderStatus != acme.StatusPending {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
+			"Order's status (%q) was not pending", orderStatus)), response)
+		return
+	}
+
+	// The existing order must not be expired
+	if orderExpires.Before(wfe.clk.Now()) {
+		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
+			"Order %q expired %s", orderID, orderExpires)), response)
+		return
+	}
+
+	// The finalize POST body is expected to be the bytes from a base64 raw url
+	// encoded CSR
+	var finalizeMessage struct {
+		CSR string
+	}
+	err := json.Unmarshal(body, &finalizeMessage)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
+			"Error unmarshaling finalize order request body: %s", err.Error())), response)
+		return
+	}
+
+	csrBytes, err := base64.RawURLEncoding.DecodeString(finalizeMessage.CSR)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
+		return
+	}
+
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
+		return
+	}
+
+	// Check that the CSR has the same number of names as the initial order contained
+	csrNames := uniqueLowerNames(parsedCSR.DNSNames)
+	if len(csrNames) != len(orderNames) {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Order includes different number of names than CSR specifieds"), response)
+		return
+	}
+
+	// Check that the CSR's names match the order names exactly
+	for i, name := range orderNames {
+		if name != csrNames[i] {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("CSR is missing Order domain %q", name)), response)
+			return
+		}
+	}
+
+	// Lock and update the order to be in processing status with a parsed CSR available.
+	existingOrder.Lock()
+	existingOrder.ParsedCSR = parsedCSR
+	existingOrder.Status = acme.StatusProcessing
+	existingOrder.Unlock()
+
+	// Check whether the order is ready to issue, if it isn't, return a problem
+	prob = wfe.maybeIssue(existingOrder)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Prepare the order for display as JSON
+	orderReq := wfe.orderForDisplay(existingOrder, request)
+	err = wfe.writeJsonResponse(response, http.StatusOK, orderReq)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) maybeIssue(order *core.Order) *acme.ProblemDetails {
+	// Lock the order for reading to check whether all authorizations are valid
+	order.RLock()
+	authzs := order.AuthorizationObjects
+	orderID := order.ID
+	order.RUnlock()
+	for _, authz := range authzs {
+		// Lock the authorization for reading to check its status
+		authz.RLock()
+		authzStatus := authz.Status
+		authzExpires := authz.ExpiresDate
+		ident := authz.Identifier
+		authz.RUnlock()
+		// If any of the authorizations are invalid the order isn't ready to issue
+		if authzStatus != acme.StatusValid {
+			return acme.UnauthorizedProblem(fmt.Sprintf(
+				"Authorization for %q is not status valid", ident.Value))
+		}
+		// If any of the authorizations are expired the order isn't ready to issue
+		if authzExpires.Before(wfe.clk.Now()) {
+			return acme.UnauthorizedProblem(fmt.Sprintf(
+				"Authorization for %q expired %q", ident.Value, authzExpires))
+		}
+	}
+	// All the authorizations are valid, ask the CA to complete the order in
+	// a separate goroutine
+	wfe.log.Printf("Order %s is fully authorized. Completing finalization", orderID)
+	go wfe.ca.CompleteOrder(order)
+	return nil
 }
 
 func (wfe *WebFrontEndImpl) Authz(
@@ -1111,4 +1293,20 @@ func marshalIndent(v interface{}) ([]byte, error) {
 
 func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
+}
+
+// uniqueLowerNames returns the set of all unique names in the input after all
+// of them are lowercased. The returned names will be in their lowercased form
+// and sorted alphabetically. See Boulder `core/util.go UniqueLowerNames`.
+func uniqueLowerNames(names []string) []string {
+	nameMap := make(map[string]int, len(names))
+	for _, name := range names {
+		nameMap[strings.ToLower(name)] = 1
+	}
+	unique := make([]string, 0, len(nameMap))
+	for name := range nameMap {
+		unique = append(unique, name)
+	}
+	sort.Strings(unique)
+	return unique
 }

@@ -18,6 +18,8 @@ type Order struct {
 	sync.RWMutex
 	acme.Order
 	ID                   string
+	AccountID            string
+	Names                []string
 	ParsedCSR            *x509.CertificateRequest
 	ExpiresDate          time.Time
 	AuthorizationObjects []*Authorization
