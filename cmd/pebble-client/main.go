@@ -80,10 +80,10 @@ func newClient(server, email string) (*client, error) {
 	return c, nil
 }
 
-func (c *client) sign(data []byte, url string) (*jose.JSONWebSignature, error) {
+func (c *client) signEmbedded(data []byte, url string) (*jose.JSONWebSignature, error) {
 	signer, err := jose.NewSigner(c.privKey, &jose.SignerOptions{
 		NonceSource: c,
-		EmbedJWK:    true, // TODO(jsha): True only for registration
+		EmbedJWK:    true,
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"url": url,
 		},
@@ -94,6 +94,38 @@ func (c *client) sign(data []byte, url string) (*jose.JSONWebSignature, error) {
 
 	signed, err := signer.Sign(data)
 	if err != nil {
+		return nil, err
+	}
+	return signed, nil
+}
+
+func (c *client) signKeyID(data []byte, url string) (*jose.JSONWebSignature, error) {
+	jwk := &jose.JSONWebKey{
+		Key:       c.privKey.Key,
+		Algorithm: "RSA",
+		KeyID:     c.acctID,
+	}
+
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: c,
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": url,
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	if err != nil {
+		fmt.Printf("Err making signer: %#v\n", err)
+		return nil, err
+	}
+	signed, err := signer.Sign(data)
+	if err != nil {
+		fmt.Printf("Err using signer: %#v\n", err)
 		return nil, err
 	}
 	return signed, nil
@@ -156,7 +188,9 @@ func (c *client) register() error {
 		return err
 	}
 
-	_, resp, err := c.postAPI(acctURL, reqBodyStr)
+	// Registration is a unique case where we _do_ want the JWK to be embedded (vs
+	// using a Key ID) so we invoke `postAPI` with `true` for the embed argument.
+	_, resp, err := c.postAPI(acctURL, reqBodyStr, true)
 	if err != nil {
 		return err
 	}
@@ -211,8 +245,16 @@ func (c *client) getAPI(url string) ([]byte, *http.Response, error) {
 	return c.doReq(req)
 }
 
-func (c *client) postAPI(url string, body []byte) ([]byte, *http.Response, error) {
-	signedBody, err := c.sign(body, url)
+func (c *client) postAPI(url string, body []byte, embedJWK bool) ([]byte, *http.Response, error) {
+	var signedBody *jose.JSONWebSignature
+	var err error
+
+	if embedJWK {
+		signedBody, err = c.signEmbedded(body, url)
+	} else {
+		signedBody, err = c.signKeyID(body, url)
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -298,7 +340,7 @@ func (c *client) repl() error {
 			return err
 		}
 
-		respBody, resp, err := c.postAPI(endpoint, body)
+		respBody, resp, err := c.postAPI(endpoint, body, false)
 		if err != nil {
 			return err
 		}
