@@ -10,15 +10,16 @@ go:
   - 1.8
 
 before_install:
-  # The acme-v2 branch of certbot has some tweaks and an in-progress version of
-  # chisel, called chisel2, that works with the latest ACME spec. Check it out
-  # and run it against pebble.
+  # The acme-v2 branch of certbot has some tweaks required for using chisel2
+  # that haven't landed in master yet.
   - git clone -b acme-v2 https://github.com/certbot/certbot
   - cd certbot
   - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
   - ./tools/venv.sh
   - . venv/bin/activate
   - cd -
+  # chisel2.py has moved to the Boulder repo and must be downloaded explicitly
+  - wget https://raw.githubusercontent.com/letsencrypt/boulder/master/test/chisel2.py
 
 before_script:
   - pebble &
@@ -26,4 +27,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - python ./certbot/tools/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - DIRECTORY=http://localhost:14000/dir python ./chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
