@@ -976,7 +976,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	now := wfe.clk.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Authorization expired %s %s",
+			fmt.Sprintf("Authorization expired %s",
 				authz.ExpiresDate.Format(time.RFC3339)))
 	}
 
