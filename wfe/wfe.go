@@ -160,7 +160,7 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	response.Header().Set("Content-Type", "application/problem+json")
+	response.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
 	response.WriteHeader(prob.HTTPStatus)
 	response.Write(problemDoc)
 }
@@ -193,7 +193,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		"new-order":   newOrderPath,
 	}
 
-	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	relDir, err := wfe.relativeDirectory(request, directoryEndpoints)
 	if err != nil {
@@ -1081,7 +1081,7 @@ func (wfe *WebFrontEndImpl) Certificate(
 		return
 	}
 
-	response.Header().Set("Content-Type", "application/pem-certificate-chain")
+	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
 	_, _ = response.Write(cert.Chain())
 }
@@ -1092,7 +1092,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, stat
 		return err // All callers are responsible for handling this error
 	}
 
-	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 	response.WriteHeader(status)
 
 	// Don't worry about returning an error from Write() because the caller will
