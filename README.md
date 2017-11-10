@@ -47,7 +47,7 @@ clients are not hardcoding URLs.)
 ## Install
 
 1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
-2. `go get -u github.com/letsencrypt/pebble`
+2. `go get -u github.com/letsencrypt/pebble/cmd/pebble`
 3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
 4. `pebble -h`
 
