@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) test
+is a small [ACME-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,7 +16,7 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-07](https://tools.ietf.org/html/draft-ietf-acme-acme-07) experience
+2. Move rapidly to gain [ACME draft-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
@@ -47,7 +47,7 @@ clients are not hardcoding URLs.)
 ## Install
 
 1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
-2. `go get -u github.com/letsencrypt/pebble`
+2. `go get -u github.com/letsencrypt/pebble/...`
 3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
 4. `pebble -h`
 
@@ -67,27 +67,3 @@ To test issuance "at full speed" with no artificial sleeps set the environment
 variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
-
-## Issuance
-
-The easiest way to test issue with Pebble is to use `chisel2.py` from the
-Boulder repo with the `acme-v2` branch of the Certbot repo (both are a work in
-progress).
-
-First, clone the Certbot repo's `acme-v2` branch, install the required
-dependencies, and activate the venv:
-
-1. `git clone -b acme-v2 https://github.com/certbot/certbot`
-2. `cd certbot`
-3. `letsencrypt-auto-source/letsencrypt-auto --os-packages-only`
-4. `./tools/venv.sh`
-5. `. venev/bin/activate`
-
-Next, download the `chisel2.py` script from the Boulder repo:
-
-1.. `wget https://raw.githubusercontent.com/letsencrypt/boulder/master/test/chisel2.py`
-
-Finally, run `chisel2.py` making sure to override the `DIRECTORY` to match
-Pebble's `http://localhost:14000/dir`:
-
-1. `DIRECTORY=http://localhost:14000/dir python ./chisel2.py example.com`
