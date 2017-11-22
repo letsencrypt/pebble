@@ -1,6 +1,6 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Boulder server. Unlike chisel.py this version implements the most recent
+a local Chisel server. Unlike chisel.py this version implements the most recent
 version of the ACME specification. Usage:
 
 $ virtualenv venv
@@ -36,7 +36,7 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:14000/dir')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
