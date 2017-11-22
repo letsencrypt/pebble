@@ -1,6 +1,6 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Chisel server. Unlike chisel.py this version implements the most recent
+a local Pebble server. Unlike chisel.py this version implements the most recent
 version of the ACME specification. Usage:
 
 $ virtualenv venv
