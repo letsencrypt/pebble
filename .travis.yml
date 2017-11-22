@@ -18,8 +18,6 @@ before_install:
   - ./tools/venv.sh
   - . venv/bin/activate
   - cd -
-  # chisel2.py has moved to the Boulder repo and must be downloaded explicitly
-  - wget https://raw.githubusercontent.com/letsencrypt/boulder/master/test/chisel2.py
 
 before_script:
   - pebble &
@@ -27,4 +25,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - DIRECTORY=http://localhost:14000/dir python ./chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - DIRECTORY=http://localhost:14000/dir python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
