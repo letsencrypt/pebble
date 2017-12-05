@@ -775,7 +775,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		orderNames = append(orderNames, ident.Value)
 	}
 
-	// Store the unique lower version of the names on the order ob
+	// Store the unique lower version of the names on the order object
 	order.Names = uniqueLowerNames(orderNames)
 
 	// Create the authorizations for the order
