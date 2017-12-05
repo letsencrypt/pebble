@@ -603,7 +603,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *a
 		return acme.InternalErrorProblem("Account is nil")
 	}
 	idents := order.Identifiers
-	if idents == nil || len(idents) == 0 {
+	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
 	// Check that all of the identifiers in the new-order are DNS type
