@@ -877,13 +877,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
-	// Accounts must agree to the ToS before finalizing any orders
-	if !existingAcct.ToSAgreed {
-		wfe.sendError(acme.UnauthorizedProblem(
-			"Must agree to subscriber agreement before finalizing orders"), response)
-		return
-	}
-
 	// Find the order specified by the order ID
 	orderID := strings.TrimPrefix(request.URL.Path, orderFinalizePath)
 	existingOrder := wfe.db.GetOrderByID(orderID)
