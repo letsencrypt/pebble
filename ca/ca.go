@@ -221,17 +221,23 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 }
 
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
-	// Lock the order to read order properties
-	order.RLock()
-	orderID := order.ID
-	orderStatus := order.Status
-	authzs := order.AuthorizationObjects
-	csr := order.ParsedCSR
-	order.RUnlock()
+	// Lock the order for writing
+	order.Lock()
+	// If the order isn't pending, produce an error and immediately unlock
+	if order.Status != acme.StatusPending {
+		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
+			order.ID, order.Status)
+		order.Unlock()
+		return
+	}
+	// Otherwise update the order to be in a processing state
+	order.Status = acme.StatusProcessing
+	// Unlock the order again
+	order.Unlock()
 
 	// Check the authorizations - this is done by the VA before calling
 	// CompleteOrder but we do it again for robustness sake.
-	for _, authz := range authzs {
+	for _, authz := range order.AuthorizationObjects {
 		// Lock the authorization for reading
 		authz.RLock()
 		if authz.Status != acme.StatusValid {
@@ -240,19 +246,14 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		authz.RUnlock()
 	}
 
-	if orderStatus != acme.StatusPending {
-		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
-			orderID, orderStatus)
-		return
-	}
-
 	// issue a certificate for the csr
+	csr := order.ParsedCSR
 	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
 	}
-	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, orderID)
+	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, order.ID)
 
 	// Lock and update the order to valid status and store a cert ID for the wfe
 	// to use to render the certificate URL for the order
