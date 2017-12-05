@@ -330,34 +330,35 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 // extractJWK returns a JSONWebKey embedded in a JWS header.
 func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
-	if header.KeyID != "" {
-		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
-	}
 	key := header.JSONWebKey
 	if key == nil {
 		return nil, acme.MalformedProblem("No JWK in JWS header")
 	}
-
 	if !key.Valid() {
 		return nil, acme.MalformedProblem("Invalid JWK in JWS header")
 	}
-
+	if header.KeyID != "" {
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
+	}
 	return key, nil
 }
 
 // lookupJWK returns a JSONWebKey referenced by the "kid" (key id) field in a JWS header.
 func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
-	if header.JSONWebKey != nil {
-		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
-	}
 	accountURL := header.KeyID
 	prefix := wfe.relativeEndpoint(request, acctPath)
 	accountID := strings.TrimPrefix(accountURL, prefix)
+	if accountID == "" {
+		return nil, acme.MalformedProblem("No key ID (kid) in JWS header")
+	}
 	account := wfe.db.GetAccountByID(accountID)
 	if account == nil {
 		return nil, acme.AccountDoesNotExistProblem(fmt.Sprintf(
 			"Account %s not found.", accountURL))
+	}
+	if header.JSONWebKey != nil {
+		return nil, acme.MalformedProblem("jwk and kid header fields are mutually exclusive.")
 	}
 	return account.Key, nil
 }
