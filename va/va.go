@@ -22,7 +22,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -76,22 +75,19 @@ type VAImpl struct {
 	httpPort int
 	tlsPort  int
 	tasks    chan *vaTask
-	ca       *ca.CAImpl
 	sleep    bool
 }
 
 func New(
 	log *log.Logger,
 	clk clock.Clock,
-	httpPort, tlsPort int,
-	ca *ca.CAImpl) *VAImpl {
+	httpPort, tlsPort int) *VAImpl {
 	va := &VAImpl{
 		log:      log,
 		clk:      clk,
 		httpPort: httpPort,
 		tlsPort:  tlsPort,
 		tasks:    make(chan *vaTask, taskQueueSize),
-		ca:       ca,
 		sleep:    true,
 	}
 
@@ -189,32 +185,6 @@ func (va VAImpl) process(task *vaTask) {
 
 		va.log.Printf("authz %s set VALID by completed challenge %s", authz.ID, chal.ID)
 	}
-
-	// Lock the authz to read the order, check if it can be fulfilled
-	authz.RLock()
-	order := authz.Order
-	authz.RUnlock()
-	va.maybeIssue(order)
-}
-
-func (va VAImpl) maybeIssue(order *core.Order) {
-	// Lock the order for reading to check whether all authorizations are valid
-	order.RLock()
-	authzs := order.AuthorizationObjects
-	order.RUnlock()
-	for _, authz := range authzs {
-		// Lock the authorization for reading to check its status
-		authz.RLock()
-		authzStatus := authz.Status
-		authz.RUnlock()
-		// If any of the authorizations are invalid the order isn't ready to issue
-		if authzStatus != acme.StatusValid {
-			return
-		}
-	}
-	// All the authorizations are valid, ask the CA to complete the order in
-	// a separate goroutine
-	go va.ca.CompleteOrder(order)
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
