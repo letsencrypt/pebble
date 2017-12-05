@@ -970,10 +970,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 
-	// Lock and update the order to be in processing status with a parsed CSR available.
+	// Lock and update the order with the parsed CSR.
 	existingOrder.Lock()
 	existingOrder.ParsedCSR = parsedCSR
-	existingOrder.Status = acme.StatusProcessing
 	existingOrder.Unlock()
 
 	// Check whether the order is ready to issue, if it isn't, return a problem
@@ -1017,8 +1016,9 @@ func (wfe *WebFrontEndImpl) maybeIssue(order *core.Order) *acme.ProblemDetails {
 		}
 	}
 	// All the authorizations are valid, ask the CA to complete the order in
-	// a separate goroutine
-	wfe.log.Printf("Order %s is fully authorized. Completing finalization", orderID)
+	// a separate goroutine. CompleteOrder will transition the order status to
+	// pending.
+	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
 	go wfe.ca.CompleteOrder(order)
 	return nil
 }
