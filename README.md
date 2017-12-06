@@ -67,3 +67,20 @@ To test issuance "at full speed" with no artificial sleeps set the environment
 variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
+
+### Avoiding Client HTTPS Errors
+
+By default Pebble is accessible over HTTPS-only and uses a [test
+certificate](test/certs/localhost/cert.pem) generated using a [test
+CA](test/certs/pebble.minica.pem) (See [the`test/certs/`
+directory](test/certs/README.md) for more information).
+
+Since the Pebble test CA isn't part of any default CA trust stores you must add
+the [`test/certs/pebble.minica.pem`](test/certs/pebble.minica.pem) certificate
+to your client's trusted root configuration to avoid HTTPS errors. Your client
+should offer a runtime option to specify a list of trusted root CAs.
+
+**IMPORTANT: Do not add the `pebble.minica.pem` CA to the system-wide trust
+store or to any production systems/codebases. The private key for this CA is
+intentionally made [publically available in this
+repo](test/certs/pebble.minica.key.pem).**
