@@ -5,10 +5,14 @@ This directory contains a CA certificate (`pebble.minica.pem`) and a private key
 `certs/localhost`)  for the Pebble HTTPS server.
 
 To get your **testing code** to use Pebble without HTTPS errors you should
-import the `pebble.minica.pem` CA certificate into your trust store. **Do not**
-add this CA certificate to the system trust store or in production code!!! The
-CA's private key is **public** and anyone can use it to issue certificates that
-will be trusted by a system with the Pebble CA in the trust store.
+configure your ACME client to trust the `pebble.minica.pem` CA certificate. Your
+ACME client should offer a runtime option to specify a list of root CAs that you
+can configure to include the `pebble.minica.pem` file.
+
+**Do not** add this CA certificate to the system trust store or in production
+code!!! The CA's private key is **public** and anyone can use it to issue
+certificates that will be trusted by a system with the Pebble CA in the trust
+store.
 
 To re-create all of the Pebble certificates run:
 

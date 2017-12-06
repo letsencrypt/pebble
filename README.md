@@ -77,7 +77,8 @@ directory](test/certs/README.md) for more information).
 
 Since the Pebble test CA isn't part of any default CA trust stores you must add
 the [`test/certs/pebble.minica.pem`](test/certs/pebble.minica.pem) certificate
-to your your **test client**'s trust store manually to avoid HTTPS errors.
+to your client's trusted root configuration to avoid HTTPS errors. Your client
+should offer a runtime option to specify a list of trusted root CAs.
 
 **IMPORTANT: Do not add the `pebble.minica.pem` CA to the system-wide trust
 store or to any production systems/codebases. The private key for this CA is
