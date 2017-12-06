@@ -19,6 +19,8 @@ type config struct {
 		ListenAddress string
 		HTTPPort      int
 		TLSPort       int
+		Certificate   string
+		PrivateKey    string
 	}
 }
 
@@ -48,12 +50,11 @@ func main() {
 	wfe := wfe.New(logger, clk, db, va, ca)
 	muxHandler := wfe.Handler()
 
-	srv := &http.Server{
-		Addr:    c.Pebble.ListenAddress,
-		Handler: muxHandler,
-	}
-
 	logger.Printf("Pebble running, listening on: %s\n", c.Pebble.ListenAddress)
-	err = srv.ListenAndServe()
-	cmd.FailOnError(err, "Calling ListenAndServe()")
+	err = http.ListenAndServeTLS(
+		c.Pebble.ListenAddress,
+		c.Pebble.Certificate,
+		c.Pebble.PrivateKey,
+		muxHandler)
+	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
 }
