@@ -434,7 +434,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, nil, acme.MalformedProblem("JWS header parameter 'url' required.")
 	}
 	expectedURL := url.URL{
-		Scheme: "http",
+		// NOTE(@cpu): ACME **REQUIRES** HTTPS and Pebble is hardcoded to offer the
+		// API over HTTPS.
+		Scheme: "https",
 		Host:   request.Host,
 		Path:   request.RequestURI,
 	}
