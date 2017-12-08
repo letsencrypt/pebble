@@ -12,11 +12,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/mail"
 	"net/url"
+	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -50,6 +53,19 @@ const (
 
 	// How many contacts is an account allowed to have?
 	maxContactsPerAcct = 2
+
+	// badNonceEnvVar defines the environment variable name used to provide
+	// a percentage value for how often good nonces should be rejected as if they
+	// were bad. This can be used to exercise client nonce handling/retries.
+	// To have the WFE not reject any good nonces, run Pebble like:
+	//   PEBBLE_WFE_NONCEREJECT=0 pebble
+	// To have the WFE reject 15% of good nonces, run Pebble like:
+	//   PEBBLE_WFE_NONCEREJECT=15
+	badNonceEnvVar = "PEBBLE_WFE_NONCEREJECT"
+
+	// By default when no PEBBLE_WFE_NONCEREJECT is set, what percentage of good
+	// nonces are rejected?
+	defaultNonceReject = 15
 )
 
 type requestEvent struct {
@@ -86,12 +102,13 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	log   *log.Logger
-	db    *db.MemoryStore
-	nonce *nonceMap
-	clk   clock.Clock
-	va    *va.VAImpl
-	ca    *ca.CAImpl
+	log             *log.Logger
+	db              *db.MemoryStore
+	nonce           *nonceMap
+	nonceErrPercent int
+	clk             clock.Clock
+	va              *va.VAImpl
+	ca              *ca.CAImpl
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -102,13 +119,37 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl) WebFrontEndImpl {
+
+	// Read the % of good nonces that should be rejected as bad nonces from the
+	// environment
+	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
+	var nonceErrPercent int
+
+	// Parse the env var value as a base 10 int - if there isn't an error, use it
+	// as the wfe nonceErrPercent
+	if val, err := strconv.ParseInt(nonceErrPercentVal, 10, 0); err == nil {
+		nonceErrPercent = int(val)
+	} else {
+		// Otherwise just use the default
+		nonceErrPercent = defaultNonceReject
+	}
+
+	// If the value is out of the range just clip it sensibly
+	if nonceErrPercent < 0 {
+		nonceErrPercent = 0
+	} else if nonceErrPercent > 100 {
+		nonceErrPercent = 99
+	}
+	log.Printf("Configured to reject %d%% of good nonces", nonceErrPercent)
+
 	return WebFrontEndImpl{
-		log:   log,
-		db:    db,
-		nonce: newNonceMap(),
-		clk:   clk,
-		va:    va,
-		ca:    ca,
+		log:             log,
+		db:              db,
+		nonce:           newNonceMap(),
+		nonceErrPercent: nonceErrPercent,
+		clk:             clk,
+		va:              va,
+		ca:              ca,
 	}
 }
 
@@ -424,7 +465,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	nonce := parsedJWS.Signatures[0].Header.Nonce
 	if len(nonce) == 0 {
 		return nil, nil, acme.BadNonceProblem("JWS has no anti-replay nonce")
-	} else if !wfe.nonce.validNonce(nonce) {
+	}
+
+	// Roll a random number between 0 and 100.
+	nonceRoll := rand.Intn(100)
+	// If the nonce is not valid OR if the nonceRoll was less than the
+	// nonceErrPercent, fail with an error
+	if !wfe.nonce.validNonce(nonce) || nonceRoll < wfe.nonceErrPercent {
 		return nil, nil, acme.BadNonceProblem(fmt.Sprintf(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}

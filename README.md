@@ -68,6 +68,28 @@ variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
 
+### Invalid Anti-Replay Nonce Errors
+
+The `urn:ietf:params:acme:error:badNonce` error type is meant to be retry-able.
+When receiving this error a client should make a subsequent request to the
+`/new-nonce` endpoint (or use the nonce from the error response) to retry the
+failed request, rather than quitting outright.
+
+Experience from Boulder indicates that many ACME clients do not gracefully retry
+on invalid nonce errors. To help ensure future ACME clients are able to
+gracefully handle these errors by default **Pebble rejects 15% of all valid
+nonces as invalid**.
+
+The percentage of valid nonces that are rejected can be configured using the
+environment variable `PEBBLE_WFE_NONCEREJECT`. E.g. to reject 90% of good nonces
+as invalid instead of 15% run:
+
+`PEBBLE_WFE_NONCEREJECT=90 pebble`
+
+To **never** reject a valid nonce as invalid run:
+
+`PEBBLE_WFE_NONCEREJECT=0 pebble`
+
 ### Avoiding Client HTTPS Errors
 
 By default Pebble is accessible over HTTPS-only and uses a [test
