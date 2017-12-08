@@ -1104,15 +1104,6 @@ func (wfe *WebFrontEndImpl) validateChallengeUpdate(
 	chal.RLock()
 	defer chal.RUnlock()
 
-	// Check that the challenge update is the same type as the challenge
-	// NOTE: Boulder doesn't do this at the time of writing and instead increments
-	//       a "StartChallengeWrongType" stat
-	if update.Type != chal.Type {
-		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Challenge update was type %s, existing challenge is type %s",
-				update.Type, chal.Type))
-	}
-
 	// Check that the existing challenge is Pending
 	if chal.Status != acme.StatusPending {
 		return nil, acme.MalformedProblem(
