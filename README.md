@@ -22,11 +22,11 @@ randomize keys/certificates used for issuance.
 
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
-ACME-06 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
+ACME-08 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to produce code that can be used to inform the
-pending Boulder support for ACME-06, through contribution of code as well as
+pending Boulder support for ACME-08, through contribution of code as well as
 design lessons learned. Development of Pebble is meant to be rapid, and to
 produce a minimum working prototype on a short schedule.
 
