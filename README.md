@@ -82,5 +82,5 @@ should offer a runtime option to specify a list of trusted root CAs.
 
 **IMPORTANT: Do not add the `pebble.minica.pem` CA to the system-wide trust
 store or to any production systems/codebases. The private key for this CA is
-intentionally made [publically available in this
+intentionally made [publicly available in this
 repo](test/certs/pebble.minica.key.pem).**
