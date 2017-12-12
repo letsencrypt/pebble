@@ -157,10 +157,10 @@ func (c *client) updateDirectory() error {
 }
 
 func (c *client) updateNonce() error {
-	nonceURL := c.directory["new-nonce"].(string)
-	if nonceURL == "" {
+	if rawNonceURL, present := c.directory["new-nonce"]; !present || rawNonceURL.(string) == "" {
 		return fmt.Errorf("Missing \"new-nonce\" entry in server directory")
 	}
+	nonceURL := c.directory["new-nonce"].(string)
 	fmt.Printf("Requesting nonce from %q\n", nonceURL)
 
 	before := c.nonce
