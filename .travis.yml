@@ -24,9 +24,5 @@ before_script:
   # Wait for pebble to come up
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
-env:
-  DIRECTORY: https://localhost:14000/dir
-  REQUESTS_CA_BUNDLE: ./test/certs/pebble.minica.pem
-
 script:
-  - ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
