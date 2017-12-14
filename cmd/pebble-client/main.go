@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -41,7 +43,7 @@ type client struct {
 	nonce     string
 }
 
-func newClient(server, email string) (*client, error) {
+func newClient(server, email string, pebbleCAPool *x509.CertPool) (*client, error) {
 	url, err := url.Parse(server)
 	if err != nil {
 		return nil, err
@@ -55,7 +57,13 @@ func newClient(server, email string) (*client, error) {
 	c := &client{
 		server: url,
 		email:  email,
-		http:   &http.Client{},
+		http: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs: pebbleCAPool,
+				},
+			},
+		},
 		privKey: jose.SigningKey{
 			Key:       privKey,
 			Algorithm: jose.RS256,
@@ -149,10 +157,10 @@ func (c *client) updateDirectory() error {
 }
 
 func (c *client) updateNonce() error {
-	nonceURL := c.directory["new-nonce"].(string)
-	if nonceURL == "" {
-		return fmt.Errorf("Missing \"new-nonce\" entry in server directory")
+	if rawNonceURL, present := c.directory["newNonce"]; !present || rawNonceURL.(string) == "" {
+		return fmt.Errorf("Missing \"newNonce\" entry in server directory")
 	}
+	nonceURL := c.directory["newNonce"].(string)
 	fmt.Printf("Requesting nonce from %q\n", nonceURL)
 
 	before := c.nonce
@@ -163,20 +171,20 @@ func (c *client) updateNonce() error {
 	after := c.nonce
 
 	if before == after {
-		return fmt.Errorf("Did not recieve a fresh nonce from new-nonce URL")
+		return fmt.Errorf("Did not recieve a fresh nonce from newNonce URL")
 	}
 	return nil
 }
 
 func (c *client) register() error {
-	if acctURL, ok := c.directory["new-account"]; !ok || acctURL.(string) == "" {
-		return fmt.Errorf("Missing \"new-account\" entry in server directory")
+	if acctURL, ok := c.directory["newAccount"]; !ok || acctURL.(string) == "" {
+		return fmt.Errorf("Missing \"newAccount\" entry in server directory")
 	}
-	acctURL := c.directory["new-account"].(string)
+	acctURL := c.directory["newAccount"].(string)
 	fmt.Printf("Registering new account with %q\n", acctURL)
 
 	reqBody := struct {
-		ToSAgreed bool `json:"terms-of-service-agreed"`
+		ToSAgreed bool `json:"termsOfServiceAgreed"`
 		Contact   []string
 	}{
 		ToSAgreed: true,
@@ -282,7 +290,7 @@ func (c *client) endpoints() []string {
 func (c *client) readEndpoint() (string, error) {
 	var endpoint string
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("$> Enter a directory endpoint to POST: ")
+	fmt.Printf("$> Enter a directory endpoint or a URL to POST: ")
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || line == "exit" || line == "q" {
@@ -355,13 +363,20 @@ func (c *client) repl() error {
 }
 
 func main() {
-	server := flag.String("server", "http://localhost:14000/dir", "Directory address for Pebble server")
+	server := flag.String("server", "https://localhost:14000/dir", "Directory address for Pebble server")
 	email := flag.String("email", "", "Email address for ACME registration contact")
+	caCert := flag.String("ca", "test/certs/pebble.minica.pem", "CA Certificate used to validate Pebble server HTTPS certificate")
 	flag.Parse()
+
+	pebbleCA, err := ioutil.ReadFile(*caCert)
+	cmd.FailOnError(err,
+		fmt.Sprintf("Unable to read CA certificate file specified: %q", *caCert))
+	pebbleCAs := x509.NewCertPool()
+	pebbleCAs.AppendCertsFromPEM(pebbleCA)
 
 	fmt.Println("welcome to the pebble shell")
 
-	c, err := newClient(*server, *email)
+	c, err := newClient(*server, *email, pebbleCAs)
 	cmd.FailOnError(err,
 		fmt.Sprintf("Failed to make new pebble client with email %q", *email))
 

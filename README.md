@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) test
+is a small [ACME-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,17 +16,17 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) experience
+2. Move rapidly to gain [ACME draft-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
-ACME-06 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
+ACME-09 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to produce code that can be used to inform the
-pending Boulder support for ACME-06, through contribution of code as well as
+pending Boulder support for ACME-09, through contribution of code as well as
 design lessons learned. Development of Pebble is meant to be rapid, and to
 produce a minimum working prototype on a short schedule.
 
@@ -67,3 +67,42 @@ To test issuance "at full speed" with no artificial sleeps set the environment
 variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
+
+### Invalid Anti-Replay Nonce Errors
+
+The `urn:ietf:params:acme:error:badNonce` error type is meant to be retry-able.
+When receiving this error a client should make a subsequent request to the
+`/new-nonce` endpoint (or use the nonce from the error response) to retry the
+failed request, rather than quitting outright.
+
+Experience from Boulder indicates that many ACME clients do not gracefully retry
+on invalid nonce errors. To help ensure future ACME clients are able to
+gracefully handle these errors by default **Pebble rejects 15% of all valid
+nonces as invalid**.
+
+The percentage of valid nonces that are rejected can be configured using the
+environment variable `PEBBLE_WFE_NONCEREJECT`. E.g. to reject 90% of good nonces
+as invalid instead of 15% run:
+
+`PEBBLE_WFE_NONCEREJECT=90 pebble`
+
+To **never** reject a valid nonce as invalid run:
+
+`PEBBLE_WFE_NONCEREJECT=0 pebble`
+
+### Avoiding Client HTTPS Errors
+
+By default Pebble is accessible over HTTPS-only and uses a [test
+certificate](test/certs/localhost/cert.pem) generated using a [test
+CA](test/certs/pebble.minica.pem) (See [the`test/certs/`
+directory](test/certs/README.md) for more information).
+
+Since the Pebble test CA isn't part of any default CA trust stores you must add
+the [`test/certs/pebble.minica.pem`](test/certs/pebble.minica.pem) certificate
+to your client's trusted root configuration to avoid HTTPS errors. Your client
+should offer a runtime option to specify a list of trusted root CAs.
+
+**IMPORTANT: Do not add the `pebble.minica.pem` CA to the system-wide trust
+store or to any production systems/codebases. The private key for this CA is
+intentionally made [publicly available in this
+repo](test/certs/pebble.minica.key.pem).**
