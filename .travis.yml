@@ -25,4 +25,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - DIRECTORY=http://localhost:14000/dir python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - DIRECTORY=https://localhost:14000/dir python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
