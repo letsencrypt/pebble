@@ -236,9 +236,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request) {
 
 	directoryEndpoints := map[string]string{
-		"new-nonce":   noncePath,
-		"new-account": newAccountPath,
-		"new-order":   newOrderPath,
+		"newNonce":   noncePath,
+		"newAccount": newAccountPath,
+		"newOrder":   newOrderPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -261,7 +261,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 	relativeDir["meta"] = map[string]string{
-		"terms-of-service": ToSURL,
+		"termsOfService": ToSURL,
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -615,7 +615,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	if newAcct.ToSAgreed == false {
-		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
+		response.Header().Add("Link", link(ToSURL, "termsOfService"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
 				"Provided account did not agree to the terms of service"),
@@ -847,7 +847,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("There are now %d orders in the db\n", count)
 
 	// Populate a finalization URL for this order
-	order.FinalizeURL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
+	order.Finalize = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
 
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
@@ -869,7 +869,7 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	defer order.RUnlock()
 
 	// Populate a finalization URL for this order
-	order.FinalizeURL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
+	order.Finalize = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
 
 	// If the order has a cert ID then set the certificate URL by constructing
 	// a relative path based on the HTTP request & the cert ID
