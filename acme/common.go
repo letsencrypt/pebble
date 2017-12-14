@@ -4,14 +4,6 @@ package acme
 type Resource string
 
 const (
-	ResourceNewNonce   = Resource("new-nonce")
-	ResourceNewAccount = Resource("new-account")
-	ResourceNewOrder   = Resource("new-order")
-	// TODO(@cpu): Should there be a resource for challenge or just use 'authz'?
-	ResourceChallenge = Resource("challenge")
-)
-
-const (
 	StatusPending    = "pending"
 	StatusInvalid    = "invalid"
 	StatusValid      = "valid"
