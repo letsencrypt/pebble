@@ -14,7 +14,7 @@ before_install:
   # that haven't landed in master yet.
   - git clone -b acme-v2 https://github.com/certbot/certbot
   - cd certbot
-  - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
+  - ./certbot-auto --os-packages-only -n
   - ./tools/venv.sh
   - . venv/bin/activate
   - cd -
