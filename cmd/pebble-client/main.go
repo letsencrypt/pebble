@@ -157,10 +157,10 @@ func (c *client) updateDirectory() error {
 }
 
 func (c *client) updateNonce() error {
-	if rawNonceURL, present := c.directory["new-nonce"]; !present || rawNonceURL.(string) == "" {
-		return fmt.Errorf("Missing \"new-nonce\" entry in server directory")
+	if rawNonceURL, present := c.directory["newNonce"]; !present || rawNonceURL.(string) == "" {
+		return fmt.Errorf("Missing \"newNonce\" entry in server directory")
 	}
-	nonceURL := c.directory["new-nonce"].(string)
+	nonceURL := c.directory["newNonce"].(string)
 	fmt.Printf("Requesting nonce from %q\n", nonceURL)
 
 	before := c.nonce
@@ -171,20 +171,20 @@ func (c *client) updateNonce() error {
 	after := c.nonce
 
 	if before == after {
-		return fmt.Errorf("Did not recieve a fresh nonce from new-nonce URL")
+		return fmt.Errorf("Did not recieve a fresh nonce from newNonce URL")
 	}
 	return nil
 }
 
 func (c *client) register() error {
-	if acctURL, ok := c.directory["new-account"]; !ok || acctURL.(string) == "" {
-		return fmt.Errorf("Missing \"new-account\" entry in server directory")
+	if acctURL, ok := c.directory["newAccount"]; !ok || acctURL.(string) == "" {
+		return fmt.Errorf("Missing \"newAccount\" entry in server directory")
 	}
-	acctURL := c.directory["new-account"].(string)
+	acctURL := c.directory["newAccount"].(string)
 	fmt.Printf("Registering new account with %q\n", acctURL)
 
 	reqBody := struct {
-		ToSAgreed bool `json:"terms-of-service-agreed"`
+		ToSAgreed bool `json:"termsOfServiceAgreed"`
 		Contact   []string
 	}{
 		ToSAgreed: true,
@@ -290,7 +290,7 @@ func (c *client) endpoints() []string {
 func (c *client) readEndpoint() (string, error) {
 	var endpoint string
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Printf("$> Enter a directory endpoint to POST: ")
+	fmt.Printf("$> Enter a directory endpoint or a URL to POST: ")
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" || line == "exit" || line == "q" {
