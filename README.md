@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) test
+is a small [ACME-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -16,17 +16,17 @@ randomize keys/certificates used for issuance.
 ## Goals
 
 1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-08](https://tools.ietf.org/html/draft-ietf-acme-acme-08) experience
+2. Move rapidly to gain [ACME draft-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) experience
 3. Write "idealized" code that can be adopted back into Boulder
 4. Aggressively build in guardrails against non-testing usage
 
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
-ACME-08 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
+ACME-09 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to produce code that can be used to inform the
-pending Boulder support for ACME-08, through contribution of code as well as
+pending Boulder support for ACME-09, through contribution of code as well as
 design lessons learned. Development of Pebble is meant to be rapid, and to
 produce a minimum working prototype on a short schedule.
 
