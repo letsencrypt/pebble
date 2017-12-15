@@ -4,14 +4,6 @@ package acme
 type Resource string
 
 const (
-	ResourceNewNonce   = Resource("new-nonce")
-	ResourceNewAccount = Resource("new-account")
-	ResourceNewOrder   = Resource("new-order")
-	// TODO(@cpu): Should there be a resource for challenge or just use 'authz'?
-	ResourceChallenge = Resource("challenge")
-)
-
-const (
 	StatusPending    = "pending"
 	StatusInvalid    = "invalid"
 	StatusValid      = "valid"
@@ -34,9 +26,9 @@ type Identifier struct {
 type Account struct {
 	Status             string   `json:"status"`
 	Contact            []string `json:"contact"`
-	ToSAgreed          bool     `json:"terms-of-service-agreed"`
+	ToSAgreed          bool     `json:"termsOfServiceAgreed"`
 	Orders             string   `json:"orders,omitempty"`
-	OnlyReturnExisting bool     `json:"only-return-existing"`
+	OnlyReturnExisting bool     `json:"onlyReturnExisting"`
 }
 
 // An Order is created to request issuance for a CSR
@@ -44,7 +36,7 @@ type Order struct {
 	Status         string       `json:"status"`
 	Expires        string       `json:"expires"`
 	Identifiers    []Identifier `json:"identifiers,omitempty"`
-	FinalizeURL    string       `json:"finalizeURL"`
+	Finalize       string       `json:"finalize"`
 	NotBefore      string       `json:"notBefore,omitempty"`
 	NotAfter       string       `json:"notAfter,omitempty"`
 	Authorizations []string     `json:"authorizations"`
