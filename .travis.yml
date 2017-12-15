@@ -14,7 +14,7 @@ before_install:
   # that haven't landed in master yet.
   - git clone -b acme-v2 https://github.com/certbot/certbot
   - cd certbot
-  - letsencrypt-auto-source/letsencrypt-auto --os-packages-only
+  - ./certbot-auto --os-packages-only -n
   - ./tools/venv.sh
   - . venv/bin/activate
   - cd -
@@ -25,4 +25,4 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - DIRECTORY=https://localhost:14000/dir python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org

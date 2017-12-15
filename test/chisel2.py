@@ -23,12 +23,12 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 
 import OpenSSL
+import josepy
 
 from acme import challenges
 from acme import client as acme_client
 from acme import crypto_util as acme_crypto_util
 from acme import errors as acme_errors
-from acme import jose
 from acme import messages
 from acme import standalone
 
@@ -36,13 +36,13 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:14000/dir')
+DIRECTORY = os.getenv('DIRECTORY', 'https://localhost:14000/dir')
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
-    key = jose.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
+    key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
-    net = acme_client.ClientNetwork(key, verify_ssl=False, acme_version=2,
+    net = acme_client.ClientNetwork(key, acme_version=2,
                                     user_agent="Boulder integration tester")
 
     client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
