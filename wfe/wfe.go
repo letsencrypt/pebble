@@ -615,7 +615,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	if newAcct.ToSAgreed == false {
-		response.Header().Add("Link", link(ToSURL, "termsOfService"))
+		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
 				"Provided account did not agree to the terms of service"),
