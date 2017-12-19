@@ -49,6 +49,12 @@ type Authorization struct {
 	Identifier Identifier   `json:"identifier"`
 	Challenges []*Challenge `json:"challenges"`
 	Expires    string       `json:"expires"`
+	// Wildcard is a Let's Encrypt specific Authorization field that indicates the
+	// authorization was created as a result of an order containing a name with
+	// a `*.`wildcard prefix. This will help convey to users that an
+	// Authorization with the identifier `example.com` and one DNS-01 challenge
+	// corresponds to a name `*.example.com` from an associated order.
+	Wildcard bool `json:"wildcard,omitempty"`
 }
 
 // A Challenge is used to validate an Authorization
