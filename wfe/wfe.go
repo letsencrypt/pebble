@@ -663,6 +663,29 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *a
 				"Order included non-DNS type identifier: type %q, value %q",
 				ident.Type, ident.Value))
 		}
+
+		// TODO(@cpu): We _very lightly_ validate the DNS identifiers in an order
+		// compared to Boulder's full-fledged policy authority. We should consider
+		// porting more of this logic to Pebble to let ACME clients test error
+		// handling for policy rejection errors.
+		rawDomain := ident.Value
+		// If there is a wildcard character in the ident value there should be only
+		// *one* instance
+		if strings.Count(rawDomain, "*") > 1 {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS type identifier with illegal wildcard value: "+
+					"too many wildcards %q",
+				rawDomain))
+		} else if strings.Count(rawDomain, "*") == 1 {
+			// If there is one wildcard character it should be the only character in
+			// the leftmost label.
+			if !strings.HasPrefix(rawDomain, "*.") {
+				return acme.MalformedProblem(fmt.Sprintf(
+					"Order included DNS type identifier with illegal wildcard value: "+
+						"wildcard isn't leftmost prefix %q",
+					rawDomain))
+			}
+		}
 	}
 	return nil
 }
@@ -750,13 +773,24 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
 
-	enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02, acme.ChallengeDNS01}
-	for _, chalType := range enabledChallenges {
-		chal, err := wfe.makeChallenge(chalType, authz, request)
+	// Authorizations for a wildcard identifier only get a DNS-01 challenges to
+	// match Boulder/Let's Encrypt wildcard issuance policy
+	if strings.HasPrefix(authz.Identifier.Value, "*.") {
+		chal, err := wfe.makeChallenge(acme.ChallengeDNS01, authz, request)
 		if err != nil {
 			return err
 		}
-		chals = append(chals, chal)
+		chals = []*core.Challenge{chal}
+	} else {
+		// Non-wildcard authorizations get all of the enabled challenge types
+		enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02, acme.ChallengeDNS01}
+		for _, chalType := range enabledChallenges {
+			chal, err := wfe.makeChallenge(chalType, authz, request)
+			if err != nil {
+				return err
+			}
+			chals = append(chals, chal)
+		}
 	}
 
 	// Lock the authorization for writing to update the challenges
@@ -1066,6 +1100,19 @@ func (wfe *WebFrontEndImpl) maybeIssue(order *core.Order) *acme.ProblemDetails {
 	return nil
 }
 
+// prepAuthorizationForDisplay prepares the provided acme.Authorization for
+// display to an ACME client.
+func prepAuthorizationForDisplay(authz acme.Authorization) *acme.Authorization {
+	identVal := authz.Identifier.Value
+	// If the authorization identifier has a wildcard in the value, remove it and
+	// set the Wildcard field to true
+	if strings.HasPrefix(identVal, "*.") {
+		authz.Identifier.Value = strings.TrimPrefix(identVal, "*.")
+		authz.Wildcard = true
+	}
+	return &authz
+}
+
 func (wfe *WebFrontEndImpl) Authz(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -1079,7 +1126,10 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
-	err := wfe.writeJsonResponse(response, http.StatusOK, authz.Authorization)
+	err := wfe.writeJsonResponse(
+		response,
+		http.StatusOK,
+		prepAuthorizationForDisplay(authz.Authorization))
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
 		return
@@ -1269,6 +1319,13 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	authz.RLock()
 	ident := authz.Identifier.Value
 	authz.RUnlock()
+
+	// If the identifier value is for a wildcard domain then strip the wildcard
+	// prefix before dispatching the validation to ensure the base domain is
+	// validated.
+	if strings.HasPrefix(ident, "*.") {
+		ident = strings.TrimPrefix(ident, "*.")
+	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
 	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
