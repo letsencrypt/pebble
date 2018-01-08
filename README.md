@@ -13,6 +13,9 @@ Pebble is **NOT INTENDED FOR PRODUCTION USE**. Pebble is for **testing only**.
 By design Pebble will drop all of its state between invocations and will
 randomize keys/certificates used for issuance.
 
+Pebble is not yet a **complete** ACME implementation. It does not present
+support revocation or account key rollover.
+
 ## Goals
 
 1. Produce a simplified testing front end
