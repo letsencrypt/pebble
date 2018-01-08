@@ -27,7 +27,7 @@ type Account struct {
 	Status             string   `json:"status"`
 	Contact            []string `json:"contact"`
 	ToSAgreed          bool     `json:"termsOfServiceAgreed"`
-	Orders             string   `json:"orders,omitempty"`
+	Orders             []string `json:"orders"`
 	OnlyReturnExisting bool     `json:"onlyReturnExisting"`
 }
 

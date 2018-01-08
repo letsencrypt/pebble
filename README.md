@@ -14,7 +14,7 @@ By design Pebble will drop all of its state between invocations and will
 randomize keys/certificates used for issuance.
 
 Pebble is not yet a **complete** ACME implementation. It does not presently
-support revocation or account key rollover.
+support revocation, account key rollover or account update/retreival.
 
 ## Goals
 
