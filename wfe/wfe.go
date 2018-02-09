@@ -567,54 +567,20 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	// newAcct is the ACME account information submitted by the client
-	var newAcct acme.Account
-	err := json.Unmarshal(body, &newAcct)
+	// newAcctReq is the ACME account information submitted by the client
+	var newAcctReq struct {
+		Contact            []string `json:"contact"`
+		ToSAgreed          bool     `json:"termsOfServiceAgreed"`
+		OnlyReturnExisting bool     `json:"onlyReturnExisting"`
+	}
+	err := json.Unmarshal(body, &newAcctReq)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
 		return
 	}
 
-	// Verify that the contact information provided is supported & valid
-	prob = wfe.verifyContacts(newAcct)
-	if prob != nil {
-		wfe.sendError(prob, response)
-		return
-	}
-
-	// createdAcct is the internal Pebble account object
-	createdAcct := core.Account{
-		Account: newAcct,
-		Key:     key,
-	}
-	keyID, err := keyToID(key)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem(err.Error()), response)
-		return
-	}
-	createdAcct.ID = keyID
-
-	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
-	//       "missing" account as a non-error
-	existingAcct := wfe.db.GetAccountByID(createdAcct.ID)
-	if existingAcct != nil {
-		// If there is an existing account then return a Location header pointing to
-		// the account and a 200 OK response
-		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
-		response.Header().Set("Location", acctURL)
-		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
-		return
-	} else if existingAcct == nil && createdAcct.OnlyReturnExisting {
-		// If there *isn't* an existing account and the created account request
-		// contained OnlyReturnExisting then this is an error - return now before
-		// creating a new account with the key
-		wfe.sendError(acme.AccountDoesNotExistProblem(
-			"unable to find existing account for only-return-existing request"), response)
-		return
-	}
-
-	if newAcct.ToSAgreed == false {
+	if newAcctReq.ToSAgreed == false {
 		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
@@ -623,14 +589,57 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	count, err := wfe.db.AddAccount(&createdAcct)
+	// Create a new account object with the provided contact
+	newAcct := core.Account{
+		Account: acme.Account{
+			Contact: newAcctReq.Contact,
+			// New accounts are valid to start.
+			Status: acme.StatusValid,
+		},
+		Key: key,
+	}
+
+	// Verify that the contact information provided is supported & valid
+	prob = wfe.verifyContacts(newAcct.Account)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	keyID, err := keyToID(key)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(err.Error()), response)
+		return
+	}
+	newAcct.ID = keyID
+
+	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
+	//       "missing" account as a non-error
+	existingAcct := wfe.db.GetAccountByID(newAcct.ID)
+	if existingAcct != nil {
+		// If there is an existing account then return a Location header pointing to
+		// the account and a 200 OK response
+		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+		response.Header().Set("Location", acctURL)
+		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
+		return
+	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
+		// If there *isn't* an existing account and the created account request
+		// contained OnlyReturnExisting then this is an error - return now before
+		// creating a new account with the key
+		wfe.sendError(acme.AccountDoesNotExistProblem(
+			"unable to find existing account for only-return-existing request"), response)
+		return
+	}
+
+	count, err := wfe.db.AddAccount(&newAcct)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error saving account"), response)
 		return
 	}
 	wfe.log.Printf("There are now %d accounts in memory\n", count)
 
-	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, createdAcct.ID))
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, newAcct.ID))
 
 	response.Header().Add("Location", acctURL)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, newAcct)
