@@ -580,6 +580,32 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	keyID, err := keyToID(key)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(err.Error()), response)
+		return
+	}
+
+	// Lookup existing account to exit early if it exists
+	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
+	//       "missing" account as a non-error
+	existingAcct := wfe.db.GetAccountByID(keyID)
+	if existingAcct != nil {
+		// If there is an existing account then return a Location header pointing to
+		// the account and a 200 OK response
+		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+		response.Header().Set("Location", acctURL)
+		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
+		return
+	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
+		// If there *isn't* an existing account and the created account request
+		// contained OnlyReturnExisting then this is an error - return now before
+		// creating a new account with the key
+		wfe.sendError(acme.AccountDoesNotExistProblem(
+			"unable to find existing account for only-return-existing request"), response)
+		return
+	}
+
 	if newAcctReq.ToSAgreed == false {
 		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
@@ -597,38 +623,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			Status: acme.StatusValid,
 		},
 		Key: key,
+		ID:  keyID,
 	}
 
 	// Verify that the contact information provided is supported & valid
 	prob = wfe.verifyContacts(newAcct.Account)
 	if prob != nil {
 		wfe.sendError(prob, response)
-		return
-	}
-
-	keyID, err := keyToID(key)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem(err.Error()), response)
-		return
-	}
-	newAcct.ID = keyID
-
-	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
-	//       "missing" account as a non-error
-	existingAcct := wfe.db.GetAccountByID(newAcct.ID)
-	if existingAcct != nil {
-		// If there is an existing account then return a Location header pointing to
-		// the account and a 200 OK response
-		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
-		response.Header().Set("Location", acctURL)
-		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
-		return
-	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
-		// If there *isn't* an existing account and the created account request
-		// contained OnlyReturnExisting then this is an error - return now before
-		// creating a new account with the key
-		wfe.sendError(acme.AccountDoesNotExistProblem(
-			"unable to find existing account for only-return-existing request"), response)
 		return
 	}
 
