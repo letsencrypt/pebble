@@ -224,8 +224,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
+	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
 
-	// TODO(@cpu): Handle POST to acctPath for existing account updates
 	return m
 }
 
@@ -550,6 +550,78 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 	}
 
 	return nil
+}
+
+func (wfe *WebFrontEndImpl) UpdateAccount(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// updateAcctReq is the ACME account information submitted by the client
+	var updateAcctReq struct {
+		Contact []string `json:"contact"`
+	}
+	err := json.Unmarshal(body, &updateAcctReq)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	existingAcct, prob := wfe.getAcctByKey(key)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// if this update contains no contacts, simply return the existing account
+	// and return early.
+	if len(updateAcctReq.Contact) == 0 {
+		err = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+		if err != nil {
+			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+			return
+		}
+		return
+	}
+
+	// Create a new account object with the existing data
+	newAcct := &core.Account{
+		Account: acme.Account{
+			Contact: existingAcct.Contact,
+			Status:  existingAcct.Status,
+			Orders:  existingAcct.Orders,
+		},
+		Key: existingAcct.Key,
+		ID:  existingAcct.ID,
+	}
+
+	newAcct.Contact = updateAcctReq.Contact
+	// Verify that the contact information provided is supported & valid
+	prob = wfe.verifyContacts(newAcct.Account)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	err = wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error storing updated account"), response)
+		return
+	}
+
+	err = wfe.writeJsonResponse(response, http.StatusOK, newAcct)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+		return
+	}
 }
 
 func (wfe *WebFrontEndImpl) NewAccount(
