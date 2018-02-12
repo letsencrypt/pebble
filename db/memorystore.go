@@ -43,8 +43,8 @@ func (m *MemoryStore) GetAccountByID(id string) *core.Account {
 }
 
 func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
-	m.RLock()
-	defer m.RUnlock()
+	m.Lock()
+	defer m.Unlock()
 	if m.accountsByID[id] == nil {
 		return fmt.Errorf("account with ID %q does not exist", id)
 	}

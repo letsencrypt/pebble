@@ -570,7 +570,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	err := json.Unmarshal(body, &updateAcctReq)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+			acme.MalformedProblem("Error unmarshaling account update JSON body"), response)
 		return
 	}
 
