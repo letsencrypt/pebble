@@ -1279,7 +1279,6 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 
 func (wfe *WebFrontEndImpl) validateChallengeUpdate(
 	chal *core.Challenge,
-	update *acme.Challenge,
 	acct *core.Account) (*core.Authorization, *acme.ProblemDetails) {
 	// Lock the challenge for reading to do validation
 	chal.RLock()
@@ -1290,16 +1289,6 @@ func (wfe *WebFrontEndImpl) validateChallengeUpdate(
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Cannot update challenge with status %s, only status %s",
 				chal.Status, acme.StatusPending))
-	}
-
-	// Calculate the expected key authorization for the owning account's key
-	expectedKeyAuth := chal.ExpectedKeyAuthorization(acct.Key)
-
-	// Validate the expected key auth matches the provided key auth
-	if expectedKeyAuth != update.KeyAuthorization {
-		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Incorrect key authorization: %q",
-				update.KeyAuthorization))
 	}
 
 	return chal.Authz, nil
@@ -1356,11 +1345,26 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	var chalResp acme.Challenge
+	var chalResp struct {
+		KeyAuthorization *string
+	}
 	err := json.Unmarshal(body, &chalResp)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	// Historically challenges were updated by POSTing a KeyAuthorization. This is
+	// unnecessary, the server can calculate this itself. We could ignore this if
+	// sent (and that's what Boulder will do) but for Pebble we'd like to be more
+	// aggressive about pushing clients implementations in the right direction, so
+	// we treat this as a malformed request.
+	if chalResp.KeyAuthorization != nil {
+		wfe.sendError(
+			acme.MalformedProblem(
+				"Challenge response body contained legacy KeyAuthorzation field, "+
+					"POST body should be `{}`"), response)
 		return
 	}
 
@@ -1371,7 +1375,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	authz, prob := wfe.validateChallengeUpdate(existingChal, &chalResp, existingAcct)
+	authz, prob := wfe.validateChallengeUpdate(existingChal, existingAcct)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
