@@ -1,6 +1,6 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Boulder server. Unlike chisel.py this version implements the most recent
+a local Pebble server. Unlike chisel.py this version implements the most recent
 version of the ACME specification. Usage:
 
 $ virtualenv venv
@@ -36,11 +36,9 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
-ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:14000/dir')
+ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"Do%20what%20thou%20wilt")
 PORT = os.getenv('PORT', '5002')
-
-os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 
 # URLs to control dns-test-srv
 SET_TXT = "http://localhost:8055/set-txt"
