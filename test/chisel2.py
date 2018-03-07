@@ -1,6 +1,6 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Pebble server. Unlike chisel.py this version implements the most recent
+a local Boulder server. Unlike chisel.py this version implements the most recent
 version of the ACME specification. Usage:
 
 $ virtualenv venv
@@ -36,19 +36,26 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'https://localhost:14000/dir')
+DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:4001/directory')
+ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder:4431/terms/v7")
+PORT = os.getenv('PORT', '5002')
+
+os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
+
+# URLs to control dns-test-srv
+SET_TXT = "http://localhost:8055/set-txt"
+CLEAR_TXT = "http://localhost:8055/clear-txt"
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
 
-    net = acme_client.ClientNetwork(key, acme_version=2,
-                                    user_agent="Boulder integration tester")
-
-    client = acme_client.Client(DIRECTORY, key=key, net=net, acme_version=2)
+    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
+    directory = messages.Directory.from_json(net.get(DIRECTORY).json())
+    client = acme_client.ClientV2(directory, net)
     tos = client.directory.meta.terms_of_service
-    if tos is not None and "Do%20what%20thou%20wilt" in tos:
-        net.account = client.register(messages.NewRegistration.from_data(email=email,
+    if tos == ACCEPTABLE_TOS:
+        net.account = client.new_account(messages.NewRegistration.from_data(email=email,
             terms_of_service_agreed=True))
     else:
         raise Exception("Unrecognized terms of service URL %s" % tos)
@@ -58,7 +65,7 @@ def get_chall(authz, typ):
     for chall_body in authz.body.challenges:
         if isinstance(chall_body.chall, typ):
             return chall_body
-    raise "No %s challenge found" % typ
+    raise Exception("No %s challenge found" % typ)
 
 class ValidationError(Exception):
     """An error that occurs during challenge validation."""
@@ -76,39 +83,9 @@ def make_csr(domains):
     pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
     return acme_crypto_util.make_csr(pem, domains, False)
 
-def issue(client, authzs, cert_output=None):
-    """Given a list of authzs that are being processed by the server,
-       wait for them to be ready, then request issuance of a cert with a random
-       key for the given domains.
-
-       If cert_output is provided, write the cert as a PEM file to that path."""
-    csr = make_csr([authz.body.identifier.value for authz in authzs])
-
-    cert_resource = None
-    try:
-        cert_resource, _ = client.poll_and_request_issuance(jose.ComparableX509(csr), authzs)
-    except acme_errors.PollError as error:
-        # If we get a PollError, pick the first failed authz and turn it into a more
-        # useful ValidationError that contains details we can look for in tests.
-        for authz in error.updated:
-            updated_authz = json.loads(urllib2.urlopen(authz.uri).read())
-            domain = authz.body.identifier.value,
-            for c in updated_authz['challenges']:
-                if 'error' in c:
-                    err = c['error']
-                    raise ValidationError(domain, err['type'], err['detail'])
-        # If none of the authz's had an error, just re-raise.
-        raise
-    if cert_output is not None:
-        pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM,
-                                              cert_resource.body)
-        with open(cert_output, 'w') as f:
-            f.write(pem)
-    return cert_resource
-
 def http_01_answer(client, chall_body):
     """Return an HTTP01Resource to server in response to the given challenge."""
-    response, validation = chall_body.response_and_validation(client.key)
+    response, validation = chall_body.response_and_validation(client.net.key)
     return standalone.HTTP01RequestHandler.HTTP01Resource(
           chall=chall_body.chall, response=response,
           validation=validation)
@@ -126,32 +103,41 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
 
     if chall_type == "http-01":
         cleanup = do_http_challenges(client, authzs)
+    elif chall_type == "dns-01":
+        cleanup = do_dns_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
     try:
-        order = client.poll_order_and_request_issuance(order)
-        print(order.fullchain_pem)
+        order = client.poll_and_finalize(order)
     finally:
         cleanup()
 
+    return order
+
 def do_dns_challenges(client, authzs):
+    cleanup_hosts = []
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
-            c.validation(client.key))
-        urllib2.urlopen("http://localhost:8055/set-txt",
+            c.validation(client.net.key))
+        cleanup_hosts.append(name)
+        urllib2.urlopen(SET_TXT,
             data=json.dumps({
                 "host": name + ".",
                 "value": value,
             })).read()
-        client.answer_challenge(c, c.response(client.key))
+        client.answer_challenge(c, c.response(client.net.key))
     def cleanup():
-        pass
+        for host in cleanup_hosts:
+            urllib2.urlopen(CLEAR_TXT,
+                data=json.dumps({
+                    "host": host + ".",
+                })).read()
     return cleanup
 
 def do_http_challenges(client, authzs):
-    port = 5002
+    port = int(PORT)
     challs = [get_chall(a, challenges.HTTP01) for a in authzs]
     answers = set([http_01_answer(client, c) for c in challs])
     server = standalone.HTTP01Server(("", port), answers)
@@ -175,7 +161,7 @@ def do_http_challenges(client, authzs):
                 time.sleep(0.1)
 
         for chall_body in challs:
-            client.answer_challenge(chall_body, chall_body.response(client.key))
+            client.answer_challenge(chall_body, chall_body.response(client.net.key))
     except Exception:
         cleanup()
         raise
