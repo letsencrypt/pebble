@@ -66,6 +66,9 @@ const (
 	// By default when no PEBBLE_WFE_NONCEREJECT is set, what percentage of good
 	// nonces are rejected?
 	defaultNonceReject = 15
+
+	// POST requests with a JWS body must have the following Content-Type header
+	expectedJWSContentType = "application/jose+json"
 )
 
 type requestEvent struct {
@@ -424,6 +427,19 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	logEvent *requestEvent,
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
+
+	// Section 6.2 says to reject JWS requests without the expected Content-Type
+	// using a status code of http.UnsupportedMediaType
+	if _, present := request.Header["Content-Type"]; !present {
+		return nil, nil, acme.UnsupportedMediaTypeProblem(
+			`missing Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
+	}
+	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+		return nil, nil, acme.UnsupportedMediaTypeProblem(
+			`Invalid Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
+	}
 
 	if _, present := request.Header["Content-Length"]; !present {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")

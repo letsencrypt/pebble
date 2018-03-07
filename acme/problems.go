@@ -123,3 +123,11 @@ func AccountDoesNotExistProblem(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
+
+func UnsupportedMediaTypeProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       malformedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusUnsupportedMediaType,
+	}
+}
