@@ -381,7 +381,7 @@ func main() {
 		fmt.Sprintf("Failed to make new pebble client with email %q", *email))
 
 	fmt.Printf("Your account ID is %q\n", c.acctID)
-	fmt.Println("Starting REPL environment...\n\n")
+	fmt.Println("Starting REPL environment...")
 	err = c.repl()
 	cmd.FailOnError(err, "REPL error")
 }
