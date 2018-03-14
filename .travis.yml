@@ -10,9 +10,7 @@ go:
   - "1.10"
 
 before_install:
-  # The acme-v2 branch of certbot has some tweaks required for using chisel2
-  # that haven't landed in master yet.
-  - git clone -b acme-v2 https://github.com/certbot/certbot
+  - git clone https://github.com/certbot/certbot
   - cd certbot
   - ./certbot-auto --os-packages-only -n
   - ./tools/venv.sh
