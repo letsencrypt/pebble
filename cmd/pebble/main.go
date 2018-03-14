@@ -29,6 +29,10 @@ func main() {
 		"config",
 		"test/config/pebble-config.json",
 		"File path to the Pebble configuration file")
+	strictMode := flag.Bool(
+		"strict",
+		false,
+		"Enable strict mode to test upcoming API breaking changes")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -47,7 +51,7 @@ func main() {
 	ca := ca.New(logger, db)
 	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort)
 
-	wfe := wfe.New(logger, clk, db, va, ca)
+	wfe := wfe.New(logger, clk, db, va, ca, *strictMode)
 	muxHandler := wfe.Handler()
 
 	logger.Printf("Pebble running, listening on: %s\n", c.Pebble.ListenAddress)
