@@ -1413,7 +1413,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	now := wfe.clk.Now()
 	if now.After(existingOrder.ExpiresDate) {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("order expired %s %s",
+			acme.MalformedProblem(fmt.Sprintf("order expired at %s",
 				existingOrder.ExpiresDate.Format(time.RFC3339))), response)
 		return
 	}
