@@ -36,7 +36,7 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://localhost:14000/dir')
+DIRECTORY = os.getenv('DIRECTORY', 'https://localhost:14000/dir')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"Do%20what%20thou%20wilt")
 PORT = os.getenv('PORT', '5002')
 
