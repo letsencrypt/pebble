@@ -49,7 +49,7 @@ type Challenge struct {
 	ValidatedDate time.Time
 }
 
-func (ch Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
+func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 	if key == nil {
 		panic("ExpectedKeyAuthorization called with nil key")
 	}

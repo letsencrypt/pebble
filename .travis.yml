@@ -7,7 +7,7 @@ addons:
     - elpmaxe.letsencrypt.org
 
 go:
-  - 1.8
+  - "1.10"
 
 before_install:
   - git clone https://github.com/certbot/certbot
@@ -23,4 +23,5 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
+  - go vet ./...
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org

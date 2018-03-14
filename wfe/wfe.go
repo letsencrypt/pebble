@@ -66,6 +66,9 @@ const (
 	// By default when no PEBBLE_WFE_NONCEREJECT is set, what percentage of good
 	// nonces are rejected?
 	defaultNonceReject = 15
+
+	// POST requests with a JWS body must have the following Content-Type header
+	expectedJWSContentType = "application/jose+json"
 )
 
 type requestEvent struct {
@@ -109,6 +112,7 @@ type WebFrontEndImpl struct {
 	clk             clock.Clock
 	va              *va.VAImpl
 	ca              *ca.CAImpl
+	strict          bool
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -118,7 +122,8 @@ func New(
 	clk clock.Clock,
 	db *db.MemoryStore,
 	va *va.VAImpl,
-	ca *ca.CAImpl) WebFrontEndImpl {
+	ca *ca.CAImpl,
+	strict bool) WebFrontEndImpl {
 
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
@@ -150,6 +155,7 @@ func New(
 		clk:             clk,
 		va:              va,
 		ca:              ca,
+		strict:          strict,
 	}
 }
 
@@ -424,6 +430,21 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	logEvent *requestEvent,
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
+
+	if wfe.strict {
+		// Section 6.2 says to reject JWS requests without the expected Content-Type
+		// using a status code of http.UnsupportedMediaType
+		if _, present := request.Header["Content-Type"]; !present {
+			return nil, nil, acme.UnsupportedMediaTypeProblem(
+				`missing Content-Type header on POST. ` +
+					`Content-Type must be "application/jose+json"`)
+		}
+		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+			return nil, nil, acme.UnsupportedMediaTypeProblem(
+				`Invalid Content-Type header on POST. ` +
+					`Content-Type must be "application/jose+json"`)
+		}
+	}
 
 	if _, present := request.Header["Content-Length"]; !present {
 		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
@@ -1357,10 +1378,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Historically challenges were updated by POSTing a KeyAuthorization. This is
 	// unnecessary, the server can calculate this itself. We could ignore this if
-	// sent (and that's what Boulder will do) but for Pebble we'd like to be more
-	// aggressive about pushing clients implementations in the right direction, so
-	// we treat this as a malformed request.
-	if chalResp.KeyAuthorization != nil {
+	// sent (and that's what Boulder will do) but for Pebble we'd like to offer
+	// a way to be more aggressive about pushing clients implementations in the
+	// right direction, so we treat this as a malformed request when running in
+	// strict mode.
+	if wfe.strict && chalResp.KeyAuthorization != nil {
 		wfe.sendError(
 			acme.MalformedProblem(
 				"Challenge response body contained legacy KeyAuthorzation field, "+
@@ -1397,7 +1419,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	now := wfe.clk.Now()
 	if now.After(existingOrder.ExpiresDate) {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("order expired %s %s",
+			acme.MalformedProblem(fmt.Sprintf("order expired %s",
 				existingOrder.ExpiresDate.Format(time.RFC3339))), response)
 		return
 	}
