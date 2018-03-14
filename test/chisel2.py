@@ -37,7 +37,7 @@ logger = logging.getLogger()
 logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 
 DIRECTORY = os.getenv('DIRECTORY', 'https://localhost:14000/dir')
-ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"Do%20what%20thou%20wilt")
+ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"data:text/plain,Do%20what%20thou%20wilt")
 PORT = os.getenv('PORT', '5002')
 
 # URLs to control dns-test-srv
