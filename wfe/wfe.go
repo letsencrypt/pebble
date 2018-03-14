@@ -1376,13 +1376,16 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// sent (and that's what Boulder will do) but for Pebble we'd like to be more
 	// aggressive about pushing clients implementations in the right direction, so
 	// we treat this as a malformed request.
-	if chalResp.KeyAuthorization != nil {
+	// milux: This enforces a protocol change that is incompatible with current
+	// ACMEv2 LE boulder endpoints, it should be reactivated when those instances
+	// provide ACMEv2 draft 10 support.
+	/*if chalResp.KeyAuthorization != nil {
 		wfe.sendError(
 			acme.MalformedProblem(
 				"Challenge response body contained legacy KeyAuthorzation field, "+
 					"POST body should be `{}`"), response)
 		return
-	}
+	}*/
 
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
 	existingChal := wfe.db.GetChallengeByID(chalID)
