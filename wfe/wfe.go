@@ -197,7 +197,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
 
-				// TODO(@cpu): Configureable request timeout
+				// TODO(@cpu): Configurable request timeout
 				timeout := 1 * time.Minute
 				ctx, cancel := context.WithTimeout(ctx, timeout)
 				handler(ctx, logEvent, response, request)
