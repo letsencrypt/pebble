@@ -197,7 +197,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
 
-				// TODO(@cpu): Configureable request timeout
+				// TODO(@cpu): Configurable request timeout
 				timeout := 1 * time.Minute
 				ctx, cancel := context.WithTimeout(ctx, timeout)
 				handler(ctx, logEvent, response, request)
@@ -551,7 +551,7 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 				"contact method %q is not supported", parsed.Scheme))
 		}
 		email := parsed.Opaque
-		// An empty or ommitted Contact array should be used instead of an empty contact
+		// An empty or omitted Contact array should be used instead of an empty contact
 		if email == "" {
 			return acme.InvalidContactProblem("empty contact email")
 		}

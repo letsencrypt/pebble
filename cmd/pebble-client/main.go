@@ -171,7 +171,7 @@ func (c *client) updateNonce() error {
 	after := c.nonce
 
 	if before == after {
-		return fmt.Errorf("Did not recieve a fresh nonce from newNonce URL")
+		return fmt.Errorf("Did not receive a fresh nonce from newNonce URL")
 	}
 	return nil
 }
@@ -354,7 +354,7 @@ func (c *client) repl() error {
 		}
 
 		var indented bytes.Buffer
-		err = json.Indent(&indented, respBody, "", "  ")
+		_ = json.Indent(&indented, respBody, "", "  ")
 		fmt.Printf("Response:\n%#v\n\n%s\n", resp, indented.String())
 	}
 
