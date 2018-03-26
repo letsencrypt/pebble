@@ -171,7 +171,7 @@ func (c *client) updateNonce() error {
 	after := c.nonce
 
 	if before == after {
-		return fmt.Errorf("Did not recieve a fresh nonce from newNonce URL")
+		return fmt.Errorf("Did not receive a fresh nonce from newNonce URL")
 	}
 	return nil
 }
