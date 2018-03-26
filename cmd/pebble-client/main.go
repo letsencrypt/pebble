@@ -354,7 +354,7 @@ func (c *client) repl() error {
 		}
 
 		var indented bytes.Buffer
-		err = json.Indent(&indented, respBody, "", "  ")
+		_ = json.Indent(&indented, respBody, "", "  ")
 		fmt.Printf("Response:\n%#v\n\n%s\n", resp, indented.String())
 	}
 
