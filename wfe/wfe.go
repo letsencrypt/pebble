@@ -587,6 +587,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	// updateAcctReq is the ACME account information submitted by the client
 	var updateAcctReq struct {
 		Contact []string `json:"contact"`
+		Status  string   `json:"status,omitempty"`
 	}
 	err := json.Unmarshal(body, &updateAcctReq)
 	if err != nil {
@@ -601,9 +602,9 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		return
 	}
 
-	// if this update contains no contacts, simply return the existing account
-	// and return early.
-	if len(updateAcctReq.Contact) == 0 {
+	// if this update contains no contacts or deactivated status,
+	// simply return the existing account and return early.
+	if len(updateAcctReq.Contact) == 0 && updateAcctReq.Status != acme.StatusDeactivated {
 		err = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
 			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
@@ -623,12 +624,22 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		ID:  existingAcct.ID,
 	}
 
-	newAcct.Contact = updateAcctReq.Contact
-	// Verify that the contact information provided is supported & valid
-	prob = wfe.verifyContacts(newAcct.Account)
-	if prob != nil {
-		wfe.sendError(prob, response)
+	switch {
+	case updateAcctReq.Status == acme.StatusDeactivated:
+		newAcct.Status = updateAcctReq.Status
+	case updateAcctReq.Status != "" && updateAcctReq.Status != newAcct.Status:
+		wfe.sendError(
+			acme.MalformedProblem(fmt.Sprintf(
+				"Invalid account status: %q", updateAcctReq.Status)), response)
 		return
+	case len(updateAcctReq.Contact) > 0:
+		newAcct.Contact = updateAcctReq.Contact
+		// Verify that the contact information provided is supported & valid
+		prob = wfe.verifyContacts(newAcct.Account)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
 	}
 
 	err = wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
@@ -1294,6 +1305,10 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 	if existingAcct = wfe.db.GetAccountByID(regID); existingAcct == nil {
 		return nil, acme.AccountDoesNotExistProblem(
 			"URL in JWS 'kid' field does not correspond to an account")
+	}
+
+	if existingAcct.Status == acme.StatusDeactivated {
+		return nil, acme.UnauthorizedProblem("Account has been deactivated")
 	}
 	return existingAcct, nil
 }
