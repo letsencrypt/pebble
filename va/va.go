@@ -141,6 +141,7 @@ func (va VAImpl) process(task *vaTask) {
 	chal.ValidatedDate = now
 	chal.Validated = chal.ValidatedDate.Format(time.RFC3339)
 	authz := chal.Authz
+	order := authz.Order
 	chal.Unlock()
 
 	results := make(chan *core.ValidationRecord, concurrentValidations)
@@ -166,6 +167,11 @@ func (va VAImpl) process(task *vaTask) {
 		authz.Status = acme.StatusInvalid
 		authz.Unlock()
 
+		// Lock the order to update the order status
+		order.Lock()
+		order.Status = acme.StatusInvalid
+		order.Unlock()
+
 		va.log.Printf("authz %s set INVALID by completed challenge %s", authz.ID, chal.ID)
 		// Return immediately - there's no need to check for order issuance
 		return
@@ -182,6 +188,18 @@ func (va VAImpl) process(task *vaTask) {
 		chal.Lock()
 		chal.Status = acme.StatusValid
 		chal.Unlock()
+
+		order.Lock()
+		anyNotValid := false
+		for _, a := range order.AuthorizationObjects {
+			if a.Status != acme.StatusValid {
+				anyNotValid = true
+			}
+		}
+		if !anyNotValid {
+			order.Status = acme.StatusReady
+		}
+		order.Unlock()
 
 		va.log.Printf("authz %s set VALID by completed challenge %s", authz.ID, chal.ID)
 	}

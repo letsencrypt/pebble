@@ -1093,10 +1093,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
-	// The existing order must be in a pending status to finalize it
-	if orderStatus != acme.StatusPending {
+	// The existing order must be in a ready status to finalize it
+	if orderStatus != acme.StatusReady {
 		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
-			"Order's status (%q) was not pending", orderStatus)), response)
+			"Order's status (%q) was not 'ready'", orderStatus)), response)
 		return
 	}
 
