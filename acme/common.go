@@ -7,6 +7,7 @@ const (
 	StatusPending    = "pending"
 	StatusInvalid    = "invalid"
 	StatusValid      = "valid"
+	StatusReady      = "ready"
 	StatusProcessing = "processing"
 
 	IdentifierDNS = "dns"

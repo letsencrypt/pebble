@@ -197,7 +197,7 @@ func (va VAImpl) process(task *vaTask) {
 			}
 		}
 		if !anyNotValid {
-			order.Status = acme.StatusValid
+			order.Status = acme.StatusReady
 		}
 		order.Unlock()
 
