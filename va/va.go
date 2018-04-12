@@ -256,15 +256,30 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: va.clk.Now(),
 	}
 
-	certs, problem := va.fetchCerts(hostPort, &tls.Config{
-		ServerName: task.Identifier,
-		NextProtos: []string{acme.ACMETLS1Protocol},
+	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
+		ServerName:         task.Identifier,
+		NextProtos:         []string{acme.ACMETLS1Protocol},
+		InsecureSkipVerify: true,
 	})
 	if problem != nil {
 		result.Error = problem
 		return result
 	}
 
+	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != acme.ACMETLS1Protocol {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf(
+			"Cannot connect using %s for %s challenge",
+			acme.ACMETLS1Protocol,
+			acme.ChallengeTLSALPN01,
+		))
+		return result
+	}
+
+	certs := cs.PeerCertificates
+	if len(certs) == 0 {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("No certs presented for %s challenge", acme.ChallengeTLSALPN01))
+		return result
+	}
 	leafCert := certs[0]
 
 	// Verify SNI
@@ -295,9 +310,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	return result
 }
 
-func (va VAImpl) fetchCerts(hostPort string, config *tls.Config) ([]*x509.Certificate, *acme.ProblemDetails) {
-	config = config.Clone()
-	config.InsecureSkipVerify = true
+func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls.ConnectionState, *acme.ProblemDetails) {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second * 5}, "tcp", hostPort, config)
 
 	if err != nil {
@@ -311,12 +324,8 @@ func (va VAImpl) fetchCerts(hostPort string, config *tls.Config) ([]*x509.Certif
 		_ = conn.Close()
 	}()
 
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return nil, acme.UnauthorizedProblem(
-			fmt.Sprintf("No certs presented for %s challenge", acme.ChallengeTLSALPN01))
-	}
-	return certs, nil
+	cs := conn.ConnectionState()
+	return &cs, nil
 }
 
 func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
