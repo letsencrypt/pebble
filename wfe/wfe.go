@@ -897,7 +897,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		chals = []*core.Challenge{chal}
 	} else {
 		// Non-wildcard authorizations get all of the enabled challenge types
-		enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSSNI02, acme.ChallengeDNS01}
+		enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
 		for _, chalType := range enabledChallenges {
 			chal, err := wfe.makeChallenge(chalType, authz, request)
 			if err != nil {

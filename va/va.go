@@ -5,8 +5,8 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -45,6 +45,8 @@ const (
 	//   PEBBLE_VA_NOSLEEP=1 pebble
 	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
 )
+
+var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
 
 func userAgent() string {
 	return fmt.Sprintf(
@@ -198,8 +200,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 	switch task.Challenge.Type {
 	case acme.ChallengeHTTP01:
 		results <- va.validateHTTP01(task)
-	case acme.ChallengeTLSSNI02:
-		results <- va.validateTLSSNI02(task)
+	case acme.ChallengeTLSALPN01:
+		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
 	default:
@@ -245,7 +247,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	return result
 }
 
-func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
+func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(task.Identifier, portString)
 
@@ -254,83 +256,74 @@ func (va VAImpl) validateTLSSNI02(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: va.clk.Now(),
 	}
 
-	const tlsSNITokenID = "token"
-	const tlsSNIKaID = "ka"
-	const tlsSNISuffix = "acme.invalid"
-
-	// Lock the challenge for reading while we validate
-	task.Challenge.RLock()
-	defer task.Challenge.RUnlock()
-
-	// Compute the digest for the SAN b that will appear in the certificate
-	ha := sha256.Sum256([]byte(task.Challenge.Token))
-	za := hex.EncodeToString(ha[:])
-	sanAName := fmt.Sprintf("%s.%s.%s.%s", za[:32], za[32:], tlsSNITokenID, tlsSNISuffix)
-
-	// Compute the digest for the SAN B that will appear in the certificate
-	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
-	hb := sha256.Sum256([]byte(expectedKeyAuthorization))
-	zb := hex.EncodeToString(hb[:])
-	sanBName := fmt.Sprintf("%s.%s.%s.%s", zb[:32], zb[32:], tlsSNIKaID, tlsSNISuffix)
-
-	// Perform the validation
-	result.Error = va.validateTLSSNI02WithNames(hostPort, sanAName, sanBName)
-	return result
-}
-
-func (va VAImpl) validateTLSSNI02WithNames(hostPort string, sanAName, sanBName string) *acme.ProblemDetails {
-	certs, problem := va.fetchCerts(hostPort, sanAName)
+	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
+		ServerName:         task.Identifier,
+		NextProtos:         []string{acme.ACMETLS1Protocol},
+		InsecureSkipVerify: true,
+	})
 	if problem != nil {
-		return problem
+		result.Error = problem
+		return result
 	}
 
+	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != acme.ACMETLS1Protocol {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf(
+			"Cannot negotiate ALPN protocol %q for %s challenge",
+			acme.ACMETLS1Protocol,
+			acme.ChallengeTLSALPN01,
+		))
+		return result
+	}
+
+	certs := cs.PeerCertificates
+	if len(certs) == 0 {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("No certs presented for %s challenge", acme.ChallengeTLSALPN01))
+		return result
+	}
 	leafCert := certs[0]
-	if len(leafCert.DNSNames) != 2 {
+
+	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
+	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], task.Identifier) {
 		names := certNames(leafCert)
-		msg := fmt.Sprintf(
-			"%s challenge certificate doesn't include exactly 2 DNSName entries. "+
-				"Received %d certificate(s), first certificate had names %q",
-			acme.ChallengeTLSSNI02, len(certs), names)
-		return acme.MalformedProblem(msg)
-	}
-
-	var validSanAName, validSanBName bool
-	for _, name := range leafCert.DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(sanAName)) == 1 {
-			validSanAName = true
-		}
-
-		if subtle.ConstantTimeCompare([]byte(name), []byte(sanBName)) == 1 {
-			validSanBName = true
-		}
-	}
-
-	if !validSanAName || !validSanBName {
-		names := certNames(leafCert)
-		msg := fmt.Sprintf(
+		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
 				"first certificate had names %q",
-			acme.ChallengeTLSSNI02, sanAName, hostPort,
-			len(certs), names)
-		return acme.UnauthorizedProblem(msg)
+			acme.ChallengeTLSALPN01, task.Identifier, hostPort, len(certs), names)
+		result.Error = acme.UnauthorizedProblem(errText)
+		return result
 	}
 
-	return nil
+	// Verify key authorization in acmeValidation extension
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
+	for _, ext := range leafCert.Extensions {
+		if IdPeAcmeIdentifierV1.Equal(ext.Id) && ext.Critical {
+			if subtle.ConstantTimeCompare(h[:], ext.Value) == 1 {
+				return result
+			}
+			errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+				"Invalid acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)
+			result.Error = acme.UnauthorizedProblem(errText)
+			return result
+		}
+	}
+
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Missing acmeValidationV1 extension.",
+		acme.ChallengeTLSALPN01)
+	result.Error = acme.UnauthorizedProblem(errText)
+	return result
 }
 
-func (va VAImpl) fetchCerts(hostPort string, sni string) ([]*x509.Certificate, *acme.ProblemDetails) {
-	conn, err := tls.DialWithDialer(
-		&net.Dialer{Timeout: time.Second * 5}, "tcp", hostPort,
-		&tls.Config{
-			ServerName:         sni,
-			InsecureSkipVerify: true,
-		})
+func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls.ConnectionState, *acme.ProblemDetails) {
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second * 5}, "tcp", hostPort, config)
 
 	if err != nil {
 		// TODO(@cpu): Return better err - see parseHTTPConnError from boulder
 		return nil, acme.UnauthorizedProblem(
-			fmt.Sprintf("Failed to connect to %s for the %s challenge", hostPort, acme.ChallengeTLSSNI02))
+			fmt.Sprintf("Failed to connect to %s for the %s challenge", hostPort, acme.ChallengeTLSALPN01))
 	}
 
 	// close errors are not important here
@@ -338,12 +331,8 @@ func (va VAImpl) fetchCerts(hostPort string, sni string) ([]*x509.Certificate, *
 		_ = conn.Close()
 	}()
 
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return nil, acme.UnauthorizedProblem(
-			fmt.Sprintf("No certs presented for %s challenge", acme.ChallengeTLSSNI02))
-	}
-	return certs, nil
+	cs := conn.ConnectionState()
+	return &cs, nil
 }
 
 func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
