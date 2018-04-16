@@ -4,10 +4,11 @@ package acme
 type Resource string
 
 const (
-	StatusPending    = "pending"
-	StatusInvalid    = "invalid"
-	StatusValid      = "valid"
-	StatusProcessing = "processing"
+	StatusPending     = "pending"
+	StatusInvalid     = "invalid"
+	StatusValid       = "valid"
+	StatusProcessing  = "processing"
+	StatusDeactivated = "deactivated"
 
 	IdentifierDNS = "dns"
 
