@@ -268,7 +268,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 
 	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != acme.ACMETLS1Protocol {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf(
-			"Cannot connect using %s for %s challenge",
+			"Cannot negotiate ALPN protocol %q for %s challenge",
 			acme.ACMETLS1Protocol,
 			acme.ChallengeTLSALPN01,
 		))
@@ -282,7 +282,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	}
 	leafCert := certs[0]
 
-	// Verify SNI
+	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
 	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], task.Identifier) {
 		names := certNames(leafCert)
 		errText := fmt.Sprintf(
@@ -302,11 +302,18 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 			if subtle.ConstantTimeCompare(h[:], ext.Value) == 1 {
 				return result
 			}
-			result.Error = acme.UnauthorizedProblem("Extension acmeValidationV1 value incorrect.")
+			errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+				"Invalid acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)
+			result.Error = acme.UnauthorizedProblem(errText)
 			return result
 		}
 	}
 
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Missing acmeValidationV1 extension.",
+		acme.ChallengeTLSALPN01)
+	result.Error = acme.UnauthorizedProblem(errText)
 	return result
 }
 
