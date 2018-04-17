@@ -1226,6 +1226,21 @@ func prepAuthorizationForDisplay(authz acme.Authorization) *acme.Authorization {
 		authz.Identifier.Value = strings.TrimPrefix(identVal, "*.")
 		authz.Wildcard = true
 	}
+
+	// If the authz isn't pending then we need to filter the challenges displayed
+	// to only those that were used to make the authz valid || invalid.
+	if authz.Status != acme.StatusPending {
+		var chals []*acme.Challenge
+		// Scan each of the authz's challenges
+		for _, c := range authz.Challenges {
+			// Include any that have an associated error, or that are status valid
+			if c.Error != nil || c.Status == acme.StatusValid {
+				chals = append(chals, c)
+			}
+		}
+		// Replace the authz's challenges with the filtered set
+		authz.Challenges = chals
+	}
 	return &authz
 }
 
