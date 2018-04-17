@@ -44,6 +44,13 @@ const (
 	// invoke Pebble if you wish validation to be done at full speed, e.g.:
 	//   PEBBLE_VA_NOSLEEP=1 pebble
 	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
+
+	// noValidateEnvVar defines the environment variable name used to signal that
+	// the VA should *not* actually validate challenges. Set this to 1 when you
+	// invoke Pebble if you wish validation to always succeed without actually
+	// making any challenge requests, e.g.:
+	//   PEBBLE_VA_ALWAYS_VALID=1 pebble"
+	noValidateEnvVar = "PEBBLE_VA_ALWAYS_VALID"
 )
 
 var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
@@ -72,12 +79,13 @@ type vaTask struct {
 }
 
 type VAImpl struct {
-	log      *log.Logger
-	clk      clock.Clock
-	httpPort int
-	tlsPort  int
-	tasks    chan *vaTask
-	sleep    bool
+	log         *log.Logger
+	clk         clock.Clock
+	httpPort    int
+	tlsPort     int
+	tasks       chan *vaTask
+	sleep       bool
+	alwaysValid bool
 }
 
 func New(
@@ -100,6 +108,13 @@ func New(
 	case "1", "true", "True", "TRUE":
 		va.sleep = false
 		va.log.Printf("Disabling random VA sleeps")
+	}
+
+	noValidate := os.Getenv(noValidateEnvVar)
+	switch noValidate {
+	case "1", "true", "True", "TRUE":
+		va.alwaysValid = true
+		va.log.Printf("Disabling VA challenge requests. VA always returns valid")
 	}
 
 	go va.processTasks()
@@ -132,6 +147,47 @@ func (va VAImpl) firstError(results chan *core.ValidationRecord) *acme.ProblemDe
 	return nil
 }
 
+// setAuthzValid updates an authorization and an associated challenge to be
+// status valid. The authorization expiry is updated to now plus the configured
+// `validAuthzExpire` duration.
+func (va VAImpl) setAuthzValid(authz *core.Authorization, chal *core.Challenge) {
+	authz.Lock()
+	defer authz.Unlock()
+	// Update the authz expiry for the new validity period
+	now := va.clk.Now().UTC()
+	authz.ExpiresDate = now.Add(validAuthzExpire)
+	authz.Expires = authz.ExpiresDate.Format(time.RFC3339)
+	// Update the authz status
+	authz.Status = acme.StatusValid
+
+	chal.Lock()
+	defer chal.Unlock()
+	// Update the challenge status
+	chal.Status = acme.StatusValid
+}
+
+// setAuthzInvalid updates an authorization an an associated challenge to be
+// status invalid. The challenge's error is set to the provided problem and both
+// the challenge and the authorization have their status updated to invalid.
+func (va VAImpl) setAuthzInvalid(
+	authz *core.Authorization,
+	chal *core.Challenge,
+	err *acme.ProblemDetails) {
+	authz.Lock()
+	defer authz.Unlock()
+	// Update the authz status
+	authz.Status = acme.StatusInvalid
+
+	// Lock the challenge for update
+	chal.Lock()
+	defer chal.Unlock()
+	// Update the challenge error field
+	chal.Error = err
+	// Update the challenge status
+	chal.Status = acme.StatusInvalid
+	chal.Unlock()
+}
+
 func (va VAImpl) process(task *vaTask) {
 	va.log.Printf("Pulled a task from the Tasks queue: %#v", task)
 	va.log.Printf("Starting %d validations.", concurrentValidations)
@@ -155,38 +211,14 @@ func (va VAImpl) process(task *vaTask) {
 	err := va.firstError(results)
 	// If one of the results was an error, the challenge fails
 	if err != nil {
-		// Lock the challenge to update the error & status
-		chal.Lock()
-		// Update the challenge Error
-		chal.Error = err
-		// Set the challenge and authorization to invalid
-		chal.Status = acme.StatusInvalid
-		chal.Unlock()
-
-		// Lock the authz to update the authz status
-		authz.Lock()
-		authz.Status = acme.StatusInvalid
-		authz.Unlock()
-
+		va.setAuthzInvalid(authz, chal, err)
 		va.log.Printf("authz %s set INVALID by completed challenge %s", authz.ID, chal.ID)
-		// Return immediately - there's no need to check for order issuance
 		return
-	} else {
-		// If none of the results were an error then the challenge succeeded.
-		// Update the expiry for the valid authorization
-		authz.Lock()
-		authz.ExpiresDate = now.Add(validAuthzExpire)
-		authz.Expires = authz.ExpiresDate.Format(time.RFC3339)
-		authz.Status = acme.StatusValid
-		authz.Unlock()
-
-		// Set the authorization & challenge to valid
-		chal.Lock()
-		chal.Status = acme.StatusValid
-		chal.Unlock()
-
-		va.log.Printf("authz %s set VALID by completed challenge %s", authz.ID, chal.ID)
 	}
+
+	// If there was no error, then the challenge succeeded and the authz is valid
+	va.setAuthzValid(authz, chal)
+	va.log.Printf("authz %s set VALID by completed challenge %s", authz.ID, chal.ID)
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
@@ -195,6 +227,23 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		len := time.Duration(rand.Intn(15))
 		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
 		va.clk.Sleep(time.Second * len)
+	}
+
+	// If `alwaysValid` is true then return a validation record immediately
+	// without actually making any validation requests.
+	if va.alwaysValid {
+		va.log.Printf("%s is enabled. Skipping real validation of challenge %s",
+			noValidateEnvVar, task.Challenge.ID)
+		// NOTE(@cpu): The validation record's URL will not match the value it would
+		// have received in a real validation request. For simplicity when faking
+		// validation we always set it to the task identifier regardless of challenge
+		// type. For example comparison, a real DNS-01 validation would set
+		// the URL to the `_acme-challenge` subdomain.
+		results <- &core.ValidationRecord{
+			URL:         task.Identifier,
+			ValidatedAt: va.clk.Now(),
+		}
+		return
 	}
 
 	switch task.Challenge.Type {

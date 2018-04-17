@@ -91,6 +91,18 @@ variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
 
+### Skipping Validation
+
+If you want to avoid the hassle of having to stand up a challenge response
+server for real HTTP-01, DNS-01 or TLS-ALPN-01 validation requests Pebble
+supports a mode that always treats challenge validation requests as successful.
+By default this mode is disabled and challenge validation is performed.
+
+To have all challenge POST requests succeed without performing any validation
+run:
+
+`PEBBLE_VA_ALWAYS_VALID=1 pebble`
+
 ### Invalid Anti-Replay Nonce Errors
 
 The `urn:ietf:params:acme:error:badNonce` error type is meant to be retry-able.
