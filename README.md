@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) test
+is a small [ACME-11](https://tools.ietf.org/html/draft-ietf-acme-acme-11) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -18,20 +18,22 @@ support revocation or account key rollover.
 
 ## Goals
 
-1. Produce a simplified testing front end
-2. Move rapidly to gain [ACME draft-09](https://tools.ietf.org/html/draft-ietf-acme-acme-09) experience
-3. Write "idealized" code that can be adopted back into Boulder
-4. Aggressively build in guardrails against non-testing usage
+Pebble has several top level goals:
+
+1. Provide a simplified ACME testing front end
+1. Provide a test-bed for new and compatibility breaking ACME features
+1. Encourage ACME client best-practices
+1. Aggressively build in guardrails against non-testing usage
 
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
-ACME-09 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
+ACME v2 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
 RabbitMQ, etc), and is operationally complex to integrate with other projects.
 
-Where possible Pebble aims to produce code that can be used to inform the
-pending Boulder support for ACME-09, through contribution of code as well as
-design lessons learned. Development of Pebble is meant to be rapid, and to
-produce a minimum working prototype on a short schedule.
+Where possible Pebble aims to be a test-bed for new ACME protocol features that
+can be used to inform later Boulder support. Pebble provides a way for Boulder
+developers to test compatibility breaking changes more aggressively than is
+appropriate for Boulder.
 
 In places where the ACME specification allows customization/CA choice Pebble
 aims to make choices different from Boulder. For instance, Pebble changes the
@@ -57,6 +59,24 @@ clients are not hardcoding URLs.)
 ## Usage
 
 `pebble -config ./test/config/pebble-config.json`
+
+### Strict Mode
+
+Pebble's goal to aggressively support new protocol features and backwards
+compatibility breaking changes is slightly at odds with its goal to provide
+a simple, light-weight ACME test server for clients to use in integration tests.
+On the one hand we want to introduce breaking changes quickly and use Pebble as
+a test-bed for this. On the other we want to make sure we don't break client
+integration tests using Pebble too often.
+
+As a balance to meet these two needs Pebble supports a `-strict` flag. By
+running Pebble with `-strict false` changes known to break client compatibility
+are disabled.
+
+Presently we default `-strict` to false but this **will change in the future**.
+If you are using Pebble for integration tests and favour reliability over
+learning about breaking changes ASAP please explicitly run Pebble with `-strict
+false`.
 
 ### Testing at full speed
 
