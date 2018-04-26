@@ -13,9 +13,6 @@ Pebble is **NOT INTENDED FOR PRODUCTION USE**. Pebble is for **testing only**.
 By design Pebble will drop all of its state between invocations and will
 randomize keys/certificates used for issuance.
 
-Pebble is not yet a **complete** ACME implementation. It does not presently
-support revocation or account key rollover.
-
 ## Goals
 
 Pebble has several top level goals:
@@ -48,6 +45,25 @@ between executions. Pebble will also randomize keys/certificates used for
 issuance. Where possible Pebble will make decisions that force clients to
 implement ACME correctly (e.g. randomizing `/directory` endpoint URLs to ensure
 clients are not hardcoding URLs.)
+
+## Limitations
+
+Pebble is missing some ACME features. It does not presently
+support certificate revocation, account key rollover, the "orders" field of
+account objects, subproblems, pre-authorization or external account binding. PRs
+are welcome!
+
+Pebble does not perform all of the same input validation as Boulder. Some domain
+names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
+
+Pebble uses the system DNS resolver. This may mean that caching causes problems
+with DNS-01 validation. It may also mean that no DNSSEC validation is performed.
+You should configure your system's recursive DNS resolver according to your
+needs.
+
+Pebble does not enforce any rate limits. It is not presently an appropriate tool
+for testing that your client handles Boulder/Let's Encrypt rate limits
+correctly.
 
 ## Install
 
