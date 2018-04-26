@@ -185,7 +185,6 @@ func (va VAImpl) setAuthzInvalid(
 	chal.Error = err
 	// Update the challenge status
 	chal.Status = acme.StatusInvalid
-	chal.Unlock()
 }
 
 func (va VAImpl) process(task *vaTask) {
