@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -69,6 +70,12 @@ const (
 
 	// POST requests with a JWS body must have the following Content-Type header
 	expectedJWSContentType = "application/jose+json"
+
+	// RFC 1034 says DNS labels have a max of 63 octets, and names have a max of 255
+	// octets: https://tools.ietf.org/html/rfc1035#page-10. Since two of those octets
+	// are taken up by the leading length byte and the trailing root period the actual
+	// max length becomes 253.
+	maxDNSIdentifierLength = 253
 )
 
 type requestEvent struct {
@@ -754,7 +761,24 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 }
 
-func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *acme.ProblemDetails {
+// isDNSCharacter is ported from Boulder's `policy/pa.go` implementation.
+func isDNSCharacter(ch byte) bool {
+	return ('a' <= ch && ch <= 'z') ||
+		('A' <= ch && ch <= 'Z') ||
+		('0' <= ch && ch <= '9') ||
+		ch == '.' || ch == '-'
+}
+
+/* TODO(@cpu): Pebble's validation of domain names is still pretty weak
+ * compared to Boulder. We should consider adding:
+ * 1) Checks for the # of labels, and the size of each label
+ * 2) Checks against the Public Suffix List
+ * 3) Checks against a configured domain blocklist
+ * 4) Checks for malformed IDN, RLDH, etc
+ */
+// verifyOrder checks that a new order is considered well formed. Light
+// validation is done on the order identifiers.
+func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails {
 	// Lock the order for reading
 	order.RLock()
 	defer order.RUnlock()
@@ -762,9 +786,6 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *a
 	// Shouldn't happen - defensive check
 	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
-	}
-	if reg == nil {
-		return acme.InternalErrorProblem("Account is nil")
 	}
 	idents := order.Identifiers
 	if len(idents) == 0 {
@@ -778,11 +799,38 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order, reg *core.Account) *a
 				ident.Type, ident.Value))
 		}
 
-		// TODO(@cpu): We _very lightly_ validate the DNS identifiers in an order
-		// compared to Boulder's full-fledged policy authority. We should consider
-		// porting more of this logic to Pebble to let ACME clients test error
-		// handling for policy rejection errors.
 		rawDomain := ident.Value
+		if rawDomain == "" {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS identifier with empty value"))
+		}
+
+		for _, ch := range []byte(rawDomain) {
+			if !isDNSCharacter(ch) {
+				return acme.MalformedProblem(fmt.Sprintf(
+					"Order included DNS identifier with a value containing an illegal character: %q",
+					ch))
+			}
+		}
+
+		if len(rawDomain) > maxDNSIdentifierLength {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS identifier that was longer than %d characters",
+				maxDNSIdentifierLength))
+		}
+
+		if ip := net.ParseIP(rawDomain); ip != nil {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included a DNS identifier with an IP address value: %q\n",
+				rawDomain))
+		}
+
+		if strings.HasSuffix(rawDomain, ".") {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included a DNS identifier with a value ending in a period: %q\n",
+				rawDomain))
+		}
+
 		// If there is a wildcard character in the ident value there should be only
 		// *one* instance
 		if strings.Count(rawDomain, "*") > 1 {
@@ -962,7 +1010,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	// Verify the details of the order before creating authorizations
-	if err := wfe.verifyOrder(order, existingReg); err != nil {
+	if err := wfe.verifyOrder(order); err != nil {
 		wfe.sendError(err, response)
 		return
 	}
