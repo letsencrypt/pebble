@@ -1042,12 +1042,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("Added order %q to the db\n", order.ID)
 	wfe.log.Printf("There are now %d orders in the db\n", count)
 
-	// Populate a finalization URL for this order
-	order.Finalize = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
-
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, order.Order)
+
+	orderResp := wfe.orderForDisplay(order, request)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
