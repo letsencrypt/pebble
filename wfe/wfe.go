@@ -1042,12 +1042,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("Added order %q to the db\n", order.ID)
 	wfe.log.Printf("There are now %d orders in the db\n", count)
 
-	// Populate a finalization URL for this order
-	order.Finalize = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
-
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
 	response.Header().Add("Location", orderURL)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, order.Order)
+
+	orderResp := wfe.orderForDisplay(order, request)
+	err = wfe.writeJsonResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
@@ -1064,19 +1063,36 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	order.RLock()
 	defer order.RUnlock()
 
+	// Copy the initial OrderRequest from the internal order object to mutate and
+	// use as the result.
+	result := order.Order
+
+	// Randomize the order of the order authorization URLs as well as the order's
+	// identifiers. ACME draft Section 7.4 "Applying for Certificate Issuance"
+	// says:
+	//   Clients SHOULD NOT make any assumptions about the sort order of
+	//   "identifiers" or "authorizations" elements in the returned order
+	//   object.
+	rand.Shuffle(len(result.Authorizations), func(i, j int) {
+		result.Authorizations[i], result.Authorizations[j] = result.Authorizations[j], result.Authorizations[i]
+	})
+	rand.Shuffle(len(result.Identifiers), func(i, j int) {
+		result.Identifiers[i], result.Identifiers[j] = result.Identifiers[j], result.Identifiers[i]
+	})
+
 	// Populate a finalization URL for this order
-	order.Finalize = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
+	result.Finalize = wfe.relativeEndpoint(request,
+		fmt.Sprintf("%s%s", orderFinalizePath, order.ID))
 
 	// If the order has a cert ID then set the certificate URL by constructing
 	// a relative path based on the HTTP request & the cert ID
 	if order.CertificateObject != nil {
-		order.Certificate = wfe.relativeEndpoint(
+		result.Certificate = wfe.relativeEndpoint(
 			request,
 			certPath+order.CertificateObject.ID)
 	}
 
-	// Return only the initial OrderRequest not the internal object
-	return order.Order
+	return result
 }
 
 // Order retrieves the details of an existing order
@@ -1266,30 +1282,40 @@ func (wfe *WebFrontEndImpl) maybeIssue(order *core.Order) *acme.ProblemDetails {
 
 // prepAuthorizationForDisplay prepares the provided acme.Authorization for
 // display to an ACME client.
-func prepAuthorizationForDisplay(authz acme.Authorization) *acme.Authorization {
-	identVal := authz.Identifier.Value
+func prepAuthorizationForDisplay(authz acme.Authorization) acme.Authorization {
+	// Copy the authz to mutate and return
+	result := authz
+
+	identVal := result.Identifier.Value
 	// If the authorization identifier has a wildcard in the value, remove it and
 	// set the Wildcard field to true
 	if strings.HasPrefix(identVal, "*.") {
-		authz.Identifier.Value = strings.TrimPrefix(identVal, "*.")
-		authz.Wildcard = true
+		result.Identifier.Value = strings.TrimPrefix(identVal, "*.")
+		result.Wildcard = true
 	}
 
 	// If the authz isn't pending then we need to filter the challenges displayed
 	// to only those that were used to make the authz valid || invalid.
-	if authz.Status != acme.StatusPending {
+	if result.Status != acme.StatusPending {
 		var chals []*acme.Challenge
 		// Scan each of the authz's challenges
-		for _, c := range authz.Challenges {
+		for _, c := range result.Challenges {
 			// Include any that have an associated error, or that are status valid
 			if c.Error != nil || c.Status == acme.StatusValid {
 				chals = append(chals, c)
 			}
 		}
 		// Replace the authz's challenges with the filtered set
-		authz.Challenges = chals
+		result.Challenges = chals
 	}
-	return &authz
+
+	// Randomize the order of the challenges in the returned authorization.
+	// Clients should not make any assumptions about the sort order.
+	rand.Shuffle(len(result.Challenges), func(i, j int) {
+		result.Challenges[i], result.Challenges[j] = result.Challenges[j], result.Challenges[i]
+	})
+
+	return result
 }
 
 func (wfe *WebFrontEndImpl) Authz(
