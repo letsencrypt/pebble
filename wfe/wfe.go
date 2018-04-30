@@ -409,6 +409,9 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
 	prefix := wfe.relativeEndpoint(request, acctPath)
+	if !strings.HasPrefix(accountURL, prefix) {
+		return nil, acme.MalformedProblem("Key ID (kid) in JWS header missing expected URL prefix")
+	}
 	accountID := strings.TrimPrefix(accountURL, prefix)
 	if accountID == "" {
 		return nil, acme.MalformedProblem("No key ID (kid) in JWS header")
