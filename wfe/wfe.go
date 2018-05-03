@@ -769,7 +769,7 @@ func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
 		('A' <= ch && ch <= 'Z') ||
 		('0' <= ch && ch <= '9') ||
-		ch == '.' || ch == '-'
+		ch == '.' || ch == '-' || ch == '*'
 }
 
 /* TODO(@cpu): Pebble's validation of domain names is still pretty weak
