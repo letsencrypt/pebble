@@ -47,7 +47,7 @@ func main() {
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	clk := clock.Default()
-	db := db.NewMemoryStore()
+	db := db.NewMemoryStore(clk)
 	ca := ca.New(logger, db)
 	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort)
 

@@ -166,7 +166,15 @@ func (va VAImpl) setAuthzValid(authz *core.Authorization, chal *core.Challenge) 
 	chal.Status = acme.StatusValid
 }
 
-// setAuthzInvalid updates an authorization an an associated challenge to be
+// setOrderError updates an order with an error from an authorization
+// validation.
+func (va VAImpl) setOrderError(order *core.Order, err *acme.ProblemDetails) {
+	order.Lock()
+	defer order.Unlock()
+	order.Error = err
+}
+
+// setAuthzInvalid updates an authorization and an associated challenge to be
 // status invalid. The challenge's error is set to the provided problem and both
 // the challenge and the authorization have their status updated to invalid.
 func (va VAImpl) setAuthzInvalid(
@@ -212,6 +220,8 @@ func (va VAImpl) process(task *vaTask) {
 	if err != nil {
 		va.setAuthzInvalid(authz, chal, err)
 		va.log.Printf("authz %s set INVALID by completed challenge %s", authz.ID, chal.ID)
+		va.setOrderError(authz.Order, err)
+		va.log.Printf("order %s set INVALID by invalid authz %s", authz.Order.ID, authz.ID)
 		return
 	}
 

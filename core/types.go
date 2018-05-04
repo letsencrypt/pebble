@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
 	"gopkg.in/square/go-jose.v2"
 )
@@ -23,7 +24,88 @@ type Order struct {
 	ParsedCSR            *x509.CertificateRequest
 	ExpiresDate          time.Time
 	AuthorizationObjects []*Authorization
+	BeganProcessing      bool
 	CertificateObject    *Certificate
+}
+
+func (o Order) GetStatus(clk clock.Clock) (string, error) {
+	// Lock the order for reading
+	o.RLock()
+	defer o.RUnlock()
+
+	// If the order has an error set, the status is invalid
+	if o.Error != nil {
+		return acme.StatusInvalid, nil
+	}
+
+	authzStatuses := make(map[string]int)
+
+	for _, authz := range o.AuthorizationObjects {
+		// Lock the authorization for reading
+		authz.RLock()
+		authzStatus := authz.Status
+		authzExpires := authz.ExpiresDate
+		authz.RUnlock()
+
+		authzStatuses[authzStatus]++
+
+		if authzExpires.Before(clk.Now()) {
+			authzStatuses[acme.StatusExpired]++
+		}
+	}
+
+	// An order is invalid if **any** of its authzs are invalid
+	if authzStatuses[acme.StatusInvalid] > 0 {
+		return acme.StatusInvalid, nil
+	}
+
+	// An order is invalid if **any** of its authzs are expired
+	if authzStatuses[acme.StatusExpired] > 0 {
+		return acme.StatusInvalid, nil
+	}
+
+	// An order is deactivated if **any** of its authzs are deactivated
+	if authzStatuses[acme.StatusDeactivated] > 0 {
+		return acme.StatusDeactivated, nil
+	}
+
+	// An order is pending if **any** of its authzs are pending
+	if authzStatuses[acme.StatusPending] > 0 {
+		return acme.StatusPending, nil
+	}
+
+	fullyAuthorized := len(o.Names) == authzStatuses[acme.StatusValid]
+
+	// If the order isn't fully authorized we've encountered an internal error:
+	// Above we checked for any invalid or pending authzs and should have returned
+	// early. Somehow we made it this far but also don't have the correct number
+	// of valid authzs.
+	if !fullyAuthorized {
+		return "", fmt.Errorf(
+			"Order has the incorrect number of valid authorizations & no pending, " +
+				"deactivated or invalid authorizations")
+	}
+
+	// If the order is fully authorized and the certificate serial is set then the
+	// order is valid
+	if fullyAuthorized && o.CertificateObject != nil {
+		return acme.StatusValid, nil
+	}
+
+	// If the order is fully authorized, and we have began processing it, then the
+	// order is processing.
+	if fullyAuthorized && o.BeganProcessing {
+		return acme.StatusProcessing, nil
+	}
+
+	// If the order is fully authorized, and we haven't begun processing it, then
+	// the order is pending finalization and status ready.
+	if fullyAuthorized && !o.BeganProcessing {
+		return acme.StatusReady, nil
+	}
+
+	// If none of the above cases match something weird & unexpected has happened.
+	return "", fmt.Errorf("Order is in an unknown state")
 }
 
 type Account struct {
