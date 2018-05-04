@@ -28,7 +28,7 @@ type Order struct {
 	CertificateObject    *Certificate
 }
 
-func (o Order) GetStatus(clk clock.Clock) (string, error) {
+func (o *Order) GetStatus(clk clock.Clock) (string, error) {
 	// Lock the order for reading
 	o.RLock()
 	defer o.RUnlock()
