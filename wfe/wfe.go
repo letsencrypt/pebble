@@ -48,6 +48,7 @@ const (
 	authzPath         = "/authZ/"
 	challengePath     = "/chalZ/"
 	certPath          = "/certZ/"
+	revokeCertPath    = "/revoke-cert"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -76,6 +77,12 @@ const (
 	// are taken up by the leading length byte and the trailing root period the actual
 	// max length becomes 253.
 	maxDNSIdentifierLength = 253
+
+	// Invalid revocation reason codes.
+	// The full list of codes can be found in Section 8.5.3.1 of ITU-T X.509
+	// http://www.itu.int/rec/T-REC-X.509-201210-I/en
+	unusedRevocationReason       = 7
+	aACompromiseRevocationReason = 10
 )
 
 type requestEvent struct {
@@ -238,6 +245,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
 
 	return m
 }
@@ -1617,4 +1625,61 @@ func uniqueLowerNames(names []string) []string {
 	}
 	sort.Strings(unique)
 	return unique
+}
+
+// RevokeCert revokes an ACME certificate.
+// It currently only implements one method of ACME revocation:
+// Signing the revocation request by signing it with the certificate
+// to be revoked's private key and embedding the certificate
+// to be revoked's public key as a JWK in the JWS.
+//
+// Pebble's idea of certificate revocation is to forget the certificate exists.
+// This method does not percolate to a CRL or an OCSP response.
+func (wfe *WebFrontEndImpl) RevokeCert(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	body, _, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// revokeCertReq is the ACME certificate information submitted by the client
+	var revokeCertReq struct {
+		Certificate string `json:"certificate"`
+		Reason      *uint  `json:"reason,omitempty"`
+	}
+	err := json.Unmarshal(body, &revokeCertReq)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling certificate revocation JSON body"), response)
+		return
+	}
+
+	if revokeCertReq.Reason != nil {
+		r := *revokeCertReq.Reason
+		if r == unusedRevocationReason || r > aACompromiseRevocationReason {
+			wfe.sendError(
+				acme.BadRevocationReasonProblem(fmt.Sprintf("Invalid revocation reason: %d", r)), response)
+			return
+		}
+	}
+
+	derBytes, err := base64.RawURLEncoding.DecodeString(revokeCertReq.Certificate)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error decoding Base64url-encoded DER: "+err.Error()), response)
+		return
+	}
+
+	cert := wfe.db.GetCertificateByDER(derBytes)
+	if cert == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	wfe.db.RevokeCertificate(cert)
+	response.WriteHeader(http.StatusOK)
 }
