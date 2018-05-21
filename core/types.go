@@ -59,7 +59,7 @@ func (o *Order) GetStatus(clk clock.Clock) (string, error) {
 		return acme.StatusInvalid, nil
 	}
 
-	// An order is invalid if **any** of its authzs are expired
+	// An order is expired if **any** of its authzs are expired
 	if authzStatuses[acme.StatusExpired] > 0 {
 		return acme.StatusInvalid, nil
 	}
