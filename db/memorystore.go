@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -12,6 +13,8 @@ import (
 // "database"
 type MemoryStore struct {
 	sync.RWMutex
+
+	clk clock.Clock
 
 	// Each Accounts's ID is the hex encoding of a SHA256 sum over its public
 	// key bytes.
@@ -26,8 +29,9 @@ type MemoryStore struct {
 	certificatesByID map[string]*core.Certificate
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(clk clock.Clock) *MemoryStore {
 	return &MemoryStore{
+		clk:                clk,
 		accountsByID:       make(map[string]*core.Account),
 		ordersByID:         make(map[string]*core.Order),
 		authorizationsByID: make(map[string]*core.Authorization),
@@ -95,7 +99,18 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	m.RLock()
 	defer m.RUnlock()
-	return m.ordersByID[id]
+
+	if order, ok := m.ordersByID[id]; ok {
+		orderStatus, err := order.GetStatus(m.clk)
+		if err != nil {
+			panic(err)
+		}
+		order.Lock()
+		defer order.Unlock()
+		order.Status = orderStatus
+		return order
+	}
+	return nil
 }
 
 func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {

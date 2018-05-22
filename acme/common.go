@@ -7,7 +7,9 @@ const (
 	StatusPending     = "pending"
 	StatusInvalid     = "invalid"
 	StatusValid       = "valid"
+	StatusExpired     = "expired"
 	StatusProcessing  = "processing"
+	StatusReady       = "ready"
 	StatusDeactivated = "deactivated"
 
 	IdentifierDNS = "dns"
@@ -34,14 +36,15 @@ type Account struct {
 
 // An Order is created to request issuance for a CSR
 type Order struct {
-	Status         string       `json:"status"`
-	Expires        string       `json:"expires"`
-	Identifiers    []Identifier `json:"identifiers,omitempty"`
-	Finalize       string       `json:"finalize"`
-	NotBefore      string       `json:"notBefore,omitempty"`
-	NotAfter       string       `json:"notAfter,omitempty"`
-	Authorizations []string     `json:"authorizations"`
-	Certificate    string       `json:"certificate,omitempty"`
+	Status         string          `json:"status"`
+	Error          *ProblemDetails `json:"error,omitempty"`
+	Expires        string          `json:"expires"`
+	Identifiers    []Identifier    `json:"identifiers,omitempty"`
+	Finalize       string          `json:"finalize"`
+	NotBefore      string          `json:"notBefore,omitempty"`
+	NotAfter       string          `json:"notAfter,omitempty"`
+	Authorizations []string        `json:"authorizations"`
+	Certificate    string          `json:"certificate,omitempty"`
 }
 
 // An Authorization is created for each identifier in an order

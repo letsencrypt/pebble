@@ -221,19 +221,17 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 }
 
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
-	// Lock the order for writing
-	order.Lock()
-	// If the order isn't pending, produce an error and immediately unlock
-	if order.Status != acme.StatusPending {
-		ca.log.Printf("Error: Asked to complete order %s is not status pending, was status %s",
-			order.ID, order.Status)
-		order.Unlock()
+	// Lock the order for reading
+	order.RLock()
+	// If the order isn't set as beganProcessing produce an error and immediately unlock
+	if !order.BeganProcessing {
+		ca.log.Printf("Error: Asked to complete order %s which had false beganProcessing.",
+			order.ID)
+		order.RUnlock()
 		return
 	}
-	// Otherwise update the order to be in a processing state
-	order.Status = acme.StatusProcessing
 	// Unlock the order again
-	order.Unlock()
+	order.RUnlock()
 
 	// Check the authorizations - this is done by the VA before calling
 	// CompleteOrder but we do it again for robustness sake.
@@ -255,10 +253,8 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	}
 	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, order.ID)
 
-	// Lock and update the order to valid status and store a cert ID for the wfe
-	// to use to render the certificate URL for the order
+	// Lock and update the order to store the issued certificate
 	order.Lock()
-	order.Status = acme.StatusValid
 	order.CertificateObject = cert
 	order.Unlock()
 }

@@ -1045,10 +1045,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	wfe.log.Printf("Added order %q to the db\n", order.ID)
 	wfe.log.Printf("There are now %d orders in the db\n", count)
 
-	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
+	// Get the stored order back from the DB. The memorystore will set the order's
+	// status for us.
+	storedOrder := wfe.db.GetOrderByID(order.ID)
+
+	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, storedOrder.ID))
 	response.Header().Add("Location", orderURL)
 
-	orderResp := wfe.orderForDisplay(order, request)
+	orderResp := wfe.orderForDisplay(storedOrder, request)
 	err = wfe.writeJsonResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
@@ -1171,10 +1175,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
-	// The existing order must be in a pending status to finalize it
-	if orderStatus != acme.StatusPending {
+	// The existing order must be in a ready status to finalize it
+	if orderStatus != acme.StatusReady {
 		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
-			"Order's status (%q) was not pending", orderStatus)), response)
+			"Order's status (%q) was not %s", orderStatus, acme.StatusReady)), response)
 		return
 	}
 
@@ -1228,17 +1232,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 
-	// Lock and update the order with the parsed CSR.
+	// Lock and update the order with the parsed CSR and the began processing
+	// state.
 	existingOrder.Lock()
 	existingOrder.ParsedCSR = parsedCSR
+	existingOrder.BeganProcessing = true
 	existingOrder.Unlock()
 
-	// Check whether the order is ready to issue, if it isn't, return a problem
-	prob = wfe.maybeIssue(existingOrder)
-	if prob != nil {
-		wfe.sendError(prob, response)
-		return
-	}
+	// Ask the CA to complete the order in a separate goroutine.
+	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
+	go wfe.ca.CompleteOrder(existingOrder)
+
+	// Set the existingOrder to processing before displaying to the user
+	existingOrder.Status = acme.StatusProcessing
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
@@ -1249,38 +1255,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
 	}
-}
-
-func (wfe *WebFrontEndImpl) maybeIssue(order *core.Order) *acme.ProblemDetails {
-	// Lock the order for reading to check whether all authorizations are valid
-	order.RLock()
-	authzs := order.AuthorizationObjects
-	orderID := order.ID
-	order.RUnlock()
-	for _, authz := range authzs {
-		// Lock the authorization for reading to check its status
-		authz.RLock()
-		authzStatus := authz.Status
-		authzExpires := authz.ExpiresDate
-		ident := authz.Identifier
-		authz.RUnlock()
-		// If any of the authorizations are invalid the order isn't ready to issue
-		if authzStatus != acme.StatusValid {
-			return acme.UnauthorizedProblem(fmt.Sprintf(
-				"Authorization for %q is not status valid", ident.Value))
-		}
-		// If any of the authorizations are expired the order isn't ready to issue
-		if authzExpires.Before(wfe.clk.Now()) {
-			return acme.UnauthorizedProblem(fmt.Sprintf(
-				"Authorization for %q expired %q", ident.Value, authzExpires))
-		}
-	}
-	// All the authorizations are valid, ask the CA to complete the order in
-	// a separate goroutine. CompleteOrder will transition the order status to
-	// pending.
-	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
-	go wfe.ca.CompleteOrder(order)
-	return nil
 }
 
 // prepAuthorizationForDisplay prepares the provided acme.Authorization for
