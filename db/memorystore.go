@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/jmhodges/clock"
@@ -184,4 +185,24 @@ func (m *MemoryStore) GetCertificateByID(id string) *core.Certificate {
 	m.RLock()
 	defer m.RUnlock()
 	return m.certificatesByID[id]
+}
+
+// GetCertificateByDER loops over all certificates to find the one that matches the provided DER bytes.
+// This method is linear and it's not optimized to give you a quick response.
+func (m *MemoryStore) GetCertificateByDER(der []byte) *core.Certificate {
+	m.RLock()
+	defer m.RUnlock()
+	for _, c := range m.certificatesByID {
+		if reflect.DeepEqual(c.DER, der) {
+			return c
+		}
+	}
+
+	return nil
+}
+
+func (m *MemoryStore) RevokeCertificate(cert *core.Certificate) {
+	m.Lock()
+	defer m.Unlock()
+	delete(m.certificatesByID, cert.ID)
 }

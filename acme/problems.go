@@ -16,6 +16,7 @@ const (
 	invalidContactErr      = errNS + "invalidContact"
 	unsupportedContactErr  = errNS + "unsupportedContact"
 	accountDoesNotExistErr = errNS + "accountDoesNotExist"
+	badRevocationReasonErr = errNS + "badRevocationReason"
 )
 
 type ProblemDetails struct {
@@ -129,5 +130,13 @@ func UnsupportedMediaTypeProblem(detail string) *ProblemDetails {
 		Type:       malformedErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusUnsupportedMediaType,
+	}
+}
+
+func BadRevocationReasonProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       badRevocationReasonErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
