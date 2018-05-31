@@ -260,6 +260,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		"newNonce":   noncePath,
 		"newAccount": newAccountPath,
 		"newOrder":   newOrderPath,
+		"revokeCert": revokeCertPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
