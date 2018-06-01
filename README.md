@@ -49,9 +49,10 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features. It does not presently
-support all methods of certificate revocation, account key rollover, the "orders" field of
-account objects, subproblems, pre-authorization or external account binding. PRs
-are welcome!
+support account key rollover, the "orders" field of account objects,
+subproblems, pre-authorization or external account binding. Pebble only supports
+authenticating revocation requests with a signature from the private key
+corresponding to the public key in the certificate. PRs are welcome!
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
