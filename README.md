@@ -1,7 +1,7 @@
 # Pebble
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-11](https://tools.ietf.org/html/draft-ietf-acme-acme-11) test
+is a small [ACME-12](https://tools.ietf.org/html/draft-ietf-acme-acme-12) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -49,9 +49,10 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features. It does not presently
-support certificate revocation, account key rollover, the "orders" field of
-account objects, subproblems, pre-authorization or external account binding. PRs
-are welcome!
+support account key rollover, the "orders" field of account objects,
+subproblems, pre-authorization or external account binding. Pebble only supports
+authenticating revocation requests with a signature from the private key
+corresponding to the public key in the certificate. PRs are welcome!
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
