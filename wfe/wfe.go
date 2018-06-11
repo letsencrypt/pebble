@@ -1651,7 +1651,9 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 
 	cert := wfe.db.GetCertificateByDER(derBytes)
 	if cert == nil {
-		response.WriteHeader(http.StatusNotFound)
+		wfe.sendError(
+			acme.MalformedProblem(
+				"Unable to find specified certificate. It may already be revoked"), response)
 		return
 	}
 
