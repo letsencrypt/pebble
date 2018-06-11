@@ -1615,7 +1615,9 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, _, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	// We use extractJWK rather than lookupJWK here because the request is
+	// authenticated with an embedded JWK not associated with an account/kid.
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1652,6 +1654,15 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	cert := wfe.db.GetCertificateByDER(derBytes)
 	if cert == nil {
 		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	// Check that the JWK that authenticated the request is equal to the
+	// certificate's public key
+	if !keyDigestEquals(key, cert.Cert.PublicKey) {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"JWK embedded in revocation request must be the same public key as the cert to be revoked"),
+			response)
 		return
 	}
 
