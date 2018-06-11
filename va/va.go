@@ -357,7 +357,14 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
 		if IdPeAcmeIdentifierV1.Equal(ext.Id) && ext.Critical {
-			if subtle.ConstantTimeCompare(h[:], ext.Value) == 1 {
+			var extValue []byte
+			if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Malformed acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)	
+				result.Error = acme.UnauthorizedProblem(errText)
+				return result
+			}
+			if subtle.ConstantTimeCompare(h[:], extValue) == 1 {
 				return result
 			}
 			errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
