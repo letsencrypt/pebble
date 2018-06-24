@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 
@@ -16,11 +18,12 @@ import (
 
 type config struct {
 	Pebble struct {
-		ListenAddress string
-		HTTPPort      int
-		TLSPort       int
-		Certificate   string
-		PrivateKey    string
+		ListenAddress    string
+		HTTPPort         int
+		TLSPort          int
+		Certificate      string
+		PrivateKey       string
+		DNSServerAddress string
 	}
 }
 
@@ -33,6 +36,10 @@ func main() {
 		"strict",
 		false,
 		"Enable strict mode to test upcoming API breaking changes")
+	resolverAddress := flag.String(
+		"dnsserver",
+		"",
+		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53). Override the configuration file.")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -45,6 +52,17 @@ func main() {
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	var dnsServerAddress string
+	if len(*resolverAddress) > 0 {
+		dnsServerAddress = *resolverAddress
+	} else {
+		dnsServerAddress = c.Pebble.DNSServerAddress
+	}
+
+	if len(dnsServerAddress) > 0 {
+		setupCustomDNSResolver(dnsServerAddress)
+	}
 
 	clk := clock.Default()
 	db := db.NewMemoryStore(clk)
@@ -61,4 +79,14 @@ func main() {
 		c.Pebble.PrivateKey,
 		muxHandler)
 	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
+}
+
+func setupCustomDNSResolver(dnsResolverAddress string) {
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{}
+			return d.DialContext(ctx, "udp", dnsResolverAddress)
+		},
+	}
 }
