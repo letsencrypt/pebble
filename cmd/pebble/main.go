@@ -64,7 +64,7 @@ func main() {
 		setupCustomDNSResolver(dnsServerAddress)
 	}
 
-	clk := clock.Default()
+	clk := clock.New()
 	db := db.NewMemoryStore(clk)
 	ca := ca.New(logger, db)
 	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort)
