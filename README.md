@@ -108,6 +108,9 @@ variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
 
+The maximal number of seconds to sleep can be configured by defining
+`PEBBLE_VA_SLEEPTIME`. It must be set to a positive integer.
+
 ### Skipping Validation
 
 If you want to avoid the hassle of having to stand up a challenge response
