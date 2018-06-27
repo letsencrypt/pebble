@@ -53,8 +53,8 @@ const (
 	sleepTimeEnvVar = "PEBBLE_VA_SLEEPTIME"
 
 	// defaultSleepTime defines the default sleep time (in seconds) between
-	// validation attempts. Can be disabled resp. modified by the environment
-	// variables PEBBLE_VA_NOSLEEP and PEBBLE_VA_SLEEPTIME (see above).
+	// validation attempts. Can be disabled or modified by the environment
+	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
 	defaultSleepTime = 15
 
 	// noValidateEnvVar defines the environment variable name used to signal that
@@ -128,7 +128,7 @@ func New(
 	sleepTimeInt, err := strconv.Atoi(sleepTime)
 	if err == nil && sleepTimeInt >= 1 {
 		va.sleepTime = sleepTimeInt
-		va.log.Printf("Setting maximal random VA sleep time to %d seconds", va.sleepTime)
+		va.log.Printf("Setting maximum random VA sleep time to %d seconds", va.sleepTime)
 	}
 
 	noValidate := os.Getenv(noValidateEnvVar)
