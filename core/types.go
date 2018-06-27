@@ -145,10 +145,11 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 }
 
 type Certificate struct {
-	ID     string
-	Cert   *x509.Certificate
-	DER    []byte
-	Issuer *Certificate
+	ID        string
+	Cert      *x509.Certificate
+	DER       []byte
+	Issuer    *Certificate
+	AccountID string
 }
 
 func (c Certificate) PEM() []byte {
