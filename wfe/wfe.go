@@ -1821,7 +1821,8 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	cert := wfe.db.GetCertificateByDER(derBytes)
 	if cert == nil {
-		return acme.MalformedProblem("Requested certificate not found")
+		return acme.MalformedProblem(
+			"Unable to find specified certificate. It may already be revoked")
 	}
 
 	if prob := authorizedToRevoke(cert); prob != nil {
