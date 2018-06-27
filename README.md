@@ -97,7 +97,7 @@ false`.
 
 ### Testing at full speed
 
-By default Pebble will sleep a random number of seconds (from 1 to 15) between
+By default Pebble will sleep a random number of seconds (from 0 to 15) between
 individual challenge validation attempts. This ensures clients don't make
 assumptions about when the challenge is solved from the CA side by observing
 a single request for a challenge response. Instead clients must poll the
