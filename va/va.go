@@ -128,6 +128,7 @@ func New(
 	sleepTimeInt, err := strconv.Atoi(sleepTime)
 	if err == nil && sleepTimeInt >= 1 {
 		va.sleepTime = sleepTimeInt
+		va.log.Printf("Setting maximal random VA sleep time to %d seconds", va.sleepTime)
 	}
 
 	noValidate := os.Getenv(noValidateEnvVar)
