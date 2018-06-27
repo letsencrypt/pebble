@@ -52,6 +52,11 @@ const (
 	//   PEBBLE_VA_SLEEPTIME=5 pebble
 	sleepTimeEnvVar = "PEBBLE_VA_SLEEPTIME"
 
+	// defaultSleepTime defines the default sleep time (in seconds) between
+	// validation attempts. Can be disabled resp. modified by the environment
+	// variables PEBBLE_VA_NOSLEEP and PEBBLE_VA_SLEEPTIME (see above).
+	defaultSleepTime = 15
+
 	// noValidateEnvVar defines the environment variable name used to signal that
 	// the VA should *not* actually validate challenges. Set this to 1 when you
 	// invoke Pebble if you wish validation to always succeed without actually
@@ -107,7 +112,7 @@ func New(
 		tlsPort:   tlsPort,
 		tasks:     make(chan *vaTask, taskQueueSize),
 		sleep:     true,
-		sleepTime: 15,
+		sleepTime: defaultSleepTime,
 	}
 
 	// Read the PEBBLE_VA_NOSLEEP environment variable string
