@@ -1748,7 +1748,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		}
 		return acme.UnauthorizedProblem(
 			fmt.Sprintf(
-				"Account %q did not request issuance of the to-be-revoked certificate",
+				"The certificate being revoked is not associated with account %q",
 				existingAcct.ID))
 	}
 	return wfe.processRevocation(ctx, body, authorizedToRevoke, request, logEvent)
