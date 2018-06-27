@@ -18,12 +18,11 @@ import (
 
 type config struct {
 	Pebble struct {
-		ListenAddress    string
-		HTTPPort         int
-		TLSPort          int
-		Certificate      string
-		PrivateKey       string
-		DNSServerAddress string
+		ListenAddress string
+		HTTPPort      int
+		TLSPort       int
+		Certificate   string
+		PrivateKey    string
 	}
 }
 
@@ -53,15 +52,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	var dnsServerAddress string
 	if len(*resolverAddress) > 0 {
-		dnsServerAddress = *resolverAddress
-	} else {
-		dnsServerAddress = c.Pebble.DNSServerAddress
-	}
-
-	if len(dnsServerAddress) > 0 {
-		setupCustomDNSResolver(dnsServerAddress)
+		setupCustomDNSResolver(*resolverAddress)
 	}
 
 	clk := clock.New()
@@ -84,7 +76,7 @@ func main() {
 func setupCustomDNSResolver(dnsResolverAddress string) {
 	net.DefaultResolver = &net.Resolver{
 		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			d := net.Dialer{}
 			return d.DialContext(ctx, "udp", dnsResolverAddress)
 		},
