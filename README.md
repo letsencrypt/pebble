@@ -57,11 +57,6 @@ corresponding to the public key in the certificate. PRs are welcome!
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
 
-Pebble uses the system DNS resolver. This may mean that caching causes problems
-with DNS-01 validation. It may also mean that no DNSSEC validation is performed.
-You should configure your system's recursive DNS resolver according to your
-needs.
-
 Pebble does not enforce any rate limits. It is not presently an appropriate tool
 for testing that your client handles Boulder/Let's Encrypt rate limits
 correctly.
@@ -94,6 +89,20 @@ Presently we default `-strict` to false but this **will change in the future**.
 If you are using Pebble for integration tests and favour reliability over
 learning about breaking changes ASAP please explicitly run Pebble with `-strict
 false`.
+
+### DNS Server
+
+By default Pebble uses the system DNS resolver, this may mean that caching causes
+problems with DNS-01 validation. It may also mean that no DNSSEC validation is
+performed.
+You should configure your system's recursive DNS resolver according to your
+needs or use the `-dnsserver` flag to define an address to a DNS server. 
+
+```
+pebble -dnsserver 10.10.10.10:5053
+pebble -dnsserver 8.8.8.8:53
+pebble -dnsserver :5053
+```
 
 ### Testing at full speed
 
