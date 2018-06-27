@@ -153,7 +153,7 @@ func (ca *CAImpl) newIntermediateIssuer() error {
 	return nil
 }
 
-func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
@@ -192,10 +192,11 @@ func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey) (*core.
 
 	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:     hexSerial,
-		Cert:   cert,
-		DER:    der,
-		Issuer: issuer.cert,
+		ID:        hexSerial,
+		AccountID: accountID,
+		Cert:      cert,
+		DER:       der,
+		Issuer:    issuer.cert,
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -246,7 +247,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey, order.AccountID)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return

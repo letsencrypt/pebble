@@ -397,6 +397,37 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 	return parsedJWS, nil
 }
 
+// jwsAuthType represents whether a given POST request is authenticated using
+// a JWS with an embedded JWK (new-account, possibly revoke-cert) or an
+// embeded Key ID or an unsupported/unknown auth type.
+type jwsAuthType int
+
+const (
+	embeddedJWK jwsAuthType = iota
+	embeddedKeyID
+	invalidAuthType
+)
+
+// checkJWSAuthType examines a JWS' protected headers to determine if
+// the request being authenticated by the JWS is identified using an embedded
+// JWK or an embedded key ID. If no signatures are present, or mutually
+// exclusive authentication types are specified at the same time, a problem is
+// returned.
+func checkJWSAuthType(jws *jose.JSONWebSignature) (jwsAuthType, *acme.ProblemDetails) {
+	// checkJWSAuthType is called after parseJWS() which defends against the
+	// incorrect number of signatures.
+	header := jws.Signatures[0].Header
+	// There must not be a Key ID *and* an embedded JWK
+	if header.KeyID != "" && header.JSONWebKey != nil {
+		return invalidAuthType, acme.MalformedProblem("jwk and kid header fields are mutually exclusive")
+	} else if header.KeyID != "" {
+		return embeddedKeyID, nil
+	} else if header.JSONWebKey != nil {
+		return embeddedJWK, nil
+	}
+	return invalidAuthType, nil
+}
+
 // extractJWK returns a JSONWebKey embedded in a JWS header.
 func (wfe *WebFrontEndImpl) extractJWK(_ *http.Request, jws *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails) {
 	header := jws.Signatures[0].Header
@@ -436,6 +467,35 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 	return account.Key, nil
 }
 
+func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetails {
+	if wfe.strict {
+		// Section 6.2 says to reject JWS requests without the expected Content-Type
+		// using a status code of http.UnsupportedMediaType
+		if _, present := request.Header["Content-Type"]; !present {
+			return acme.UnsupportedMediaTypeProblem(
+				`missing Content-Type header on POST. ` +
+					`Content-Type must be "application/jose+json"`)
+		}
+		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+			return acme.UnsupportedMediaTypeProblem(
+				`Invalid Content-Type header on POST. ` +
+					`Content-Type must be "application/jose+json"`)
+		}
+	}
+
+	if _, present := request.Header["Content-Length"]; !present {
+		return acme.MalformedProblem("missing Content-Length header on POST")
+	}
+
+	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
+	// the HTTP request, it needs to be part of the signed JWS request body
+	if _, present := request.Header["Replay-Nonce"]; present {
+		return acme.MalformedProblem("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
+	}
+
+	return nil
+}
+
 // keyExtractor is a function that returns a JSONWebKey based on input from a
 // user-provided JSONWebSignature, for instance by extracting it from the input,
 // or by looking it up in a database based on the input.
@@ -450,29 +510,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	request *http.Request,
 	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 
-	if wfe.strict {
-		// Section 6.2 says to reject JWS requests without the expected Content-Type
-		// using a status code of http.UnsupportedMediaType
-		if _, present := request.Header["Content-Type"]; !present {
-			return nil, nil, acme.UnsupportedMediaTypeProblem(
-				`missing Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
-		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
-			return nil, nil, acme.UnsupportedMediaTypeProblem(
-				`Invalid Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
-	}
-
-	if _, present := request.Header["Content-Length"]; !present {
-		return nil, nil, acme.MalformedProblem("missing Content-Length header on POST")
-	}
-
-	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
-	// the HTTP request, it needs to be part of the signed JWS request body
-	if _, present := request.Header["Replay-Nonce"]; present {
-		return nil, nil, acme.MalformedProblem("HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field")
+	if prob := wfe.validPOST(request); prob != nil {
+		return nil, nil, prob
 	}
 
 	if request.Body == nil {
@@ -495,6 +534,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, nil, prob
 	}
 
+	return wfe.verifyJWS(pubKey, parsedJWS, request)
+}
+
+func (wfe *WebFrontEndImpl) verifyJWS(
+	pubKey *jose.JSONWebKey,
+	parsedJWS *jose.JSONWebSignature,
+	request *http.Request) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
 	// TODO(@cpu): `checkAlgorithm()`
 
 	payload, err := parsedJWS.Verify(pubKey)
@@ -1615,57 +1661,173 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	// We use extractJWK rather than lookupJWK here because the request is
-	// authenticated with an embedded JWK not associated with an account/kid.
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
+
+	// The ACME specification handles the verification of revocation requests
+	// differently from other endpoints that always use one JWS authentication
+	// method. For this endpoint we need to accept a JWS with an embedded JWK, or
+	// a JWS with an embedded key ID, handling each case differently in terms of
+	// which certificates are authorized to be revoked by the requester
+
+	bodyBytes, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		wfe.sendError(
+			acme.InternalErrorProblem("unable to read request body"), response)
+		return
+	}
+	body := string(bodyBytes)
+
+	parsedJWS, err := wfe.parseJWS(body)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem(err.Error()), response)
+		return
+	}
+
+	if prob := wfe.validPOST(request); prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Determine the authentication type for this request
+	authType, prob := checkJWSAuthType(parsedJWS)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
 	}
+
+	// Handle the revocation request according to how it is authenticated, or if
+	// the authentication type is unknown, error immediately
+	if authType == embeddedKeyID {
+		prob = wfe.revokeCertByKeyID(ctx, logEvent, parsedJWS, request)
+	} else if authType == embeddedJWK {
+		prob = wfe.revokeCertByJWK(ctx, logEvent, parsedJWS, request)
+	} else {
+		prob = acme.MalformedProblem("Malformed JWS, no KeyID or embedded JWK")
+	}
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+}
+
+func (wfe *WebFrontEndImpl) revokeCertByKeyID(
+	ctx context.Context,
+	logEvent *requestEvent,
+	jws *jose.JSONWebSignature,
+	request *http.Request) *acme.ProblemDetails {
+
+	pubKey, prob := wfe.lookupJWK(request, jws)
+	if prob != nil {
+		return prob
+	}
+
+	body, key, prob := wfe.verifyJWS(pubKey, jws, request)
+	if prob != nil {
+		return prob
+	}
+
+	keyID, err := keyToID(key)
+	if err != nil {
+		return acme.MalformedProblem(err.Error())
+	}
+
+	existingAcct := wfe.db.GetAccountByID(keyID)
+	if existingAcct == nil {
+		return acme.UnauthorizedProblem(fmt.Sprintf("Account with keyID %q does not exist", keyID))
+	}
+
+	// An account is only authorized to revoke its own certificates presently.
+	// TODO(@cpu): Allow an account to revoke another account's certificate if
+	// the revoker account has valid authorizations for all of the names in the
+	// to-be-revoked certificate.
+	authorizedToRevoke := func(cert *core.Certificate) *acme.ProblemDetails {
+		if cert.AccountID == existingAcct.ID {
+			return nil
+		}
+		return acme.UnauthorizedProblem(
+			fmt.Sprintf("Account %q did not request issuance of the to-be-revoked certificate"))
+	}
+	return wfe.processRevocation(ctx, body, authorizedToRevoke, request, logEvent)
+}
+
+func (wfe *WebFrontEndImpl) revokeCertByJWK(
+	ctx context.Context,
+	logEvent *requestEvent,
+	jws *jose.JSONWebSignature,
+	request *http.Request) *acme.ProblemDetails {
+
+	var requestKey *jose.JSONWebKey
+	pubKey, prob := wfe.extractJWK(request, jws)
+	if prob != nil {
+		return prob
+	}
+	body, key, prob := wfe.verifyJWS(pubKey, jws, request)
+	if prob != nil {
+		return prob
+	}
+	requestKey = key
+
+	// For embedded JWK revocations we decide if a requester is able to revoke a specific
+	// certificate by checking that to-be-revoked certificate has the same public
+	// key as the JWK that was used to authenticate the request
+	authorizedToRevoke := func(cert *core.Certificate) *acme.ProblemDetails {
+		if keyDigestEquals(requestKey, cert.Cert.PublicKey) {
+			return nil
+		}
+		return acme.UnauthorizedProblem(
+			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
+	}
+	return wfe.processRevocation(ctx, body, authorizedToRevoke, request, logEvent)
+}
+
+// authorizedToRevokeCert is a callback function that can be used to validate if
+// a given requester is authorized to revoke the certificate parsed out of the
+// revocation request. If the requester is not authorized to revoke the
+// certificate a problem is returned. It is expected to be a closure containing
+// additional state (an account ID or key) that will be used to make the
+// decision.
+type authorizedToRevokeCert func(*core.Certificate) *acme.ProblemDetails
+
+func (wfe *WebFrontEndImpl) processRevocation(
+	ctx context.Context,
+	jwsBody []byte,
+	authorizedToRevoke authorizedToRevokeCert,
+	request *http.Request,
+	logEvent *requestEvent) *acme.ProblemDetails {
 
 	// revokeCertReq is the ACME certificate information submitted by the client
 	var revokeCertReq struct {
 		Certificate string `json:"certificate"`
 		Reason      *uint  `json:"reason,omitempty"`
 	}
-	err := json.Unmarshal(body, &revokeCertReq)
+	err := json.Unmarshal(jwsBody, &revokeCertReq)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling certificate revocation JSON body"), response)
-		return
+		return acme.MalformedProblem("Error unmarshaling certificate revocation JSON body")
 	}
 
 	if revokeCertReq.Reason != nil {
 		r := *revokeCertReq.Reason
 		if r == unusedRevocationReason || r > aACompromiseRevocationReason {
-			wfe.sendError(
-				acme.BadRevocationReasonProblem(fmt.Sprintf("Invalid revocation reason: %d", r)), response)
-			return
+			return acme.BadRevocationReasonProblem(fmt.Sprintf("Invalid revocation reason: %d", r))
 		}
 	}
 
 	derBytes, err := base64.RawURLEncoding.DecodeString(revokeCertReq.Certificate)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded DER: "+err.Error()), response)
-		return
+		return acme.MalformedProblem("Error decoding Base64url-encoded DER: " + err.Error())
 	}
 
 	cert := wfe.db.GetCertificateByDER(derBytes)
 	if cert == nil {
-		response.WriteHeader(http.StatusNotFound)
-		return
+		return acme.MalformedProblem("Requested certificate not found")
 	}
 
-	// Check that the JWK that authenticated the request is equal to the
-	// certificate's public key
-	if !keyDigestEquals(key, cert.Cert.PublicKey) {
-		wfe.sendError(acme.UnauthorizedProblem(
-			"JWK embedded in revocation request must be the same public key as the cert to be revoked"),
-			response)
-		return
+	if prob := authorizedToRevoke(cert); prob != nil {
+		return prob
 	}
 
 	wfe.db.RevokeCertificate(cert)
-	response.WriteHeader(http.StatusOK)
+	return nil
 }
