@@ -38,7 +38,7 @@ func main() {
 	resolverAddress := flag.String(
 		"dnsserver",
 		"",
-		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53). Override the configuration file.")
+		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53).")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
