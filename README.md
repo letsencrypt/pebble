@@ -106,7 +106,7 @@ pebble -dnsserver :5053
 
 ### Testing at full speed
 
-By default Pebble will sleep a random number of seconds (from 1 to 15) between
+By default Pebble will sleep a random number of seconds (from 0 to 15) between
 individual challenge validation attempts. This ensures clients don't make
 assumptions about when the challenge is solved from the CA side by observing
 a single request for a challenge response. Instead clients must poll the
@@ -116,6 +116,9 @@ To test issuance "at full speed" with no artificial sleeps set the environment
 variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
 `PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
+
+The maximal number of seconds to sleep can be configured by defining
+`PEBBLE_VA_SLEEPTIME`. It must be set to a positive integer.
 
 ### Skipping Validation
 

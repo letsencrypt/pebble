@@ -45,6 +45,18 @@ const (
 	//   PEBBLE_VA_NOSLEEP=1 pebble
 	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
 
+	// sleepTimeEnvVar defines the environment variable name used to set the time
+	// the VA should sleep between validation attempts (if not disabled). Set this
+	// e.g. to 5 when you invoke Pebble if you wish the delays to be between 0
+	// and 5 seconds (instead between 0 and 15 seconds):
+	//   PEBBLE_VA_SLEEPTIME=5 pebble
+	sleepTimeEnvVar = "PEBBLE_VA_SLEEPTIME"
+
+	// defaultSleepTime defines the default sleep time (in seconds) between
+	// validation attempts. Can be disabled or modified by the environment
+	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
+	defaultSleepTime = 15
+
 	// noValidateEnvVar defines the environment variable name used to signal that
 	// the VA should *not* actually validate challenges. Set this to 1 when you
 	// invoke Pebble if you wish validation to always succeed without actually
@@ -85,6 +97,7 @@ type VAImpl struct {
 	tlsPort     int
 	tasks       chan *vaTask
 	sleep       bool
+	sleepTime   int
 	alwaysValid bool
 }
 
@@ -93,12 +106,13 @@ func New(
 	clk clock.Clock,
 	httpPort, tlsPort int) *VAImpl {
 	va := &VAImpl{
-		log:      log,
-		clk:      clk,
-		httpPort: httpPort,
-		tlsPort:  tlsPort,
-		tasks:    make(chan *vaTask, taskQueueSize),
-		sleep:    true,
+		log:       log,
+		clk:       clk,
+		httpPort:  httpPort,
+		tlsPort:   tlsPort,
+		tasks:     make(chan *vaTask, taskQueueSize),
+		sleep:     true,
+		sleepTime: defaultSleepTime,
 	}
 
 	// Read the PEBBLE_VA_NOSLEEP environment variable string
@@ -108,6 +122,13 @@ func New(
 	case "1", "true", "True", "TRUE":
 		va.sleep = false
 		va.log.Printf("Disabling random VA sleeps")
+	}
+
+	sleepTime := os.Getenv(sleepTimeEnvVar)
+	sleepTimeInt, err := strconv.Atoi(sleepTime)
+	if err == nil && !va.sleep && sleepTimeInt >= 1 {
+		va.sleepTime = sleepTimeInt
+		va.log.Printf("Setting maximum random VA sleep time to %d seconds", va.sleepTime)
 	}
 
 	noValidate := os.Getenv(noValidateEnvVar)
@@ -232,8 +253,8 @@ func (va VAImpl) process(task *vaTask) {
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
 	if va.sleep {
-		// Sleep for a random amount of time between 1-15s
-		len := time.Duration(rand.Intn(15))
+		// Sleep for a random amount of time between 0 and va.sleepTime seconds
+		len := time.Duration(rand.Intn(va.sleepTime))
 		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
 		va.clk.Sleep(time.Second * len)
 	}
