@@ -62,7 +62,7 @@ const (
 	// To have the WFE not reject any good nonces, run Pebble like:
 	//   PEBBLE_WFE_NONCEREJECT=0 pebble
 	// To have the WFE reject 15% of good nonces, run Pebble like:
-	//   PEBBLE_WFE_NONCEREJECT=15
+	//   PEBBLE_WFE_NONCEREJECT=15 pebble
 	badNonceEnvVar = "PEBBLE_WFE_NONCEREJECT"
 
 	// By default when no PEBBLE_WFE_NONCEREJECT is set, what percentage of good
