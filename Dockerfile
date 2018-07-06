@@ -17,4 +17,4 @@ RUN apk update && apk add --no-cache --virtual ca-certificates
 COPY --from=builder /go/bin/pebble /usr/bin/pebble
 COPY --from=builder /go/src/github.com/letsencrypt/pebble/test/ /test/
 
-ENTRYPOINT [ "/usr/bin/pebble" ]
+CMD [ "/usr/bin/pebble" ]
