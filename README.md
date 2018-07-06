@@ -89,7 +89,7 @@ version: '3'
 services:
  pebble:
   image: letsencrypt/pebble
-  command: -config ./test/my-pebble-config.json
+  command: pebble -config ./test/my-pebble-config.json
   ports:
     - 14000:14000
   environment:
@@ -103,7 +103,7 @@ With a Docker command:
 ```bash
 docker run -e "PEBBLE_VA_NOSLEEP=1" letsencrypt/pebble
 # or
-docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble -config /test/my-pebble-config.json
+docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
 
 ### Strict Mode
