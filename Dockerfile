@@ -9,8 +9,6 @@ COPY . .
 
 RUN go get ./...
 
-RUN go install ./...
-
 ## main
 FROM alpine:3.7
 
