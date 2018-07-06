@@ -1,14 +1,13 @@
 FROM golang:1.10-alpine as builder
 
 RUN apk --update upgrade \
-&& apk --no-cache --no-progress add git mercurial bash gcc musl-dev curl tar \
+&& apk --no-cache --no-progress add git bash curl \
 && rm -rf /var/cache/apk/*
 
 WORKDIR /go/src/github.com/letsencrypt/pebble
 COPY . .
 
-RUN go get -u github.com/jmhodges/clock \
-&& go get -u gopkg.in/square/go-jose.v2
+RUN go get ./...
 
 RUN go install ./...
 
