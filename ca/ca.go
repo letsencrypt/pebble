@@ -77,13 +77,16 @@ func (ca *CAImpl) makeRootCert(
 	}
 
 	var signerKey crypto.Signer
-	if signer != nil && signer.key != nil {
+	var parent *x509.Certificate
+	if signer != nil && signer.key != nil && signer.cert != nil && signer.cert.Cert != nil {
 		signerKey = signer.key
+		parent = signer.cert.Cert
 	} else {
 		signerKey = subjectKey
+		parent = template
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, template, subjectKey.Public(), signerKey)
+	der, err := x509.CreateCertificate(rand.Reader, template, parent, subjectKey.Public(), signerKey)
 	if err != nil {
 		return nil, err
 	}
