@@ -669,7 +669,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 
 	// if this update contains no contacts or deactivated status,
 	// simply return the existing account and return early.
-	if len(updateAcctReq.Contact) == 0 && updateAcctReq.Status != acme.StatusDeactivated {
+	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
 		err = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
 			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
@@ -697,7 +697,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 			acme.MalformedProblem(fmt.Sprintf(
 				"Invalid account status: %q", updateAcctReq.Status)), response)
 		return
-	case len(updateAcctReq.Contact) > 0:
+	case updateAcctReq.Contact != nil:
 		newAcct.Contact = updateAcctReq.Contact
 		// Verify that the contact information provided is supported & valid
 		prob = wfe.verifyContacts(newAcct.Account)
