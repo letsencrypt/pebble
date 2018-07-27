@@ -4,7 +4,7 @@
 [![Docker Build Status](https://img.shields.io/docker/build/letsencrypt/pebble.svg)](https://hub.docker.com/r/letsencrypt/pebble/builds/)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-12](https://tools.ietf.org/html/draft-ietf-acme-acme-12) test
+is a small [ACME-13](https://tools.ietf.org/html/draft-ietf-acme-acme-13) test
 server not suited for use as a production CA.
 
 ## !!! WARNING !!!
@@ -105,6 +105,8 @@ docker run -e "PEBBLE_VA_NOSLEEP=1" letsencrypt/pebble
 # or
 docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
+
+**Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
 
 ### Strict Mode
 
