@@ -48,6 +48,7 @@ const (
 	certPath          = "/certZ/"
 	revokeCertPath    = "/revoke-cert"
 	rootCertPath      = "/root"
+	keyRolloverPath   = "/rollover-account-key"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -261,6 +262,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
+	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
 	wfe.HandleFunc(m, rootCertPath, wfe.RootCert, "GET")
 
@@ -278,6 +280,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		"newAccount": newAccountPath,
 		"newOrder":   newOrderPath,
 		"revokeCert": revokeCertPath,
+		"keyChange":  keyRolloverPath,
 	}
 
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -710,6 +713,88 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 		return
 	}
+}
+
+func (wfe *WebFrontEndImpl) KeyRollover(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	// Extract and parse outer JWS, and retrieve account
+	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	existingAcct, prob := wfe.getAcctByKey(key)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Extract inner JWS
+	parsedInnerJWS, err := wfe.parseJWS(string(body))
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(err.Error()), response)
+		return
+	}
+
+	newPubKey, prob := wfe.extractJWK(request, parsedInnerJWS)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	// Copied from verifyJWS:
+	// TODO(@cpu): `checkAlgorithm()`
+
+	innerPayload, err := parsedInnerJWS.Verify(newPubKey)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem("JWS verification error"), response)
+		return
+	}
+
+	var innerContent struct {
+		Account string `json:"account"`
+		OldKey  jose.JSONWebKey `json:"oldKey"`
+	}
+	err = json.Unmarshal([]byte(innerPayload), &innerContent)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem("Error unmarshaling key roll-over innermost JSON body"), response)
+		return
+	}
+
+	// Check account ID
+	prefix := wfe.relativeEndpoint(request, acctPath)
+	if !strings.HasPrefix(innerContent.Account, prefix) {
+		wfe.sendError(acme.MalformedProblem("Key ID (account) in innermost JSON body missing expected URL prefix"), response)
+		return
+	}
+	accountID := strings.TrimPrefix(innerContent.Account, prefix)
+	if accountID == "" {
+		wfe.sendError(acme.MalformedProblem("No key ID (account) in innermost JSON body"), response)
+		return
+	}
+	if accountID != existingAcct.ID {
+		wfe.sendError(acme.MalformedProblem("Key roll-over innermost JSON contains wrong account ID"), response)
+		return
+	}
+
+	// Verify inner key
+	if !keyDigestEquals(innerContent.OldKey, *existingAcct.Key) {
+		wfe.sendError(acme.MalformedProblem("Key roll-over innermost JSON contains wrong old key"), response)
+		return
+	}
+
+	// Ok, now change account key
+	err = wfe.db.ChangeAccountKey(existingAcct, newPubKey)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error rolling over account key (%s)", err.Error())), response)
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
 }
 
 func (wfe *WebFrontEndImpl) NewAccount(
