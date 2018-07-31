@@ -79,6 +79,9 @@ correctly.
 pebble -config ./test/config/pebble-config.json
 ```
 
+Note that the CA's root certificate is regenerated on every launch. It can be
+retrieved via `https://localhost:14000/root`.
+
 ### Docker Image
 
 With a docker-compose file:
