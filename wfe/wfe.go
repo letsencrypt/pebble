@@ -3,10 +3,8 @@ package wfe
 import (
 	"context"
 	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -325,32 +323,6 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response http.ResponseWriter,
 	request *http.Request) {
 	response.WriteHeader(http.StatusNoContent)
-}
-
-/*
- * keyToID produces a string with the hex representation of the SHA256 digest
- * over a provided public key. We use this for acme.Account ID values
- * because it makes looking up a account by key easy (required by the spec
- * for retreiving existing account), and becauase it makes the reg URLs
- * somewhat human digestable/comparable.
- */
-func keyToID(key crypto.PublicKey) (string, error) {
-	switch t := key.(type) {
-	case *jose.JSONWebKey:
-		if t == nil {
-			return "", fmt.Errorf("Cannot compute ID of nil key")
-		}
-		return keyToID(t.Key)
-	case jose.JSONWebKey:
-		return keyToID(t.Key)
-	default:
-		keyDER, err := x509.MarshalPKIXPublicKey(key)
-		if err != nil {
-			return "", err
-		}
-		spkiDigest := sha256.Sum256(keyDER)
-		return hex.EncodeToString(spkiDigest[:]), nil
-	}
 }
 
 func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
@@ -749,16 +721,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	keyID, err := keyToID(key)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem(err.Error()), response)
-		return
-	}
-
 	// Lookup existing account to exit early if it exists
-	// NOTE: We don't use wfe.getAccountByKey here because we want to treat a
-	//       "missing" account as a non-error
-	existingAcct := wfe.db.GetAccountByID(keyID)
+	existingAcct, _ := wfe.db.GetAccountByKey(key)
 	if existingAcct != nil {
 		// If there is an existing account then return a Location header pointing to
 		// the account and a 200 OK response
@@ -792,7 +756,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			Status: acme.StatusValid,
 		},
 		Key: key,
-		ID:  keyID,
 	}
 
 	// Verify that the contact information provided is supported & valid
@@ -1414,16 +1377,12 @@ func (wfe *WebFrontEndImpl) getChallenge(
 // getAcctByKey finds a account by key or returns a problem pointer if an
 // existing account can't be found or the key is invalid.
 func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *acme.ProblemDetails) {
-	// Compute the account ID for the signer's key
-	regID, err := keyToID(key)
+	// Find the existing account object for that key
+	existingAcct, err := wfe.db.GetAccountByKey(key)
 	if err != nil {
-		wfe.log.Printf("keyToID err: %s\n", err.Error())
-		return nil, acme.MalformedProblem("Error computing key digest")
+		return nil, acme.AccountDoesNotExistProblem("Error while retrieving key ID from public key")
 	}
-
-	// Find the existing account object for that key ID
-	var existingAcct *core.Account
-	if existingAcct = wfe.db.GetAccountByID(regID); existingAcct == nil {
+	if existingAcct == nil {
 		return nil, acme.AccountDoesNotExistProblem(
 			"URL in JWS 'kid' field does not correspond to an account")
 	}
@@ -1728,14 +1687,12 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		return prob
 	}
 
-	keyID, err := keyToID(key)
+	existingAcct, err := wfe.db.GetAccountByKey(key)
 	if err != nil {
-		return acme.MalformedProblem(err.Error())
+		return acme.MalformedProblem("Cannot obtain key ID from public key")
 	}
-
-	existingAcct := wfe.db.GetAccountByID(keyID)
 	if existingAcct == nil {
-		return acme.UnauthorizedProblem(fmt.Sprintf("Account with keyID %q does not exist", keyID))
+		return acme.UnauthorizedProblem("Account with public key does not exist")
 	}
 
 	// An account is only authorized to revoke its own certificates presently.
