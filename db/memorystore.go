@@ -102,7 +102,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	}
 
 	if _, present := m.accountsByKeyID[keyID]; present {
-		return 0, fmt.Errorf("account with key already exists", acctID)
+		return 0, fmt.Errorf("account with key already exists")
 	}
 
 	acct.ID = acctID
