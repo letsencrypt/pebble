@@ -239,9 +239,15 @@ func (wfe *WebFrontEndImpl) RootCert(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	root := wfe.ca.GetRootCert()
+	if root == nil {
+		response.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(wfe.ca.GetRootCert().PEM())
+	_, _ = response.Write(root.PEM())
 }
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {

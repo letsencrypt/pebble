@@ -264,5 +264,8 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 }
 
 func (ca *CAImpl) GetRootCert() *core.Certificate {
+	if ca.root == nil {
+		return nil
+	}
 	return ca.root.cert
 }
