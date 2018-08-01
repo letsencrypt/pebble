@@ -49,6 +49,7 @@ const (
 	challengePath     = "/chalZ/"
 	certPath          = "/certZ/"
 	revokeCertPath    = "/revoke-cert"
+	rootCertPath      = "/root"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -232,6 +233,23 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	response.Write(problemDoc)
 }
 
+func (wfe *WebFrontEndImpl) RootCert(
+	ctx context.Context,
+	logEvent *requestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	root := wfe.ca.GetRootCert()
+	if root == nil {
+		response.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(root.PEM())
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
@@ -246,6 +264,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
+	wfe.HandleFunc(m, rootCertPath, wfe.RootCert, "GET")
 
 	return m
 }
