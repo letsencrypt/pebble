@@ -242,10 +242,8 @@ func (m *MemoryStore) RevokeCertificate(cert *core.Certificate) {
 
 /*
  * keyToID produces a string with the hex representation of the SHA256 digest
- * over a provided public key. We use this for acme.Account ID values
- * because it makes looking up a account by key easy (required by the spec
- * for retreiving existing account), and becauase it makes the reg URLs
- * somewhat human digestable/comparable.
+ * over a provided public key. We use this to associate public keys to
+ * acme.Account objects, and to ensure every account has a unique public key.
  */
 func keyToID(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
