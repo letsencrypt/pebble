@@ -1689,10 +1689,10 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 
 	existingAcct, err := wfe.db.GetAccountByKey(key)
 	if err != nil {
-		return acme.MalformedProblem("Cannot obtain key ID from public key")
+		return acme.MalformedProblem(fmt.Sprintf("Cannot obtain key ID from public key (%s)", err.Error()))
 	}
 	if existingAcct == nil {
-		return acme.UnauthorizedProblem("Account with public key does not exist")
+		return acme.UnauthorizedProblem("No account found corresponding to public key authenticating this request")
 	}
 
 	// An account is only authorized to revoke its own certificates presently.
