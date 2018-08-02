@@ -502,30 +502,30 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	ctx context.Context,
 	logEvent *requestEvent,
 	request *http.Request,
-	kx keyExtractor) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
+	kx keyExtractor) ([]byte, string, *jose.JSONWebKey, *acme.ProblemDetails) {
 
 	if prob := wfe.validPOST(request); prob != nil {
-		return nil, nil, prob
+		return nil, "", nil, prob
 	}
 
 	if request.Body == nil {
-		return nil, nil, acme.MalformedProblem("no body on POST")
+		return nil, "", nil, acme.MalformedProblem("no body on POST")
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return nil, nil, acme.InternalErrorProblem("unable to read request body")
+		return nil, "", nil, acme.InternalErrorProblem("unable to read request body")
 	}
 
 	body := string(bodyBytes)
 	parsedJWS, err := wfe.parseJWS(body)
 	if err != nil {
-		return nil, nil, acme.MalformedProblem(err.Error())
+		return nil, "", nil, acme.MalformedProblem(err.Error())
 	}
 
 	pubKey, prob := kx(request, parsedJWS)
 	if prob != nil {
-		return nil, nil, prob
+		return nil, "", nil, prob
 	}
 
 	return wfe.verifyJWS(pubKey, parsedJWS, request)
@@ -534,17 +534,17 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
-	request *http.Request) ([]byte, *jose.JSONWebKey, *acme.ProblemDetails) {
+	request *http.Request) ([]byte, string, *jose.JSONWebKey, *acme.ProblemDetails) {
 	// TODO(@cpu): `checkAlgorithm()`
 
 	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
-		return nil, nil, acme.MalformedProblem("JWS verification error")
+		return nil, "", nil, acme.MalformedProblem("JWS verification error")
 	}
 
 	nonce := parsedJWS.Signatures[0].Header.Nonce
 	if len(nonce) == 0 {
-		return nil, nil, acme.BadNonceProblem("JWS has no anti-replay nonce")
+		return nil, "", nil, acme.BadNonceProblem("JWS has no anti-replay nonce")
 	}
 
 	// Roll a random number between 0 and 100.
@@ -552,13 +552,13 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	// If the nonce is not valid OR if the nonceRoll was less than the
 	// nonceErrPercent, fail with an error
 	if !wfe.nonce.validNonce(nonce) || nonceRoll < wfe.nonceErrPercent {
-		return nil, nil, acme.BadNonceProblem(fmt.Sprintf(
+		return nil, "", nil, acme.BadNonceProblem(fmt.Sprintf(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}
 
 	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(headerURL) == 0 {
-		return nil, nil, acme.MalformedProblem("JWS header parameter 'url' required.")
+		return nil, "", nil, acme.MalformedProblem("JWS header parameter 'url' required.")
 	}
 	expectedURL := url.URL{
 		// NOTE(@cpu): ACME **REQUIRES** HTTPS and Pebble is hardcoded to offer the
@@ -568,12 +568,12 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 		Path:   request.RequestURI,
 	}
 	if expectedURL.String() != headerURL {
-		return nil, nil, acme.MalformedProblem(fmt.Sprintf(
+		return nil, "", nil, acme.MalformedProblem(fmt.Sprintf(
 			"JWS header parameter 'url' incorrect. Expected %q, got %q",
 			expectedURL.String(), headerURL))
 	}
 
-	return []byte(payload), pubKey, nil
+	return []byte(payload), headerURL, pubKey, nil
 }
 
 // isASCII determines if every character in a string is encoded in
@@ -637,7 +637,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -721,7 +721,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	response http.ResponseWriter,
 	request *http.Request) {
 	// Extract and parse outer JWS, and retrieve account
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	body, outerHeaderURL, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -738,6 +738,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	if err != nil {
 		wfe.sendError(acme.MalformedProblem(err.Error()), response)
 		return
+	}
+
+	innerHeaderURL, ok := parsedInnerJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
+	if !ok || len(innerHeaderURL) == 0 {
+		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' required for inner JWS."), response)
+	}
+	if innerHeaderURL != outerHeaderURL {
+		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differ for inner and outer JWS."), response)
 	}
 
 	newPubKey, prob := wfe.extractJWK(request, parsedInnerJWS)
@@ -806,7 +814,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// We use extractJWK rather than lookupJWK here because the account is not yet
 	// created, so the user provides the full key in a JWS header rather than
 	// referring to an existing key.
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
+	body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1097,7 +1105,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1254,7 +1262,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	request *http.Request) {
 
 	// Verify the POST request
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1553,7 +1561,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	body, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1786,7 +1794,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		return prob
 	}
 
-	body, key, prob := wfe.verifyJWS(pubKey, jws, request)
+	body, _, key, prob := wfe.verifyJWS(pubKey, jws, request)
 	if prob != nil {
 		return prob
 	}
@@ -1826,7 +1834,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	if prob != nil {
 		return prob
 	}
-	body, key, prob := wfe.verifyJWS(pubKey, jws, request)
+	body, _, key, prob := wfe.verifyJWS(pubKey, jws, request)
 	if prob != nil {
 		return prob
 	}
