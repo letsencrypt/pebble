@@ -116,29 +116,29 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	return len(m.accountsByID), nil
 }
 
-func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) error {
+func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) (error, *core.Account) {
 	m.Lock()
 	defer m.Unlock()
 
 	oldKeyID, err := keyToID(acct.Key)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	newKeyID, err := keyToID(newKey)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
-	if _, present := m.accountsByKeyID[newKeyID]; present {
-		return fmt.Errorf("New public key is already in use")
+	if otherAccount, present := m.accountsByKeyID[newKeyID]; present {
+		return fmt.Errorf("New public key is already in use"), otherAccount
 	}
 
 	delete(m.accountsByKeyID, oldKeyID)
 	acct.Key = newKey
 	m.accountsByKeyID[newKeyID] = acct
 	m.accountsByID[acct.ID] = acct
-	return nil
+	return nil, nil
 }
 
 func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
