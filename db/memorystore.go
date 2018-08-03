@@ -77,7 +77,12 @@ func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
 	if m.accountsByID[id] == nil {
 		return fmt.Errorf("account with ID %q does not exist", id)
 	}
+	keyID, err := keyToID(acct.Key)
+	if err != nil {
+		return err
+	}
 	m.accountsByID[id] = acct
+	m.accountsByKeyID[keyID] = acct
 	return nil
 }
 
