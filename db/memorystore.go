@@ -71,6 +71,9 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 	return m.accountsByKeyID[keyID], nil
 }
 
+// Note that this function should *NOT* be used for key changes. It assumes
+// the public key associated to the account does not change. Use ChangeAccountKey
+// to change the account's public key.
 func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
 	m.Lock()
 	defer m.Unlock()
