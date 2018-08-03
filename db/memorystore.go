@@ -1,9 +1,16 @@
 package db
 
 import (
+	"crypto"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
+
+	"gopkg.in/square/go-jose.v2"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/core"
@@ -17,9 +24,13 @@ type MemoryStore struct {
 
 	clk clock.Clock
 
-	// Each Accounts's ID is the hex encoding of a SHA256 sum over its public
-	// key bytes.
+	accountIDCounter int
+
 	accountsByID map[string]*core.Account
+
+	// Each Accounts's key ID is the hex encoding of a SHA256 sum over its public
+	// key bytes.
+	accountsByKeyID map[string]*core.Account
 
 	ordersByID map[string]*core.Order
 
@@ -33,7 +44,9 @@ type MemoryStore struct {
 func NewMemoryStore(clk clock.Clock) *MemoryStore {
 	return &MemoryStore{
 		clk:                clk,
+		accountIDCounter:   1,
 		accountsByID:       make(map[string]*core.Account),
+		accountsByKeyID:    make(map[string]*core.Account),
 		ordersByID:         make(map[string]*core.Order),
 		authorizationsByID: make(map[string]*core.Authorization),
 		challengesByID:     make(map[string]*core.Challenge),
@@ -45,6 +58,17 @@ func (m *MemoryStore) GetAccountByID(id string) *core.Account {
 	m.RLock()
 	defer m.RUnlock()
 	return m.accountsByID[id]
+}
+
+func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, error) {
+	keyID, err := keyToID(key)
+	if err != nil {
+		return nil, err
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+	return m.accountsByKeyID[keyID], nil
 }
 
 func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
@@ -61,20 +85,29 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	acctID := acct.ID
-	if len(acctID) == 0 {
-		return 0, fmt.Errorf("account must have a non-empty ID to add to MemoryStore")
-	}
+	acctID := strconv.Itoa(m.accountIDCounter)
+	m.accountIDCounter += 1
 
 	if acct.Key == nil {
 		return 0, fmt.Errorf("account must not have a nil Key")
+	}
+
+	keyID, err := keyToID(acct.Key)
+	if err != nil {
+		return 0, err
 	}
 
 	if _, present := m.accountsByID[acctID]; present {
 		return 0, fmt.Errorf("account %q already exists", acctID)
 	}
 
+	if _, present := m.accountsByKeyID[keyID]; present {
+		return 0, fmt.Errorf("account with key already exists")
+	}
+
+	acct.ID = acctID
 	m.accountsByID[acctID] = acct
+	m.accountsByKeyID[keyID] = acct
 	return len(m.accountsByID), nil
 }
 
@@ -205,4 +238,28 @@ func (m *MemoryStore) RevokeCertificate(cert *core.Certificate) {
 	m.Lock()
 	defer m.Unlock()
 	delete(m.certificatesByID, cert.ID)
+}
+
+/*
+ * keyToID produces a string with the hex representation of the SHA256 digest
+ * over a provided public key. We use this to associate public keys to
+ * acme.Account objects, and to ensure every account has a unique public key.
+ */
+func keyToID(key crypto.PublicKey) (string, error) {
+	switch t := key.(type) {
+	case *jose.JSONWebKey:
+		if t == nil {
+			return "", fmt.Errorf("Cannot compute ID of nil key")
+		}
+		return keyToID(t.Key)
+	case jose.JSONWebKey:
+		return keyToID(t.Key)
+	default:
+		keyDER, err := x509.MarshalPKIXPublicKey(key)
+		if err != nil {
+			return "", err
+		}
+		spkiDigest := sha256.Sum256(keyDER)
+		return hex.EncodeToString(spkiDigest[:]), nil
+	}
 }
