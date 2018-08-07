@@ -776,16 +776,16 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// Check account ID
 	prefix := wfe.relativeEndpoint(request, acctPath)
 	if !strings.HasPrefix(innerContent.Account, prefix) {
-		wfe.sendError(acme.MalformedProblem("Key ID (account) in inner JWS body missing expected URL prefix"), response)
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Key ID (account) in inner JWS body missing expected URL prefix (provided account value: %q)", innerContent.Account)), response)
 		return
 	}
 	accountID := strings.TrimPrefix(innerContent.Account, prefix)
 	if accountID == "" {
-		wfe.sendError(acme.MalformedProblem("No key ID (account) in inner JWS body"), response)
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("No key ID (account) in inner JWS body (provided account value: %q)", innerContent.Account)), response)
 		return
 	}
 	if accountID != existingAcct.ID {
-		wfe.sendError(acme.MalformedProblem("Key roll-over inner JWS body contains wrong account ID"), response)
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Key roll-over inner JWS body contains wrong account ID (provided account value: %q)", innerContent.Account)), response)
 		return
 	}
 
