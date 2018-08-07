@@ -745,7 +745,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' required for inner JWS."), response)
 	}
 	if innerHeaderURL != outerHeaderURL {
-		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differ for inner and outer JWS."), response)
+		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
 	}
 
 	newPubKey, prob := wfe.extractJWK(request, parsedInnerJWS)
@@ -764,34 +764,34 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	var innerContent struct {
-		Account string `json:"account"`
-		OldKey  jose.JSONWebKey `json:"oldKey"`
+		Account string
+		OldKey  jose.JSONWebKey
 	}
 	err = json.Unmarshal([]byte(innerPayload), &innerContent)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem("Error unmarshaling key roll-over innermost JSON body"), response)
+		wfe.sendError(acme.MalformedProblem("Error unmarshaling key roll-over inner JWS body"), response)
 		return
 	}
 
 	// Check account ID
 	prefix := wfe.relativeEndpoint(request, acctPath)
 	if !strings.HasPrefix(innerContent.Account, prefix) {
-		wfe.sendError(acme.MalformedProblem("Key ID (account) in innermost JSON body missing expected URL prefix"), response)
+		wfe.sendError(acme.MalformedProblem("Key ID (account) in inner JWS body missing expected URL prefix"), response)
 		return
 	}
 	accountID := strings.TrimPrefix(innerContent.Account, prefix)
 	if accountID == "" {
-		wfe.sendError(acme.MalformedProblem("No key ID (account) in innermost JSON body"), response)
+		wfe.sendError(acme.MalformedProblem("No key ID (account) in inner JWS body"), response)
 		return
 	}
 	if accountID != existingAcct.ID {
-		wfe.sendError(acme.MalformedProblem("Key roll-over innermost JSON contains wrong account ID"), response)
+		wfe.sendError(acme.MalformedProblem("Key roll-over inner JWS body contains wrong account ID"), response)
 		return
 	}
 
 	// Verify inner key
 	if !keyDigestEquals(innerContent.OldKey, *existingAcct.Key) {
-		wfe.sendError(acme.MalformedProblem("Key roll-over innermost JSON contains wrong old key"), response)
+		wfe.sendError(acme.MalformedProblem("Key roll-over inner JWS body JSON contains wrong old key"), response)
 		return
 	}
 
