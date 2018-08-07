@@ -16,6 +16,17 @@ import (
 	"github.com/letsencrypt/pebble/core"
 )
 
+// Error when key change fails because new account key has already been in use
+type ExistingAccountError struct {
+	msg             string
+	MatchingAccount *core.Account
+}
+
+func (e *ExistingAccountError) Error() string {
+	return e.msg
+}
+
+
 // Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
 // "database"
@@ -119,29 +130,29 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	return len(m.accountsByID), nil
 }
 
-func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) (error, *core.Account) {
+func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) error {
 	m.Lock()
 	defer m.Unlock()
 
 	oldKeyID, err := keyToID(acct.Key)
 	if err != nil {
-		return err, nil
+		return err
 	}
 
 	newKeyID, err := keyToID(newKey)
 	if err != nil {
-		return err, nil
+		return err
 	}
 
 	if otherAccount, present := m.accountsByKeyID[newKeyID]; present {
-		return fmt.Errorf("New public key is already in use"), otherAccount
+		return &ExistingAccountError{"New public key is already in use", otherAccount}
 	}
 
 	delete(m.accountsByKeyID, oldKeyID)
 	acct.Key = newKey
 	m.accountsByKeyID[newKeyID] = acct
 	m.accountsByID[acct.ID] = acct
-	return nil, nil
+	return nil
 }
 
 func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
