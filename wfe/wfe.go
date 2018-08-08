@@ -531,15 +531,35 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return wfe.verifyJWS(pubKey, parsedJWS, request)
 }
 
+// Checks parsed JWS whether it matches the given public key, does some general
+// checks, and extracts the URL header parameter.
+func (wfe *WebFrontEndImpl) verifyJWSLight(
+	pubKey *jose.JSONWebKey,
+	parsedJWS *jose.JSONWebSignature,
+	jwsPrefix string) ([]byte, string, *acme.ProblemDetails) {
+	// TODO(@cpu): `checkAlgorithm()`
+
+	payload, err := parsedJWS.Verify(pubKey)
+	if err != nil {
+		return nil, "", acme.MalformedProblem(jwsPrefix + "JWS verification error")
+	}
+
+	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
+	if !ok || len(headerURL) == 0 {
+		return nil, "", acme.MalformedProblem(jwsPrefix + "JWS header parameter 'url' required.")
+	}
+	return []byte(payload), headerURL, nil
+}
+
 func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
 	request *http.Request) ([]byte, string, *jose.JSONWebKey, *acme.ProblemDetails) {
 	// TODO(@cpu): `checkAlgorithm()`
 
-	payload, err := parsedJWS.Verify(pubKey)
+	payload, headerURL, err := wfe.verifyJWSLight(pubKey, parsedJWS, "")
 	if err != nil {
-		return nil, "", nil, acme.MalformedProblem("JWS verification error")
+		return nil, "", nil, err
 	}
 
 	nonce := parsedJWS.Signatures[0].Header.Nonce
@@ -556,10 +576,6 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}
 
-	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
-	if !ok || len(headerURL) == 0 {
-		return nil, "", nil, acme.MalformedProblem("JWS header parameter 'url' required.")
-	}
 	expectedURL := url.URL{
 		// NOTE(@cpu): ACME **REQUIRES** HTTPS and Pebble is hardcoded to offer the
 		// API over HTTPS.
@@ -573,7 +589,7 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 			expectedURL.String(), headerURL))
 	}
 
-	return []byte(payload), headerURL, pubKey, nil
+	return payload, headerURL, pubKey, nil
 }
 
 // isASCII determines if every character in a string is encoded in
@@ -740,27 +756,20 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	innerHeaderURL, ok := parsedInnerJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
-	if !ok || len(innerHeaderURL) == 0 {
-		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' required for inner JWS."), response)
-	}
-	if innerHeaderURL != outerHeaderURL {
-		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
-	}
-
 	newPubKey, prob := wfe.extractJWK(request, parsedInnerJWS)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
 	}
 
-	// Copied from verifyJWS:
-	// TODO(@cpu): `checkAlgorithm()`
-
-	innerPayload, err := parsedInnerJWS.Verify(newPubKey)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem("JWS verification error"), response)
+	innerPayload, innerHeaderURL, prob := wfe.verifyJWSLight(newPubKey, parsedInnerJWS, "Inner ")
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
+	}
+
+	if innerHeaderURL != outerHeaderURL {
+		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
 	}
 
 	var innerContent struct {
