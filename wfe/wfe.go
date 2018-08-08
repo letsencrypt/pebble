@@ -731,6 +731,40 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	}
 }
 
+func (wfe *WebFrontEndImpl) verifyKeyRollover(
+	innerPayload []byte,
+	existingAcct *core.Account,
+	request *http.Request) *acme.ProblemDetails {
+	var innerContent struct {
+		Account string
+		OldKey  jose.JSONWebKey
+	}
+	err := json.Unmarshal([]byte(innerPayload), &innerContent)
+	if err != nil {
+		return acme.MalformedProblem("Error unmarshaling key roll-over inner JWS body")
+	}
+
+	// Check account ID
+	prefix := wfe.relativeEndpoint(request, acctPath)
+	if !strings.HasPrefix(innerContent.Account, prefix) {
+		return acme.MalformedProblem(fmt.Sprintf("Key ID (account) in inner JWS body missing expected URL prefix (provided account value: %q)", innerContent.Account))
+	}
+	accountID := strings.TrimPrefix(innerContent.Account, prefix)
+	if accountID == "" {
+		return acme.MalformedProblem(fmt.Sprintf("No key ID (account) in inner JWS body (provided account value: %q)", innerContent.Account))
+	}
+	if accountID != existingAcct.ID {
+		return acme.MalformedProblem(fmt.Sprintf("Key roll-over inner JWS body contains wrong account ID (provided account value: %q)", innerContent.Account))
+	}
+
+	// Verify inner key
+	if !keyDigestEquals(innerContent.OldKey, *existingAcct.Key) {
+		return acme.MalformedProblem("Key roll-over inner JWS body JSON contains wrong old key")
+	}
+
+	return nil
+}
+
 func (wfe *WebFrontEndImpl) KeyRollover(
 	ctx context.Context,
 	logEvent *requestEvent,
@@ -772,35 +806,9 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
 	}
 
-	var innerContent struct {
-		Account string
-		OldKey  jose.JSONWebKey
-	}
-	err = json.Unmarshal([]byte(innerPayload), &innerContent)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem("Error unmarshaling key roll-over inner JWS body"), response)
-		return
-	}
-
-	// Check account ID
-	prefix := wfe.relativeEndpoint(request, acctPath)
-	if !strings.HasPrefix(innerContent.Account, prefix) {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Key ID (account) in inner JWS body missing expected URL prefix (provided account value: %q)", innerContent.Account)), response)
-		return
-	}
-	accountID := strings.TrimPrefix(innerContent.Account, prefix)
-	if accountID == "" {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("No key ID (account) in inner JWS body (provided account value: %q)", innerContent.Account)), response)
-		return
-	}
-	if accountID != existingAcct.ID {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Key roll-over inner JWS body contains wrong account ID (provided account value: %q)", innerContent.Account)), response)
-		return
-	}
-
-	// Verify inner key
-	if !keyDigestEquals(innerContent.OldKey, *existingAcct.Key) {
-		wfe.sendError(acme.MalformedProblem("Key roll-over inner JWS body JSON contains wrong old key"), response)
+	prob = wfe.verifyKeyRollover(innerPayload, existingAcct, request)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
