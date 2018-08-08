@@ -734,6 +734,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 func (wfe *WebFrontEndImpl) verifyKeyRollover(
 	innerPayload []byte,
 	existingAcct *core.Account,
+	newKey *jose.JSONWebKey,
 	request *http.Request) *acme.ProblemDetails {
 	var innerContent struct {
 		Account string
@@ -760,6 +761,11 @@ func (wfe *WebFrontEndImpl) verifyKeyRollover(
 	// Verify inner key
 	if !keyDigestEquals(innerContent.OldKey, *existingAcct.Key) {
 		return acme.MalformedProblem("Key roll-over inner JWS body JSON contains wrong old key")
+	}
+
+	// Check for same key
+	if keyDigestEquals(innerContent.OldKey, newKey) {
+		return acme.MalformedProblem("New and old key are identical")
 	}
 
 	return nil
@@ -806,7 +812,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
 	}
 
-	prob = wfe.verifyKeyRollover(innerPayload, existingAcct, request)
+	prob = wfe.verifyKeyRollover(innerPayload, existingAcct, newPubKey, request)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
