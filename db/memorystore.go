@@ -16,7 +16,8 @@ import (
 	"github.com/letsencrypt/pebble/core"
 )
 
-// Error when key change fails because new account key has already been in use
+// ExistingAccountError is an error type indicating when an operation fails
+// because the MatchingAccount has a key conflict.
 type ExistingAccountError struct {
 	MatchingAccount *core.Account
 }
