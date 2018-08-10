@@ -810,6 +810,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 	if innerHeaderURL != outerHeaderURL {
 		wfe.sendError(acme.MalformedProblem("JWS header parameter 'url' differs for inner and outer JWS."), response)
+		return
 	}
 
 	prob = wfe.verifyKeyRollover(innerPayload, existingAcct, newPubKey, request)
