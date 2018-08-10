@@ -531,35 +531,46 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return wfe.verifyJWS(pubKey, parsedJWS, request)
 }
 
-// Checks parsed JWS whether it matches the given public key, does some general
-// checks, and extracts the URL header parameter.
-func (wfe *WebFrontEndImpl) verifyJWSLight(
+// Checks parsed JWS whether it matches the given public key
+// and checks whether the algorithm used is acceptable
+// (the latter is still to be implemented).
+func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
-	parsedJWS *jose.JSONWebSignature,
-	jwsPrefix string) ([]byte, string, *acme.ProblemDetails) {
+	parsedJWS *jose.JSONWebSignature) ([]byte, error) {
 	// TODO(@cpu): `checkAlgorithm()`
 
 	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
-		return nil, "", acme.MalformedProblem(jwsPrefix + "JWS verification error")
+		return nil, err
 	}
+	return []byte(payload), nil
+}
+
+// Extracts URL header parameter from parsed JWS.
+// Second return value indicates whether header was found.
+func (wfe *WebFrontEndImpl) extractJWSURL(
+	parsedJWS *jose.JSONWebSignature) (string, bool) {
 
 	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(headerURL) == 0 {
-		return nil, "", acme.MalformedProblem(jwsPrefix + "JWS header parameter 'url' required.")
+		return "", false
 	}
-	return []byte(payload), headerURL, nil
+	return headerURL, true
 }
 
 func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
 	request *http.Request) ([]byte, string, *jose.JSONWebKey, *acme.ProblemDetails) {
-	// TODO(@cpu): `checkAlgorithm()`
 
-	payload, headerURL, err := wfe.verifyJWSLight(pubKey, parsedJWS, "")
+	payload, err := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, acme.MalformedProblem("JWS verification error")
+	}
+
+	headerURL, ok := wfe.extractJWSURL(parsedJWS)
+	if !ok {
+		return nil, "", nil, acme.MalformedProblem("JWS header parameter 'url' required.")
 	}
 
 	nonce := parsedJWS.Signatures[0].Header.Nonce
@@ -802,9 +813,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	innerPayload, innerHeaderURL, prob := wfe.verifyJWSLight(newPubKey, parsedInnerJWS, "Inner ")
-	if prob != nil {
-		wfe.sendError(prob, response)
+	innerPayload, err := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem("Inner JWS verification error"), response)
+		return
+	}
+	
+	innerHeaderURL, ok := wfe.extractJWSURL(parsedInnerJWS)
+	if !ok {
+		wfe.sendError(acme.MalformedProblem("Inner JWS header parameter 'url' required."), response)
 		return
 	}
 
