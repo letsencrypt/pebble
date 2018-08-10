@@ -18,12 +18,11 @@ import (
 
 // Error when key change fails because new account key has already been in use
 type ExistingAccountError struct {
-	msg             string
 	MatchingAccount *core.Account
 }
 
-func (e *ExistingAccountError) Error() string {
-	return e.msg
+func (e ExistingAccountError) Error() string {
+	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
 }
 
 
@@ -145,7 +144,7 @@ func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebK
 	}
 
 	if otherAccount, present := m.accountsByKeyID[newKeyID]; present {
-		return &ExistingAccountError{"New public key is already in use", otherAccount}
+		return ExistingAccountError{otherAccount}
 	}
 
 	delete(m.accountsByKeyID, oldKeyID)
