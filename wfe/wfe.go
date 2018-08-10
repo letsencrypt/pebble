@@ -822,8 +822,8 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// Ok, now change account key
 	err = wfe.db.ChangeAccountKey(existingAcct, newPubKey)
 	if err != nil {
-		if err, ok := err.(*db.ExistingAccountError); ok {
-			acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, err.MatchingAccount.ID))
+		if existingAccountError, ok := err.(*db.ExistingAccountError); ok {
+			acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAccountError.MatchingAccount.ID))
 			response.Header().Set("Location", acctURL)
 			response.WriteHeader(http.StatusConflict)
 		} else {
