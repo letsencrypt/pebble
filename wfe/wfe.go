@@ -740,7 +740,7 @@ func (wfe *WebFrontEndImpl) verifyKeyRollover(
 		Account string
 		OldKey  jose.JSONWebKey
 	}
-	err := json.Unmarshal([]byte(innerPayload), &innerContent)
+	err := json.Unmarshal(innerPayload, &innerContent)
 	if err != nil {
 		return acme.MalformedProblem("Error unmarshaling key roll-over inner JWS body")
 	}
