@@ -747,7 +747,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		// the account and a 200 OK response
 		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
 		response.Header().Set("Location", acctURL)
-		_ = wfe.writeJsonResponse(response, http.StatusOK, nil)
+		_ = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
 		return
 	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
 		// If there *isn't* an existing account and the created account request
