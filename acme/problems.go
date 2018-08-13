@@ -17,6 +17,7 @@ const (
 	unsupportedContactErr  = errNS + "unsupportedContact"
 	accountDoesNotExistErr = errNS + "accountDoesNotExist"
 	badRevocationReasonErr = errNS + "badRevocationReason"
+	alreadyRevokedErr      = errNS + "alreadyRevoked"
 )
 
 type ProblemDetails struct {
@@ -136,6 +137,14 @@ func UnsupportedMediaTypeProblem(detail string) *ProblemDetails {
 func BadRevocationReasonProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       badRevocationReasonErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func AlreadyRevokedProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       alreadyRevokedErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
