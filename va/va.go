@@ -65,7 +65,7 @@ const (
 	noValidateEnvVar = "PEBBLE_VA_ALWAYS_VALID"
 )
 
-var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 func userAgent() string {
 	return fmt.Sprintf(
@@ -377,7 +377,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifierV1.Equal(ext.Id) && ext.Critical {
+		if IdPeAcmeIdentifier.Equal(ext.Id) && ext.Critical {
 			var extValue []byte
 			if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
