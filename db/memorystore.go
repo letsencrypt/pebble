@@ -16,6 +16,17 @@ import (
 	"github.com/letsencrypt/pebble/core"
 )
 
+// ExistingAccountError is an error type indicating when an operation fails
+// because the MatchingAccount has a key conflict.
+type ExistingAccountError struct {
+	MatchingAccount *core.Account
+}
+
+func (e ExistingAccountError) Error() string {
+	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
+}
+
+
 // Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
 // "database"
@@ -71,6 +82,9 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 	return m.accountsByKeyID[keyID], nil
 }
 
+// Note that this function should *NOT* be used for key changes. It assumes
+// the public key associated to the account does not change. Use ChangeAccountKey
+// to change the account's public key.
 func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
 	m.Lock()
 	defer m.Unlock()
@@ -114,6 +128,31 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	m.accountsByID[acctID] = acct
 	m.accountsByKeyID[keyID] = acct
 	return len(m.accountsByID), nil
+}
+
+func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) error {
+	m.Lock()
+	defer m.Unlock()
+
+	oldKeyID, err := keyToID(acct.Key)
+	if err != nil {
+		return err
+	}
+
+	newKeyID, err := keyToID(newKey)
+	if err != nil {
+		return err
+	}
+
+	if otherAccount, present := m.accountsByKeyID[newKeyID]; present {
+		return ExistingAccountError{otherAccount}
+	}
+
+	delete(m.accountsByKeyID, oldKeyID)
+	acct.Key = newKey
+	m.accountsByKeyID[newKeyID] = acct
+	m.accountsByID[acct.ID] = acct
+	return nil
 }
 
 func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
