@@ -65,7 +65,14 @@ const (
 	noValidateEnvVar = "PEBBLE_VA_ALWAYS_VALID"
 )
 
+// This is the identifier defined in draft-04 and newer, as registered with IANA
+// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#page-4)
 var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+
+// This is the identifier defined in draft-01. This is only supported for backwards
+// compatibility.
+// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#page-4)
+var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
 
 func userAgent() string {
 	return fmt.Sprintf(
@@ -99,12 +106,14 @@ type VAImpl struct {
 	sleep       bool
 	sleepTime   int
 	alwaysValid bool
+	strict      bool
 }
 
 func New(
 	log *log.Logger,
 	clk clock.Clock,
-	httpPort, tlsPort int) *VAImpl {
+	httpPort, tlsPort int,
+	strict bool) *VAImpl {
 	va := &VAImpl{
 		log:       log,
 		clk:       clk,
@@ -113,6 +122,7 @@ func New(
 		tasks:     make(chan *vaTask, taskQueueSize),
 		sleep:     true,
 		sleepTime: defaultSleepTime,
+		strict:    strict,
 	}
 
 	// Read the PEBBLE_VA_NOSLEEP environment variable string
@@ -377,21 +387,29 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifier.Equal(ext.Id) && ext.Critical {
-			var extValue []byte
-			if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
+		if ext.Critical {
+			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
+			// For backwards compatibility, check old identifier
+			// as well if strict mode is not enabled
+			if !va.strict && IdPeAcmeIdentifierV1.Equal(ext.Id) {
+				hasAcmeIdentifier = true
+			}
+			if hasAcmeIdentifier {
+				var extValue []byte
+				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
+					errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+						"Malformed acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)	
+					result.Error = acme.UnauthorizedProblem(errText)
+					return result
+				}
+				if subtle.ConstantTimeCompare(h[:], extValue) == 1 {
+					return result
+				}
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Malformed acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)	
+					"Invalid acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)
 				result.Error = acme.UnauthorizedProblem(errText)
 				return result
 			}
-			if subtle.ConstantTimeCompare(h[:], extValue) == 1 {
-				return result
-			}
-			errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-				"Invalid acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)
-			result.Error = acme.UnauthorizedProblem(errText)
-			return result
 		}
 	}
 
