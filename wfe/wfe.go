@@ -818,7 +818,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(acme.MalformedProblem("Inner JWS verification error"), response)
 		return
 	}
-	
+
 	innerHeaderURL, ok := wfe.extractJWSURL(parsedInnerJWS)
 	if !ok {
 		wfe.sendError(acme.MalformedProblem("Inner JWS header parameter 'url' required."), response)
@@ -1396,7 +1396,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	csrNames := uniqueLowerNames(parsedCSR.DNSNames)
 	if len(csrNames) != len(orderNames) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of names than CSR specifieds"), response)
+			"Order includes different number of names than CSR specifies"), response)
 		return
 	}
 
