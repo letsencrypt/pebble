@@ -72,7 +72,7 @@ var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 // This is the identifier defined in draft-01. This is only supported for backwards
 // compatibility.
 // (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#page-4)
-var IdPeAcmeIdentifierV1 = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
 
 func userAgent() string {
 	return fmt.Sprintf(
@@ -391,14 +391,14 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
 			// For backwards compatibility, check old identifier
 			// as well if strict mode is not enabled
-			if !va.strict && IdPeAcmeIdentifierV1.Equal(ext.Id) {
+			if !va.strict && IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
 				hasAcmeIdentifier = true
 			}
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
 					errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-						"Malformed acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)	
+						"Malformed acmeValidation extension value.", acme.ChallengeTLSALPN01)	
 					result.Error = acme.UnauthorizedProblem(errText)
 					return result
 				}
@@ -406,7 +406,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 					return result
 				}
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Invalid acmeValidationV1 extension value.", acme.ChallengeTLSALPN01)
+					"Invalid acmeValidation extension value.", acme.ChallengeTLSALPN01)
 				result.Error = acme.UnauthorizedProblem(errText)
 				return result
 			}
