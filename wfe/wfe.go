@@ -258,7 +258,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
 	wfe.HandleFunc(m, orderPath, wfe.Order, "GET")
 	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
@@ -1483,6 +1483,46 @@ func (wfe *WebFrontEndImpl) Authz(
 	if authz == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
+	}
+
+	if request.Method == "POST" {
+		body, _, key, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+
+		existingAcct, prob := wfe.getAcctByKey(key)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+
+		if authz.Order.AccountID != existingAcct.ID {
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account does not own authorization"), response)
+			return
+		}
+
+		var deactivateRequest struct {
+			Status string
+		}
+		err := json.Unmarshal(body, &deactivateRequest)
+		if err != nil {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update: %s",
+					err.Error())), response)
+			return
+		}
+
+		if deactivateRequest.Status != "deactivated" {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update, status must be \"deactivated\" not %q",
+					deactivateRequest.Status)), response)
+			return
+		}
+
+		authz.Status = acme.StatusDeactivated
 	}
 
 	err := wfe.writeJsonResponse(
