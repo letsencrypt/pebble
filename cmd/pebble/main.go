@@ -59,7 +59,7 @@ func main() {
 	clk := clock.New()
 	db := db.NewMemoryStore(clk)
 	ca := ca.New(logger, db)
-	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort)
+	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
 	wfe := wfe.New(logger, clk, db, va, ca, *strictMode)
 	muxHandler := wfe.Handler()
