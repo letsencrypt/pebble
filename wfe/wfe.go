@@ -1884,19 +1884,17 @@ func (wfe *WebFrontEndImpl) Certificate(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	var account *core.Account
 	if request.Method == "POST" {
 		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
-		acct, prob := wfe.validPOSTAsGET(postData)
+		_, prob = wfe.validPOSTAsGET(postData)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
-		account = acct
 	}
 
 	serial := strings.TrimPrefix(request.URL.Path, certPath)
@@ -1904,15 +1902,6 @@ func (wfe *WebFrontEndImpl) Certificate(
 	if cert == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
-	}
-
-	// if the account that authenticated the request is not empty ensure that the
-	// certificate specified is owned by that account
-	if account != nil {
-		if cert.AccountID != account.ID {
-			response.WriteHeader(http.StatusNotFound)
-			return
-		}
 	}
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
