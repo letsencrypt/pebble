@@ -511,7 +511,7 @@ func (wfe *WebFrontEndImpl) validPOSTAsGET(postData *authenticatedPOST) (*core.A
 		return nil, acme.InternalErrorProblem("nil authenticated POST data")
 	}
 
-	if postData.body != nil {
+	if !postData.postAsGet {
 		return nil, acme.MalformedProblem("POST-as-GET requests must have a nil body")
 	}
 
@@ -530,9 +530,10 @@ func (wfe *WebFrontEndImpl) validPOSTAsGET(postData *authenticatedPOST) (*core.A
 type keyExtractor func(*http.Request, *jose.JSONWebSignature) (*jose.JSONWebKey, *acme.ProblemDetails)
 
 type authenticatedPOST struct {
-	body []byte
-	url  string
-	jwk  *jose.JSONWebKey
+	postAsGet bool
+	body      []byte
+	url       string
+	jwk       *jose.JSONWebKey
 }
 
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
@@ -640,9 +641,10 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	}
 
 	return &authenticatedPOST{
-		body: payload,
-		url:  headerURL,
-		jwk:  pubKey}, nil
+		postAsGet: payload == nil,
+		body:      payload,
+		url:       headerURL,
+		jwk:       pubKey}, nil
 }
 
 // isASCII determines if every character in a string is encoded in
@@ -1361,12 +1363,10 @@ func (wfe *WebFrontEndImpl) Order(
 	// If the request was authenticated we need to make sure that the
 	// authenticated account owns the order being requested
 	if account != nil {
-		// If the order doesn't belong to the account that authenticted the POST
-		// request then pretend it doesn't exist.
 		if orderAccountID != account.ID {
-			response.WriteHeader(http.StatusNotFound)
-			wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
-				"No order %q found for account ID %q", orderID, account.ID)), response)
+			response.WriteHeader(http.StatusForbidden)
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account that authenticated the request does not own the specified order"), response)
 			return
 		}
 	}
@@ -1421,12 +1421,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// returning
 	existingOrder.RUnlock()
 
-	// If the order doesn't belong to the account that authenticted the POST
-	// request then pretend it doesn't exist.
 	if orderAccountID != existingAcct.ID {
-		response.WriteHeader(http.StatusNotFound)
-		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
-			"No order %q found for account ID %q", orderID, existingAcct.ID)), response)
+		response.WriteHeader(http.StatusForbidden)
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Account that authenticated the request does not own the specified order"), response)
 		return
 	}
 
@@ -1573,7 +1571,7 @@ func (wfe *WebFrontEndImpl) Authz(
 
 	// If the request was a POST there are two options:
 	//   A) a POST to update the authorization
-	//   B) a POST to get the authorization
+	//   B) a POST-as-GET to get the authorization
 	if request.Method == "POST" {
 		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 		if prob != nil {
@@ -1581,9 +1579,9 @@ func (wfe *WebFrontEndImpl) Authz(
 			return
 		}
 
-		// If the postData has a body, treat this as case A) and update the authorization
-		// based on the postData
-		if postData.body != nil {
+		// If the postData is not a POST-as-GET, treat this as case A) and update
+		// the authorization based on the postData
+		if !postData.postAsGet {
 			existingAcct, prob := wfe.getAcctByKey(postData.jwk)
 			if prob != nil {
 				wfe.sendError(prob, response)
@@ -1625,7 +1623,10 @@ func (wfe *WebFrontEndImpl) Authz(
 			}
 
 			if authz.Order.AccountID != account.ID {
-				response.WriteHeader(http.StatusNotFound)
+				response.WriteHeader(http.StatusForbidden)
+				wfe.sendError(acme.UnauthorizedProblem(
+					"Account authorizing the request is not the owner of the authorization"),
+					response)
 				return
 			}
 		}
@@ -1674,8 +1675,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 			return
 		}
 
-		// If the post data has a body it is case A)
-		if postData.body != nil {
+		// If the post isn't a POST-as-GET its case A)
+		if !postData.postAsGet {
 			wfe.updateChallenge(ctx, postData, response, request)
 			return
 		} else {
@@ -1696,7 +1697,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// If there was an account authenticating this GET request then make sure it
 	// owns the challenge.
 	if account != nil && chal.Authz.Order.AccountID != account.ID {
-		response.WriteHeader(http.StatusNotFound)
+		response.WriteHeader(http.StatusUnauthorized)
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Account authenticating request is not the owner of the challenge"), response)
 		return
 	}
 
@@ -1831,7 +1834,9 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	if authz.Order.AccountID != existingAcct.ID {
-		response.WriteHeader(http.StatusNotFound)
+		response.WriteHeader(http.StatusUnauthorized)
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Account authenticating request is not the owner of the challenge"), response)
 		return
 	}
 
