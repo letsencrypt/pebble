@@ -641,7 +641,7 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	}
 
 	return &authenticatedPOST{
-		postAsGet: payload == nil,
+		postAsGet: string(payload) == "",
 		body:      payload,
 		url:       headerURL,
 		jwk:       pubKey}, nil
