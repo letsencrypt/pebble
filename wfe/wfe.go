@@ -1679,7 +1679,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	if wfe.strict && chalResp.KeyAuthorization != nil {
 		wfe.sendError(
 			acme.MalformedProblem(
-				"Challenge response body contained legacy KeyAuthorzation field, "+
+				"Challenge response body contained legacy KeyAuthorization field, "+
 					"POST body should be `{}`"), response)
 		return
 	}
