@@ -537,7 +537,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature) ([]byte, error) {
-	// TODO(@cpu): `checkAlgorithm()`
+	if err := checkAlgorithm(pubKey, parsedJWS); err != nil {
+		return nil, err
+	}
 
 	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
