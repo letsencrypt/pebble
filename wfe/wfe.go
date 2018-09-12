@@ -229,7 +229,7 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 
 	response.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
 	response.WriteHeader(prob.HTTPStatus)
-	response.Write(problemDoc)
+	_, _ = response.Write(problemDoc)
 }
 
 func (wfe *WebFrontEndImpl) RootCert(
@@ -291,7 +291,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		return
 	}
 
-	response.Write(relDir)
+	_, _ = response.Write(relDir)
 }
 
 func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
