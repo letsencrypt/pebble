@@ -620,7 +620,7 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 	contacts := acct.Contact
 
 	// Providing no Contacts is perfectly acceptable
-	if contacts == nil || len(contacts) == 0 {
+	if len(contacts) == 0 {
 		return nil
 	}
 
