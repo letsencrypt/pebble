@@ -900,7 +900,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	if newAcctReq.ToSAgreed == false {
+	if !newAcctReq.ToSAgreed {
 		response.Header().Add("Link", link(ToSURL, "terms-of-service"))
 		wfe.sendError(
 			acme.AgreementRequiredProblem(
