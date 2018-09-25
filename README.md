@@ -4,8 +4,8 @@
 [![Docker Build Status](https://img.shields.io/docker/build/letsencrypt/pebble.svg)](https://hub.docker.com/r/letsencrypt/pebble/builds/)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
-is a small [ACME-13](https://tools.ietf.org/html/draft-ietf-acme-acme-13) test
-server not suited for use as a production CA.
+is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited
+for use as a production CA.
 
 ## !!! WARNING !!!
 
@@ -28,7 +28,7 @@ Pebble has several top level goals:
 Pebble aims to address the need for ACME clients to have an easier to use,
 self-contained version of Boulder to test their clients against while developing
 ACME v2 support. Boulder is multi-process, requires heavy dependencies (MariaDB,
-RabbitMQ, etc), and is operationally complex to integrate with other projects.
+gRPC, etc), and is operationally complex to integrate with other projects.
 
 Where possible Pebble aims to be a test-bed for new ACME protocol features that
 can be used to inform later Boulder support. Pebble provides a way for Boulder
