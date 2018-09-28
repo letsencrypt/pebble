@@ -36,7 +36,9 @@ import (
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
-	directoryPath     = "/dir"
+	// We export the DirectoryPath and RootCertPath so that the pebble binary can reference it
+	DirectoryPath     = "/dir"
+	RootCertPath      = "/root"
 	noncePath         = "/nonce-plz"
 	newAccountPath    = "/sign-me-up"
 	acctPath          = "/my-account/"
@@ -47,7 +49,6 @@ const (
 	challengePath     = "/chalZ/"
 	certPath          = "/certZ/"
 	revokeCertPath    = "/revoke-cert"
-	rootCertPath      = "/root"
 	keyRolloverPath   = "/rollover-account-key"
 
 	// How long do pending authorizations last before expiring?
@@ -253,10 +254,10 @@ func (wfe *WebFrontEndImpl) RootCert(
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
-	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, rootCertPath, wfe.RootCert, "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.RootCert, "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
