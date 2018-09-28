@@ -47,6 +47,7 @@ func main() {
 
 	// Log to stdout
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
+	logger.Printf("Starting Pebble ACME server")
 
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
@@ -61,10 +62,14 @@ func main() {
 	ca := ca.New(logger, db)
 	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
-	wfe := wfe.New(logger, clk, db, va, ca, *strictMode)
-	muxHandler := wfe.Handler()
+	wfeImpl := wfe.New(logger, clk, db, va, ca, *strictMode)
+	muxHandler := wfeImpl.Handler()
 
-	logger.Printf("Pebble running, listening on: %s\n", c.Pebble.ListenAddress)
+	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
+	logger.Printf("ACME directory available at: https://%s%s",
+		c.Pebble.ListenAddress, wfe.DirectoryPath)
+	logger.Printf("Root CA certificate available at: https://%s%s",
+		c.Pebble.ListenAddress, wfe.RootCertPath)
 	err = http.ListenAndServeTLS(
 		c.Pebble.ListenAddress,
 		c.Pebble.Certificate,
