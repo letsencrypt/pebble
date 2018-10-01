@@ -80,7 +80,7 @@ pebble -config ./test/config/pebble-config.json
 ```
 
 Afterwards you can access the Pebble server's ACME directory
-at `http://localhost:14000/dir`.
+at `https://localhost:14000/dir`.
 
 ### Docker Image
 
