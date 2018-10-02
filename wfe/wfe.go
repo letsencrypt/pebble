@@ -722,23 +722,31 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		Contact []string `json:"contact"`
 		Status  string   `json:"status,omitempty"`
 	}
-	err := json.Unmarshal(postData.body, &updateAcctReq)
-	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling account update JSON body"), response)
-		return
-	}
-
-	existingAcct, prob := wfe.getAcctByKey(postData.jwk)
-	if prob != nil {
-		wfe.sendError(prob, response)
-		return
+	var existingAcct *core.Account
+	if postData.postAsGet {
+		existingAcct, prob = wfe.validPOSTAsGET(postData)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+	} else {
+		err := json.Unmarshal(postData.body, &updateAcctReq)
+		if err != nil {
+			wfe.sendError(
+				acme.MalformedProblem("Error unmarshaling account update JSON body"), response)
+			return
+		}
+		existingAcct, prob = wfe.getAcctByKey(postData.jwk)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
 	}
 
 	// if this update contains no contacts or deactivated status,
 	// simply return the existing account and return early.
 	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
-		err = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+		err := wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
 			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 			return
@@ -775,7 +783,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		}
 	}
 
-	err = wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
+	err := wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error storing updated account"), response)
