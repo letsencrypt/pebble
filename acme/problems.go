@@ -8,7 +8,7 @@ import (
 const (
 	errNS                  = "urn:ietf:params:acme:error:"
 	serverInternalErr      = errNS + "serverInternal"
-	malformedErr           = errNS + "malformedRequest"
+	malformedErr           = errNS + "malformed"
 	badNonceErr            = errNS + "badNonce"
 	agreementReqErr        = errNS + "agreementRequired"
 	connectionErr          = errNS + "connection"
