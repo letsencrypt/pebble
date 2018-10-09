@@ -746,7 +746,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	// if this update contains no contacts or deactivated status,
 	// simply return the existing account and return early.
 	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
-		if wfe.strict == true && postData.postAsGet == false {
+		if wfe.strict && !postData.postAsGet {
 			wfe.sendError(acme.MalformedProblem("Use POST-as-GET to retrieve account data instead of doing an empty update"), response)
 			return
 		}
