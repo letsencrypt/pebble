@@ -206,7 +206,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 
 				if !methodsMap[request.Method] {
 					response.Header().Set("Allow", methodsStr)
-					response.WriteHeader(http.StatusMethodNotAllowed)
 					wfe.sendError(acme.MethodNotAllowed(), response)
 					return
 				}
@@ -1348,7 +1347,6 @@ func (wfe *WebFrontEndImpl) Order(
 	var account *core.Account
 	if request.Method == "GET" && wfe.strict {
 		response.Header().Set("Allow", "POST")
-		response.WriteHeader(http.StatusMethodNotAllowed)
 		wfe.sendError(acme.MethodNotAllowed(), response)
 		return
 	} else if request.Method == "POST" {
@@ -1572,7 +1570,6 @@ func (wfe *WebFrontEndImpl) Authz(
 	// Only allow GET when not being strict
 	if request.Method == "GET" && wfe.strict {
 		response.Header().Set("Allow", "POST")
-		response.WriteHeader(http.StatusMethodNotAllowed)
 		wfe.sendError(acme.MethodNotAllowed(), response)
 		return
 	}
@@ -1667,7 +1664,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// strict mode.
 	if request.Method == "GET" && wfe.strict {
 		response.Header().Set("Allow", "POST")
-		response.WriteHeader(http.StatusMethodNotAllowed)
 		wfe.sendError(acme.MethodNotAllowed(), response)
 		return
 	}
@@ -1903,8 +1899,11 @@ func (wfe *WebFrontEndImpl) Certificate(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	if request.Method == "POST" {
+	if request.Method == "GET" && wfe.strict {
+		response.Header().Set("Allow", "POST")
+		wfe.sendError(acme.MethodNotAllowed(), response)
+		return
+	} else if request.Method == "POST" {
 		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
