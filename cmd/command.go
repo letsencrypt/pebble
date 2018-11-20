@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 // ReadConfigFile takes a file path as an argument and attempts to
@@ -30,4 +33,29 @@ func FailOnError(err error, msg string) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
+// method before exiting
+func CatchSignals(callback func()) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	log.Printf("Caught %s", signalToName[sig])
+
+	if callback != nil {
+		callback()
+	}
+
+	log.Printf("Exiting")
+	os.Exit(0)
 }
