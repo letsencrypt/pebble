@@ -55,7 +55,7 @@ const (
 	// defaultSleepTime defines the default sleep time (in seconds) between
 	// validation attempts. Can be disabled or modified by the environment
 	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
-	defaultSleepTime = 15
+	defaultSleepTime = 5
 
 	// noValidateEnvVar defines the environment variable name used to signal that
 	// the VA should *not* actually validate challenges. Set this to 1 when you
@@ -398,7 +398,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
 					errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-						"Malformed acmeValidation extension value.", acme.ChallengeTLSALPN01)	
+						"Malformed acmeValidation extension value.", acme.ChallengeTLSALPN01)
 					result.Error = acme.UnauthorizedProblem(errText)
 					return result
 				}
