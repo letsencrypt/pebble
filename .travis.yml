@@ -15,6 +15,7 @@ env:
 before_install:
   - git clone https://github.com/certbot/certbot
   - cd certbot
+  - git checkout 8b5ac9e2573de9dfd4182bdcd98d7262a2bdc8f0
   - ./certbot-auto --os-packages-only -n
   - ./tools/venv.py
   - . venv/bin/activate
