@@ -68,7 +68,7 @@ const (
 
 	// By default when no PEBBLE_WFE_NONCEREJECT is set, what percentage of good
 	// nonces are rejected?
-	defaultNonceReject = 15
+	defaultNonceReject = 5
 
 	// POST requests with a JWS body must have the following Content-Type header
 	expectedJWSContentType = "application/jose+json"
