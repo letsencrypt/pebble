@@ -941,11 +941,18 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// Lookup existing account to exit early if it exists
 	existingAcct, _ := wfe.db.GetAccountByKey(postData.jwk)
 	if existingAcct != nil {
-		// If there is an existing account then return a Location header pointing to
-		// the account and a 200 OK response
-		acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
-		response.Header().Set("Location", acctURL)
-		_ = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+		if existingAcct.Status == acme.StatusDeactivated {
+			// If there is an existing, but deactivated account, then return an unauthorized
+			// problem informing the user that this account was deactivated
+			wfe.sendError(acme.UnauthorizedProblem(
+				"An account with the provided public key exists but is deactivated"), response)
+		} else {
+			// If there is an existing account then return a Location header pointing to
+			// the account and a 200 OK response
+			acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+			response.Header().Set("Location", acctURL)
+			_ = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+		}
 		return
 	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
 		// If there *isn't* an existing account and the created account request
