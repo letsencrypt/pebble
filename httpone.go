@@ -49,7 +49,7 @@ func selfSignedCert() tls.Certificate {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  true,
+		IsCA: true,
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
@@ -75,9 +75,7 @@ func (s *ChallSrv) AddHTTPOneChallenge(token, content string) {
 func (s *ChallSrv) DeleteHTTPOneChallenge(token string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if _, ok := s.httpOne[token]; ok {
-		delete(s.httpOne, token)
-	}
+	delete(s.httpOne, token)
 }
 
 // GetHTTPOneChallenge returns the HTTP-01 challenge content for the given token
@@ -101,9 +99,7 @@ func (s *ChallSrv) AddHTTPRedirect(path, targetURL string) {
 func (s *ChallSrv) DeleteHTTPRedirect(path string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if _, ok := s.redirects[path]; ok {
-		delete(s.redirects, path)
-	}
+	delete(s.redirects, path)
 }
 
 // GetHTTPRedirect returns the redirect target for the given path
@@ -149,16 +145,14 @@ type challHTTPServer struct {
 
 // ListenAndServe for a challHTTPServer will call the underlying http.Server's
 // ListenAndServeTLS if the server has a non-nil TLSConfig, otherwise it will
-// use the underlying http.Server's ListenAndServe(). This allos for
+// use the underlying http.Server's ListenAndServe(). This allows for
 // a challHTTPServer to be both a normal HTTP based HTTP-01 challenge response
 // server in one configuration (nil TLSConfig) and an HTTPS based HTTP-01
 // challenge response server useful for redirect targets in another
 // configuration.
 func (c challHTTPServer) ListenAndServe() error {
-	// If the server has a TLSConfig then use ListenAndServeTLS with empty
-	// certfile/keyfile arguments. This will use the self-signed certificate we
-	// issued when constructing the TLSConfig in `httpOneServer`.
 	if c.Server.TLSConfig != nil {
+		// This will use the certificate and key from TLSConfig.
 		return c.Server.ListenAndServeTLS("", "")
 	}
 	// Otherwise use HTTP

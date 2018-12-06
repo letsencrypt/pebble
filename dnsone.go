@@ -18,9 +18,7 @@ func (s *ChallSrv) AddDNSOneChallenge(host, content string) {
 func (s *ChallSrv) DeleteDNSOneChallenge(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if _, ok := s.dnsOne[host]; ok {
-		delete(s.dnsOne, host)
-	}
+	delete(s.dnsOne, host)
 }
 
 // GetDNSOneChallenge returns a slice of TXT record values for the given host.

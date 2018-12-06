@@ -35,9 +35,7 @@ func (s *ChallSrv) AddTLSALPNChallenge(host, content string) {
 func (s *ChallSrv) DeleteTLSALPNChallenge(host string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	if _, ok := s.tlsALPNOne[host]; ok {
-		delete(s.tlsALPNOne, host)
-	}
+	delete(s.tlsALPNOne, host)
 }
 
 // GetTLSALPNChallenge checks the s.tlsALPNOne map for the given host.
@@ -99,9 +97,8 @@ func (c challTLSServer) Shutdown() error {
 }
 
 func (c challTLSServer) ListenAndServe() error {
-	// We never want to serve a plain cert so leave certFile and keyFile
-	// empty. If we don't know the SNI name/ALPN fails the handshake will
-	// fail anyway.
+	// Since we set TLSConfig.GetCertificate, the certfile and keyFile arguments
+	// are ignored and we leave them blank.
 	return c.Server.ListenAndServeTLS("", "")
 }
 

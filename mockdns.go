@@ -1,7 +1,6 @@
 package challtestsrv
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -58,9 +57,7 @@ func (s *ChallSrv) DeleteDNSARecord(host string) {
 	if !strings.HasSuffix(host, ".") {
 		host = host + "."
 	}
-	if _, ok := s.dnsMocks.aRecords[host]; ok {
-		delete(s.dnsMocks.aRecords, host)
-	}
+	delete(s.dnsMocks.aRecords, host)
 }
 
 // GetDNSARecord returns a slice of IPv4 addresses (in string form) that will be
@@ -93,9 +90,7 @@ func (s *ChallSrv) DeleteDNSAAAARecord(host string) {
 	if !strings.HasSuffix(host, ".") {
 		host = host + "."
 	}
-	if _, ok := s.dnsMocks.aaaaRecords[host]; ok {
-		delete(s.dnsMocks.aaaaRecords, host)
-	}
+	delete(s.dnsMocks.aaaaRecords, host)
 }
 
 // GetDNSAAAARecord returns a slice of IPv6 addresses (in string form) that will
@@ -117,7 +112,6 @@ func (s *ChallSrv) AddDNSCAARecord(host string, policies []MockCAAPolicy) {
 	if !strings.HasSuffix(host, ".") {
 		host = host + "."
 	}
-	fmt.Printf("Adding %#v for %q\n", policies, host)
 	s.dnsMocks.caaRecords[host] = append(s.dnsMocks.caaRecords[host], policies...)
 }
 
@@ -129,9 +123,7 @@ func (s *ChallSrv) DeleteDNSCAARecord(host string) {
 	if !strings.HasSuffix(host, ".") {
 		host = host + "."
 	}
-	if _, ok := s.dnsMocks.caaRecords[host]; ok {
-		delete(s.dnsMocks.caaRecords, host)
-	}
+	delete(s.dnsMocks.caaRecords, host)
 }
 
 // GetDNSCAARecord returns a slice of mock CAA policies that will
