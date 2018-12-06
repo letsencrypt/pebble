@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/pebble/challtestsrv"
+	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/cmd"
 )
 

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/letsencrypt/pebble/challtestsrv"
+	"github.com/letsencrypt/challtestsrv"
 )
 
 // setDefaultDNSIPv4 handles an HTTP POST request to set the default IPv4
