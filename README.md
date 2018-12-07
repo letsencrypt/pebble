@@ -85,8 +85,8 @@ at `https://localhost:14000/dir`.
 ### Docker
 
 Pebble includes a [docker-compose](https://docs.docker.com/compose/) file that
-will create a `pebble` instance that uses a `pebble-challtestsrv` image for DNS
-resolution.
+will create a `pebble` instance that uses a `pebble-challtestsrv` instance for
+DNS resolution.
 
 To build and start the containers run:
 
