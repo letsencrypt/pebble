@@ -82,7 +82,38 @@ pebble -config ./test/config/pebble-config.json
 Afterwards you can access the Pebble server's ACME directory
 at `https://localhost:14000/dir`.
 
-### Docker Image
+### Docker
+
+Pebble includes a [docker-compose](https://docs.docker.com/compose/) file that
+will create a `pebble` instance that uses a `pebble-challtestsrv` image for DNS
+resolution.
+
+To build and start the containers run:
+
+```
+docker-compose up
+```
+
+Afterwards you can access the ACME API from your host machine at
+`https://localhost:14000/dir` and the `pebble-challtestsrv`'s management
+interface at `http://locahost:8055`.
+
+To get started you may want to update the `pebble-challtestsrv` mock DNS data
+with a new default IPv4 address to use to respond to `A` queries from `pebble`:
+
+```
+curl --request POST --data '{"ip":"172.20.0.1"}' http://localhost:8055/set-default-ipv4
+```
+
+See the [pebble-challtestsrv
+README](https://github.com/letsencrypt/pebble/blob/master/cmd/pebble-challtestsrv/README.md)
+for more information.
+
+#### Prebuilt Docker Images
+
+If you would prefer not to use the provided `docker-compose.yml`, or to build
+container images yourself, you can also use the [published
+images](https://hub.docker.com/r/letsencrypt/pebble/).
 
 With a docker-compose file:
 
@@ -92,7 +123,7 @@ version: '3'
 services:
  pebble:
   image: letsencrypt/pebble
-  command: pebble -config ./test/my-pebble-config.json
+  command: pebble -config /test/my-pebble-config.json
   ports:
     - 14000:14000
   environment:
@@ -135,13 +166,20 @@ By default Pebble uses the system DNS resolver, this may mean that caching cause
 problems with DNS-01 validation. It may also mean that no DNSSEC validation is
 performed.
 You should configure your system's recursive DNS resolver according to your
-needs or use the `-dnsserver` flag to define an address to a DNS server. 
+needs or use the `-dnsserver` flag to define an address to a DNS server.
 
 ```
 pebble -dnsserver 10.10.10.10:5053
 pebble -dnsserver 8.8.8.8:53
 pebble -dnsserver :5053
 ```
+
+You may find it useful to set `pebble`'s `-dnsserver` to the address you used as
+the `-dns01` argument when starting up a `pebble-challtestsrv` instance. This
+will let you easily mock DNS data for Pebble. See the included
+`docker-compose.yml` and the [pebble-challtestsrv
+README](https://github.com/letsencrypt/pebble/blob/master/cmd/pebble-challtestsrv/README.md)
+for more information.
 
 ### Testing at full speed
 

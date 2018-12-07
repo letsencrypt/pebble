@@ -1,0 +1,31 @@
+version: '3'
+services:
+  pebble:
+    build:
+      context: .
+      dockerfile: docker/pebble/Dockerfile
+    command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    ports:
+      # HTTPS ACME API
+      - 14000:14000
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.2
+  challtestsrv:
+    build:
+      context: .
+      dockerfile: docker/pebble-challtestsrv/Dockerfile
+    ports:
+      # HTTP Management Interface
+      - 8055:8055
+    networks:
+      acmenet:
+        ipv4_address: 10.30.50.3
+
+networks:
+  acmenet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.30.50.0/24
