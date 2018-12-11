@@ -16,6 +16,10 @@ redirect behaviour for HTTP-01 challenge validation.
 
 ```
 Usage of pebble-challtestsrv:
+  -defaultIPv4 string
+    Default IPv4 address for mock DNS responses to A queries (default "127.0.0.1")
+  -defaultIPv6 string
+    Default IPv6 address for mock DNS responses to AAAA queries (default "::1")
   -dns01 string
     Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
   -http01 string
@@ -42,12 +46,15 @@ _Note: These examples assume the default `-management` interface address, `:8056
 
 ##### Default A/AAAA Responses
 
-To set the default IPv4 address used for responses to `A` queries that do not
-match explicit mocks run:
+You can set the default IPv4 and IPv6 addresses used for `A` and `AAAA` query
+responses using the `-defaultIPv4` and `-defaultIPv6` command line flags.
+
+To change the default IPv4 address used for responses to `A` queries that do not
+match explicit mocks at runtime run:
 
     curl -X POST -d '{"ip":"10.10.10.2"}' http://localhost:8056/set-default-ipv4
 
-Similarly to set the default IPv6 address used for responses to `AAAA` queries
+Similarly to change the default IPv6 address used for responses to `AAAA` queries
 that do not match explicit mocks run:
 
     curl -X POST -d '{"ip":"::1"}' http://localhost:8056/set-default-ipv6
