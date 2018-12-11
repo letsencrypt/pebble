@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: docker/pebble/Dockerfile
-    command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053 -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
       # HTTPS ACME API
       - 14000:14000
