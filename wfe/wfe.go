@@ -195,7 +195,12 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-				response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
+				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
+				// requests to the dedicated newNonce endpoint, or in replies to POST
+				// requests that consumed a nonce.
+				if request.Method == "POST" || pattern == noncePath {
+					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
+				}
 
 				logEvent.Endpoint = pattern
 				if request.URL != nil {
