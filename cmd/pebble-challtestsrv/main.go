@@ -118,6 +118,11 @@ func main() {
 		http.HandleFunc("/del-tlsalpn01", oobSrv.delTLSALPN01)
 	}
 
+	http.HandleFunc("/clear-request-history", oobSrv.clearHistory)
+	http.HandleFunc("/http-request-history", oobSrv.getHTTPHistory)
+	http.HandleFunc("/dns-request-history", oobSrv.getDNSHistory)
+	http.HandleFunc("/tlsalpn01-request-history", oobSrv.getTLSALPNHistory)
+
 	// Start all of the sub-servers in their own Go routines so that the main Go
 	// routine can spin forever looking for signals to catch.
 	go srv.Run()

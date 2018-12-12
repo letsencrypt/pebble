@@ -49,7 +49,7 @@ func selfSignedCert() tls.Certificate {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
@@ -117,6 +117,15 @@ func (s *ChallSrv) GetHTTPRedirect(path string) (string, bool) {
 // then the challenge response contents are returned.
 func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
+
+	s.AddRequestEvent(HTTPRequestEvent{
+		Time:   time.Now(),
+		URL:    r.URL.String(),
+		Host:   r.Host,
+		Method: r.Method,
+		Path:   requestPath,
+		HTTPS:  r.TLS != nil,
+	})
 
 	// If the request was not over HTTPS and we have a redirect, serve it.
 	// Redirects are ignored over HTTPS so we can easily do an HTTP->HTTPS

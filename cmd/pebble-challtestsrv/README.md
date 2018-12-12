@@ -36,7 +36,7 @@ To disable a challenge type, set the bind address to `""`. E.g.:
 
 ### Management Interface
 
-_Note: These examples assume the default `-management` interface address, `:8056`._
+_Note: These examples assume the default `-management` interface address, `:8055`._
 
 #### Mock DNS
 
@@ -45,12 +45,12 @@ _Note: These examples assume the default `-management` interface address, `:8056
 To set the default IPv4 address used for responses to `A` queries that do not
 match explicit mocks run:
 
-    curl -X POST -d '{"ip":"10.10.10.2"}' http://localhost:8056/set-default-ipv4
+    curl -X POST -d '{"ip":"10.10.10.2"}' http://localhost:8055/set-default-ipv4
 
 Similarly to set the default IPv6 address used for responses to `AAAA` queries
 that do not match explicit mocks run:
 
-    curl -X POST -d '{"ip":"::1"}' http://localhost:8056/set-default-ipv6
+    curl -X POST -d '{"ip":"::1"}' http://localhost:8055/set-default-ipv6
 
 To clear the default IPv4 or IPv6 address POST the same endpoints with an empty
 (`""`) IP.
@@ -60,20 +60,20 @@ To clear the default IPv4 or IPv6 address POST the same endpoints with an empty
 To add IPv4 addresses to be returned for `A` queries for
 `test-host.letsencrypt.org` run:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org", "addresses":["12.12.12.12", "13.13.13.13"]}' http://localhost:8056/add-a
+    curl -X POST -d '{"host":"test-host.letsencrypt.org", "addresses":["12.12.12.12", "13.13.13.13"]}' http://localhost:8055/add-a
 
 The mocked `A` responses can be removed by running:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8056/clear-a
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-a
 
 To add IPv6 addresses to be returned for `AAAA` queries for
 `test-host.letsencrypt.org` run:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org", "addresses":["2001:4860:4860::8888", "2001:4860:4860::8844"]}' http://localhost:8056/add-aaaa
+    curl -X POST -d '{"host":"test-host.letsencrypt.org", "addresses":["2001:4860:4860::8888", "2001:4860:4860::8844"]}' http://localhost:8055/add-aaaa
 
 The mocked `AAAA` responses can be removed by running:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8056/clear-aaaa
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-aaaa
 
 ##### Mocked CAA Responses
 
@@ -90,7 +90,7 @@ To remove the mocked CAA policy for `test-host.letsencrypt.org` run:
 
 To add an HTTP-01 challenge response for the token `"aaaa"` with the content `"bbbb"` run:
 
-    curl -X POST -d '{"token":"aaaa", "content":"bbbb"}' http://localhost:8056/add-http01
+    curl -X POST -d '{"token":"aaaa", "content":"bbbb"}' http://localhost:8055/add-http01
 
 Afterwards the challenge response will be available over HTTP at
 `http://localhost:5002/.well-known/acme-challenge/aaaa`, and HTTPS at
@@ -98,14 +98,14 @@ Afterwards the challenge response will be available over HTTP at
 
 The HTTP-01 challenge response for the `"aaaa"` token can be deleted by running:
 
-    curl -X POST -d '{"token":"aaaa"}' http://localhost:8056/del-http01
+    curl -X POST -d '{"token":"aaaa"}' http://localhost:8055/del-http01
 
 ##### Redirects
 
 To add a redirect from `/.well-known/acme-challenge/whatever` to
 `https://localhost:5003/ok` run:
 
-    curl -X POST -d '{"path":"/.well-known/whatever", "targetURL": "https://localhost:5003/ok"}' http://localhost:8056/add-redirect
+    curl -X POST -d '{"path":"/.well-known/whatever", "targetURL": "https://localhost:5003/ok"}' http://localhost:8055/add-redirect
 
 Afterwards HTTP requests to `http://localhost:5002/.well-known/whatever/` will
 be redirected to `https://localhost:5003/ok`. HTTPS requests that match the
@@ -114,26 +114,82 @@ path from HTTP to HTTPS.
 
 To remove the redirect run:
 
-    curl -X POST -d '{"path":"/.well-known/whatever"}' http://localhost:8056/del-redirect
+    curl -X POST -d '{"path":"/.well-known/whatever"}' http://localhost:8055/del-redirect
 
 #### DNS-01
 
 To add a DNS-01 challenge response for `_acme-challenge.test-host.letsencrypt.org` with
 the value `"foo"` run:
 
-    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "value": "foo"}' http://localhost:8056/add-txt
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "value": "foo"}' http://localhost:8055/add-txt
 
 To remove the mocked DNS-01 challenge response run:
 
-    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org"}' http://localhost:8056/clear-txt
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org"}' http://localhost:8055/clear-txt
 
 #### TLS-ALPN-01
 
 To add a TLS-ALPN-01 challenge response certificate for the host
 `test-host.letsencrypt.org` with the key authorization `"foo"` run:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org", "content":"foo"}' http://localhost:8056/add-tlsalpn01
+    curl -X POST -d '{"host":"test-host.letsencrypt.org", "content":"foo"}' http://localhost:8055/add-tlsalpn01
 
 To remove the mocked TLS-ALPN-01 challenge response run:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8056/clear-tlsalpn01
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-tlsalpn01
+
+#### Request History
+
+`pebble-challtestsrv` keeps track of the requests processed by each of the
+challenge servers and exposes this information via JSON.
+
+To get the history of HTTP requests run:
+
+    curl http://localhost:8055/http-request-history
+
+Each HTTP request event is an object of the form:
+```
+   {
+      "Time": "2018-12-12T16:42:20.667521441-05:00",
+      "URL": "/test-whatever/dude?token=blah",
+      "Host": "localhost:5002",
+      "Method": "GET",
+      "Path": "/test-whatever/dude",
+      "HTTPS": false
+   }
+```
+
+To get the history of DNS requests run:
+
+    curl http://localhost:8055/dns-request-history
+
+Each DNS request event is an object of the form:
+```
+   {
+      "Time": "2018-12-12T16:42:34.465299005-05:00",
+      "Question": {
+         "Name": "bogdog.cog.",
+         "Qtype": 257,
+         "Qclass": 1
+      }
+   }
+```
+
+To get the history of TLS-ALPN-01 requests run:
+
+    curl http://localhost:8055/tlsalpn01-request-history
+
+Each TLS-ALPN-01 request event is an object of the form:
+```
+   {
+      "Time": "2018-12-12T16:42:50.654684756-05:00",
+      "ServerName": "heydudez.watup",
+      "SupportedProtos": [
+         "dogzrule"
+      ]
+   }
+```
+
+To clear all request history run:
+
+    curl -X POST -d '{}' http://localhost:8055/clear-request-history
