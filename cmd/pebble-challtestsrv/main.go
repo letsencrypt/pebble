@@ -119,6 +119,14 @@ func main() {
 
 		srv.SetDefaultDNSIPv4(*defaultIPv4)
 		srv.SetDefaultDNSIPv6(*defaultIPv6)
+		if *defaultIPv4 != "" {
+			logger.Printf("Answering A queries with %s by default",
+				*defaultIPv4)
+		}
+		if *defaultIPv6 != "" {
+			logger.Printf("Answering AAAA queries with %s by default",
+				*defaultIPv6)
+		}
 	}
 	if *tlsAlpnOneBind != "" {
 		http.HandleFunc("/add-tlsalpn01", oobSrv.addTLSALPN01)
