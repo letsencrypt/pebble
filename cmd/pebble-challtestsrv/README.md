@@ -155,7 +155,8 @@ Each HTTP request event is an object of the form:
       "Host": "localhost:5002",
       "Method": "GET",
       "Path": "/test-whatever/dude",
-      "HTTPS": false
+      "HTTPS": true,
+      "ServerName": "example-sni.com"
    }
 ```
 
