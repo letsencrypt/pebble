@@ -118,13 +118,19 @@ func (s *ChallSrv) GetHTTPRedirect(path string) (string, bool) {
 func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
 
+	serverName := ""
+	if r.TLS != nil {
+		serverName = r.TLS.ServerName
+	}
+
 	s.AddRequestEvent(HTTPRequestEvent{
-		Time:   time.Now(),
-		URL:    r.URL.String(),
-		Host:   r.Host,
-		Method: r.Method,
-		Path:   requestPath,
-		HTTPS:  r.TLS != nil,
+		Time:       time.Now(),
+		URL:        r.URL.String(),
+		Host:       r.Host,
+		Method:     r.Method,
+		Path:       requestPath,
+		HTTPS:      r.TLS != nil,
+		ServerName: serverName,
 	})
 
 	// If the request was not over HTTPS and we have a redirect, serve it.

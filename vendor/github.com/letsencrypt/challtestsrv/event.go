@@ -28,6 +28,9 @@ type HTTPRequestEvent struct {
 	Path string
 	// Whether the request was received over HTTPS or HTTP
 	HTTPS bool
+	// The ServerName from the ClientHello. May be empty if there was no SNI or if
+	// the request was not HTTPS
+	ServerName string
 }
 
 // An HTTPRequestEvent is String formatted as:
