@@ -150,18 +150,15 @@ To remove the mocked TLS-ALPN-01 challenge response run:
 `pebble-challtestsrv` keeps track of the requests processed by each of the
 challenge servers and exposes this information via JSON.
 
-To get the history of HTTP requests run:
+To get the history of HTTP requests to `example.com` run:
 
-    curl http://localhost:8055/http-request-history
+    curl -X POST -d '{"host":"example.com"}' http://localhost:8055/http-request-history
 
 Each HTTP request event is an object of the form:
 ```
    {
-      "Time": "2018-12-12T16:42:20.667521441-05:00",
       "URL": "/test-whatever/dude?token=blah",
-      "Host": "localhost:5002",
-      "Method": "GET",
-      "Path": "/test-whatever/dude",
+      "Host": "example.com",
       "HTTPS": true,
       "ServerName": "example-sni.com"
    }
@@ -170,16 +167,15 @@ If the HTTP request was over the HTTPS interface then HTTPS will be true and the
 ServerName field will be populated with the SNI value sent by the client in the
 initial TLS hello.
 
-To get the history of DNS requests run:
+To get the history of DNS requests for `example.com.` run:
 
-    curl http://localhost:8055/dns-request-history
+    curl -X POST -d '{"host":"example.com."}' http://localhost:8055/dns-request-history
 
 Each DNS request event is an object of the form:
 ```
    {
-      "Time": "2018-12-12T16:42:34.465299005-05:00",
       "Question": {
-         "Name": "bogdog.cog.",
+         "Name": "example.com.",
          "Qtype": 257,
          "Qclass": 1
       }
@@ -188,13 +184,12 @@ Each DNS request event is an object of the form:
 
 To get the history of TLS-ALPN-01 requests run:
 
-    curl http://localhost:8055/tlsalpn01-request-history
+    curl -X POST -d '{"host":"example.com"}' http://localhost:8055/tlsalpn01-request-history
 
 Each TLS-ALPN-01 request event is an object of the form:
 ```
    {
-      "Time": "2018-12-12T16:42:50.654684756-05:00",
-      "ServerName": "heydudez.watup",
+      "ServerName": "example.com",
       "SupportedProtos": [
          "dogzrule"
       ]
@@ -204,14 +199,14 @@ The ServerName field is populated with the SNI value sent by the client in the
 initial TLS hello. The SupportedProtos field is set with the advertised
 supported next protocols from the initial TLS hello.
 
-To clear HTTP request history run:
+To clear HTTP request history for `example.com` run:
 
-    curl -X POST -d '{"type":"http"}' http://localhost:8055/clear-request-history
+    curl -X POST -d '{"host":"example.com", "type":"http"}' http://localhost:8055/clear-request-history
 
-Similarly, to clear DNS request history run:
+Similarly, to clear DNS request history for `example.com.` run:
 
-    curl -X POST -d '{"type":"dns"}' http://localhost:8055/clear-request-history
+    curl -X POST -d '{"host":"example.com.", "type":"dns"}' http://localhost:8055/clear-request-history
 
-And to clear TLS-ALPN-01 request history run:
+And to clear TLS-ALPN-01 request history for `example.com` run:
 
-    curl -X POST -d '{"type":"tlsalpn"}' http://localhost:8055/clear-request-history
+    curl -X POST -d '{"host":"example.com", "type":"tlsalpn"}' http://localhost:8055/clear-request-history

@@ -2,7 +2,6 @@ package challtestsrv
 
 import (
 	"net"
-	"time"
 
 	"github.com/miekg/dns"
 )
@@ -144,7 +143,6 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	// For each question, add answers based on the type of question
 	for _, q := range r.Question {
 		s.AddRequestEvent(DNSRequestEvent{
-			Time:     time.Now(),
 			Question: q,
 		})
 		var answerFunc dnsAnswerFunc

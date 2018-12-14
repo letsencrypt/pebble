@@ -35,9 +35,9 @@ type ChallSrv struct {
 	// response data maps below.
 	challMu sync.RWMutex
 
-	// requestHistory is a map from event type to a list of sequential request
-	// events
-	requestHistory map[RequestEventType][]RequestEvent
+	// requestHistory is a map from hostname to a map of event type to a list of
+	// sequential request events
+	requestHistory map[string]map[RequestEventType][]RequestEvent
 
 	// httpOne is a map of token values to key authorizations used for HTTP-01
 	// responses.
@@ -125,7 +125,7 @@ func New(config Config) (*ChallSrv, error) {
 
 	challSrv := &ChallSrv{
 		log:            config.Log,
-		requestHistory: make(map[RequestEventType][]RequestEvent),
+		requestHistory: make(map[string]map[RequestEventType][]RequestEvent),
 		httpOne:        make(map[string]string),
 		dnsOne:         make(map[string][]string),
 		tlsALPNOne:     make(map[string]string),

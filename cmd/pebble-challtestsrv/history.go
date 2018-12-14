@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -9,15 +10,17 @@ import (
 )
 
 // clearHistory handles an HTTP POST request to clear the challenge server
-// request history for a specific type of event.
+// request history for a specific hostname and type of event.
 //
-// The POST body is expected to have one parameter:
-// "type" - the type of event to clear. May be "http", "dns", or "tlsalpn"
+// The POST body is expected to have two parameters:
+// "host" - the hostname to clear history for.
+// "type" - the type of event to clear. May be "http", "dns", or "tlsalpn".
 //
 // A successful POST will write http.StatusOK to the client.
 func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Typ string `json:"type"`
+		Host string
+		Typ  string `json:"type"`
 	}
 	if err := mustParsePOST(&request, r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -28,10 +31,14 @@ func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request
 		"dns":     challtestsrv.DNSRequestEventType,
 		"tlsalpn": challtestsrv.TLSALPNRequestEventType,
 	}
+	if request.Host == "" {
+		http.Error(w, "host parameter must not be empty", http.StatusBadRequest)
+		return
+	}
 	if code, ok := typeMap[request.Typ]; ok {
-		srv.challSrv.ClearRequestHistory(code)
-		srv.log.Printf("Cleared challenge server request history for %q events\n",
-			request.Typ)
+		srv.challSrv.ClearRequestHistory(request.Host, code)
+		srv.log.Printf("Cleared challenge server request history for %q %q events\n",
+			request.Host, request.Typ)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -39,22 +46,58 @@ func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request
 	http.Error(w, fmt.Sprintf("%q event type unknown", request.Typ), http.StatusBadRequest)
 }
 
-// getHTTPHistory returns only the HTTPRequestEvent's from the challenge
-// server's request history in JSON form.
+// getHTTPHistory returns only the HTTPRequestEvents for the given hostname
+// from the challenge server's request history in JSON form.
 func (srv *managementServer) getHTTPHistory(w http.ResponseWriter, r *http.Request) {
-	srv.writeHistory(srv.challSrv.RequestHistory(challtestsrv.HTTPRequestEventType), w)
+	host, err := requestHost(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	srv.writeHistory(
+		srv.challSrv.RequestHistory(host, challtestsrv.HTTPRequestEventType),
+		w)
 }
 
-// getDNSHistory returns only the DNSRequestEvent's from the challenge
+// getDNSHistory returns only the DNSRequestEvents from the challenge
 // server's request history in JSON form.
 func (srv *managementServer) getDNSHistory(w http.ResponseWriter, r *http.Request) {
-	srv.writeHistory(srv.challSrv.RequestHistory(challtestsrv.DNSRequestEventType), w)
+	host, err := requestHost(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	srv.writeHistory(
+		srv.challSrv.RequestHistory(host, challtestsrv.DNSRequestEventType),
+		w)
 }
 
-// getTLSALPNHistory returns only the TLSALPNRequestEvent's from the challenge
+// getTLSALPNHistory returns only the TLSALPNRequestEvents from the challenge
 // server's request history in JSON form.
 func (srv *managementServer) getTLSALPNHistory(w http.ResponseWriter, r *http.Request) {
-	srv.writeHistory(srv.challSrv.RequestHistory(challtestsrv.TLSALPNRequestEventType), w)
+	host, err := requestHost(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	srv.writeHistory(
+		srv.challSrv.RequestHistory(host, challtestsrv.TLSALPNRequestEventType),
+		w)
+}
+
+// requestHost extracts the Host parameter of a JSON POST body in the provided
+// request, or returns an error.
+func requestHost(r *http.Request) (string, error) {
+	var request struct {
+		Host string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		return "", err
+	}
+	if request.Host == "" {
+		return "", errors.New("host parameter of POST body must not be empty")
+	}
+	return request.Host, nil
 }
 
 // writeHistory writes the provided list of challtestsrv.RequestEvents to the

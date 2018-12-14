@@ -50,14 +50,16 @@ value `"bbb"`, defer cleaning it up again:
   defer challSrv.DeleteHTTPOneChallenge("_acme-challenge.example.com.")
 ```
 
-Get the history of HTTP requests processed by the challenge server:
+Get the history of HTTP requests processed by the challenge server for the host
+"example.com":
 ```
-requestHistory := challSrv.RequestHistory(challtestsrv.HTTPRequestEventType)
+requestHistory := challSrv.RequestHistory("example.com", challtestsrv.HTTPRequestEventType)
 ```
 
-Clear the history of HTTP requests processed by the challenge server:
+Clear the history of HTTP requests processed by the challenge server for the
+host "example.com":
 ```
-challSrv.ClearRequestHistory(challtestsrv.HTTPRequestEventType)
+challSrv.ClearRequestHistory("example.com", challtestsrv.HTTPRequestEventType)
 ```
 
 Stop the Challenge server and subservers:

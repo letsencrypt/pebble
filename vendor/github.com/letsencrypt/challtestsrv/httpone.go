@@ -124,11 +124,8 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.AddRequestEvent(HTTPRequestEvent{
-		Time:       time.Now(),
 		URL:        r.URL.String(),
 		Host:       r.Host,
-		Method:     r.Method,
-		Path:       requestPath,
 		HTTPS:      r.TLS != nil,
 		ServerName: serverName,
 	})

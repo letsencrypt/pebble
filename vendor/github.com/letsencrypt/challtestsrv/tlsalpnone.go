@@ -51,7 +51,6 @@ func (s *ChallSrv) GetTLSALPNChallenge(host string) (string, bool) {
 func (s *ChallSrv) ServeChallengeCertFunc(k *ecdsa.PrivateKey) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		s.AddRequestEvent(TLSALPNRequestEvent{
-			Time:            time.Now(),
 			ServerName:      hello.ServerName,
 			SupportedProtos: hello.SupportedProtos,
 		})
