@@ -142,6 +142,9 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 	// For each question, add answers based on the type of question
 	for _, q := range r.Question {
+		s.AddRequestEvent(DNSRequestEvent{
+			Question: q,
+		})
 		var answerFunc dnsAnswerFunc
 		switch q.Qtype {
 		case dns.TypeTXT:
