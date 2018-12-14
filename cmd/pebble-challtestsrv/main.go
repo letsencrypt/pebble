@@ -65,6 +65,10 @@ func main() {
 		"Comma separated bind addresses/ports for TLS-ALPN-01 and HTTPS HTTP-01 challenges. Set empty to disable.")
 	managementBind := flag.String("management", ":8055",
 		"Bind address/port for management HTTP interface")
+	defaultIPv4 := flag.String("defaultIPv4", "127.0.0.1",
+		"Default IPv4 address for mock DNS responses to A queries")
+	defaultIPv6 := flag.String("defaultIPv6", "::1",
+		"Default IPv6 address for mock DNS responses to AAAA queries")
 
 	flag.Parse()
 
@@ -112,6 +116,17 @@ func main() {
 		http.HandleFunc("/clear-aaaa", oobSrv.delDNSAAAARecord)
 		http.HandleFunc("/add-caa", oobSrv.addDNSCAARecord)
 		http.HandleFunc("/clear-caa", oobSrv.delDNSCAARecord)
+
+		srv.SetDefaultDNSIPv4(*defaultIPv4)
+		srv.SetDefaultDNSIPv6(*defaultIPv6)
+		if *defaultIPv4 != "" {
+			logger.Printf("Answering A queries with %s by default",
+				*defaultIPv4)
+		}
+		if *defaultIPv6 != "" {
+			logger.Printf("Answering AAAA queries with %s by default",
+				*defaultIPv6)
+		}
 	}
 	if *tlsAlpnOneBind != "" {
 		http.HandleFunc("/add-tlsalpn01", oobSrv.addTLSALPN01)

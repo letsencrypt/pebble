@@ -15,6 +15,7 @@ services:
     build:
       context: .
       dockerfile: docker/pebble-challtestsrv/Dockerfile
+    command: pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
       # HTTP Management Interface
       - 8055:8055
