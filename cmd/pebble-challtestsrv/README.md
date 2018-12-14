@@ -159,6 +159,9 @@ Each HTTP request event is an object of the form:
       "ServerName": "example-sni.com"
    }
 ```
+If the HTTP request was over the HTTPS interface then HTTPS will be true and the
+ServerName field will be populated with the SNI value sent by the client in the
+initial TLS hello.
 
 To get the history of DNS requests run:
 
@@ -190,7 +193,18 @@ Each TLS-ALPN-01 request event is an object of the form:
       ]
    }
 ```
+The ServerName field is populated with the SNI value sent by the client in the
+initial TLS hello. The SupportedProtos field is set with the advertised
+supported next protocols from the initial TLS hello.
 
-To clear all request history run:
+To clear HTTP request history run:
 
-    curl -X POST -d '{}' http://localhost:8055/clear-request-history
+    curl -X POST -d '{"type":"http"}' http://localhost:8055/clear-request-history
+
+Similarly, to clear DNS request history run:
+
+    curl -X POST -d '{"type":"dns"}' http://localhost:8055/clear-request-history
+
+And to clear TLS-ALPN-01 request history run:
+
+    curl -X POST -d '{"type":"tlsalpn"}' http://localhost:8055/clear-request-history

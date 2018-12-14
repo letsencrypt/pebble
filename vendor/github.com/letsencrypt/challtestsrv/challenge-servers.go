@@ -35,10 +35,9 @@ type ChallSrv struct {
 	// response data maps below.
 	challMu sync.RWMutex
 
-	// requestHistory is a sequential list of request events processed by
-	// challenge servers. It can be cleared with the
-	// `ChallSrv.ClearRequestHistory` function.
-	requestHistory []RequestEvent
+	// requestHistory is a map from event type to a list of sequential request
+	// events
+	requestHistory map[RequestEventType][]RequestEvent
 
 	// httpOne is a map of token values to key authorizations used for HTTP-01
 	// responses.
@@ -126,7 +125,7 @@ func New(config Config) (*ChallSrv, error) {
 
 	challSrv := &ChallSrv{
 		log:            config.Log,
-		requestHistory: []RequestEvent{},
+		requestHistory: make(map[RequestEventType][]RequestEvent),
 		httpOne:        make(map[string]string),
 		dnsOne:         make(map[string][]string),
 		tlsALPNOne:     make(map[string]string),

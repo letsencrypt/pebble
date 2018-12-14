@@ -12,6 +12,8 @@ github.com/letsencrypt/challtestsrv v1.0.1-0.20181212222758-e1173e47e167 h1:QH2b
 github.com/letsencrypt/challtestsrv v1.0.1-0.20181212222758-e1173e47e167/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
 github.com/letsencrypt/challtestsrv v1.0.1-0.20181213164708-7ac06f2c48ad h1:WKfASZKhpfYh+wggJWPtKWDiRSN93GOnGHfTdCGCqU8=
 github.com/letsencrypt/challtestsrv v1.0.1-0.20181213164708-7ac06f2c48ad/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
+github.com/letsencrypt/challtestsrv v1.0.1-0.20181214141602-e2eba9b59bf7 h1:/Kl45ZozvwLA7sl7sikILYS0orc6bRrd++qP8tNqjf0=
+github.com/letsencrypt/challtestsrv v1.0.1-0.20181214141602-e2eba9b59bf7/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
 github.com/miekg/dns v1.1.1 h1:DVkblRdiScEnEr0LR9nTnEQqHYycjkXW9bOjd+2EL2o=
 github.com/miekg/dns v1.1.1/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9 h1:mKdxBk7AujPs8kU4m80U72y/zjbZ3UcXC7dClwKbUI0=

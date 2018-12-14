@@ -1,6 +1,6 @@
 # github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 github.com/jmhodges/clock
-# github.com/letsencrypt/challtestsrv v1.0.1-0.20181213164708-7ac06f2c48ad
+# github.com/letsencrypt/challtestsrv v1.0.1-0.20181214141602-e2eba9b59bf7
 github.com/letsencrypt/challtestsrv
 # github.com/miekg/dns v1.1.1
 github.com/miekg/dns

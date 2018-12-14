@@ -1,20 +1,30 @@
 package challtestsrv
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/miekg/dns"
 )
 
-// RequestEvent is an interface used to handle disparate request event types in
-// a uniform list.
+// RequestEventType indicates what type of event occurred.
+type RequestEventType int
+
+const (
+	// HTTP requests
+	HTTPRequestEventType RequestEventType = iota
+	// DNS requests
+	DNSRequestEventType
+	// TLS-ALPN-01 requests
+	TLSALPNRequestEventType
+)
+
+// A RequestEvent is anything that can identify its RequestEventType
 type RequestEvent interface {
-	String() string
+	Type() RequestEventType
 }
 
 // HTTPRequestEvent corresponds to an HTTP request received by a httpOneServer.
+// It implements the RequestEvent interface.
 type HTTPRequestEvent struct {
 	// Time the request was received
 	Time time.Time
@@ -33,18 +43,13 @@ type HTTPRequestEvent struct {
 	ServerName string
 }
 
-// An HTTPRequestEvent is String formatted as:
-// <timestamp> - HTTP|HTTPS - <Method> - <Host> - <URL>
-func (e HTTPRequestEvent) String() string {
-	timeStamp := e.Time.Format(time.RFC3339)
-	protocol := "HTTP"
-	if e.HTTPS {
-		protocol = "HTTPS"
-	}
-	return fmt.Sprintf("%s - %s - %s - %s - %s", timeStamp, protocol, e.Method, e.Host, e.URL)
+// HTTPRequestEvents always have type HTTPRequestEventType
+func (e HTTPRequestEvent) Type() RequestEventType {
+	return HTTPRequestEventType
 }
 
-// DNSRequestEvent corresponds to a DNS request received by a dnsOneServer.
+// DNSRequestEvent corresponds to a DNS request received by a dnsOneServer. It
+// implements the RequestEvent interface.
 type DNSRequestEvent struct {
 	// Time request was received.
 	Time time.Time
@@ -52,15 +57,13 @@ type DNSRequestEvent struct {
 	Question dns.Question
 }
 
-// A DNSRequestEvent is String formatted as:
-// <timestamp> - DNS - "<query>"
-func (e DNSRequestEvent) String() string {
-	timeStamp := e.Time.Format(time.RFC3339)
-	return fmt.Sprintf("%s - DNS - %q", timeStamp, e.Question.String())
+// DNSRequestEvents always have type DNSRequestEventType
+func (e DNSRequestEvent) Type() RequestEventType {
+	return DNSRequestEventType
 }
 
 // TLSALPNRequestEvent corresponds to a TLS request received by
-// a tlsALPNOneServer.
+// a tlsALPNOneServer. It implements the RequestEvent interface.
 type TLSALPNRequestEvent struct {
 	// Time request was received.
 	Time time.Time
@@ -70,31 +73,32 @@ type TLSALPNRequestEvent struct {
 	SupportedProtos []string
 }
 
-// A TLSALPNRequestEvent is String formatted as:
-// <timestamp> - TLS-ALPN-01 - <servername> - <comma separated supported protos>
-func (e TLSALPNRequestEvent) String() string {
-	timeStamp := e.Time.Format(time.RFC3339)
-	return fmt.Sprintf("%s - TLS-ALPN-01 - %s - %s",
-		timeStamp, e.ServerName, strings.Join(e.SupportedProtos, ","))
+// TLSALPNRequestEvents always have type TLSALPNRequestEventType
+func (e TLSALPNRequestEvent) Type() RequestEventType {
+	return TLSALPNRequestEventType
 }
 
-// AddRequestEvent appends a RequestEvent to the server's request history.
+// AddRequestEvent adds a RequestEvent to the server's request history. It is
+// appeneded to a list of RequestEvents indexed by the event's Type().
 func (s *ChallSrv) AddRequestEvent(event RequestEvent) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	s.requestHistory = append(s.requestHistory, event)
+
+	typ := event.Type()
+	s.requestHistory[typ] = append(s.requestHistory[typ], event)
 }
 
-// RequestHistory returns the server's request history.
-func (s *ChallSrv) RequestHistory() []RequestEvent {
+// RequestHistory returns the server's request history for the given event type.
+func (s *ChallSrv) RequestHistory(typ RequestEventType) []RequestEvent {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	return s.requestHistory
+	return s.requestHistory[typ]
 }
 
-// ClearRequestHistory clears the server's request history.
-func (s *ChallSrv) ClearRequestHistory() {
+// ClearRequestHistory clears the server's request history for the given event
+// type.
+func (s *ChallSrv) ClearRequestHistory(typ RequestEventType) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	s.requestHistory = []RequestEvent{}
+	s.requestHistory[typ] = []RequestEvent{}
 }
