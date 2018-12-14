@@ -37,7 +37,6 @@ func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request
 	}
 
 	http.Error(w, fmt.Sprintf("%q event type unknown", request.Typ), http.StatusBadRequest)
-	return
 }
 
 // getHTTPHistory returns only the HTTPRequestEvent's from the challenge
