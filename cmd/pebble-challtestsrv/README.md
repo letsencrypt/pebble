@@ -35,8 +35,8 @@ Usage of pebble-challtestsrv:
 To disable a challenge type, set the bind address to `""`. E.g.:
 
 * To run HTTP-01 only: `pebble-challtestsrv -dns01 "" -tlsalpn01 ""`
-* To run DNS-01 only: `challtestsrv -http01 "" -tlsalpn01 ""`
-* To run TLS-ALPN-01 only: `challtestsrv -http01 "" -dns01 ""`
+* To run DNS-01 only: `pebble-challtestsrv -http01 "" -tlsalpn01 ""`
+* To run TLS-ALPN-01 only: `pebble-challtestsrv -http01 "" -dns01 ""`
 
 ### Management Interface
 
