@@ -60,7 +60,7 @@ type ChallSrv struct {
 	redirects map[string]string
 }
 
-// mockDNSData holds mock respones for DNS A, AAAA, and CAA lookups.
+// mockDNSData holds mock responses for DNS A, AAAA, and CAA lookups.
 type mockDNSData struct {
 	// The IPv4 address used for all A record responses that don't match a host in
 	// aRecords.
@@ -68,7 +68,7 @@ type mockDNSData struct {
 	// The IPv6 address used for all AAAA record responses that don't match a host
 	// in aaaaRecords.
 	defaultIPv6 string
-	// A map of host to IPv4 addressess in string form for A record responses.
+	// A map of host to IPv4 addresses in string form for A record responses.
 	aRecords map[string][]string
 	// A map of host to IPv6 addresses in string form for AAAA record responses.
 	aaaaRecords map[string][]string

@@ -95,7 +95,7 @@ func (s *ChallSrv) AddHTTPRedirect(path, targetURL string) {
 	s.redirects[path] = targetURL
 }
 
-// DeletedHTTPRedirect deletes a redirect for the given path.
+// DeleteHTTPRedirect deletes a redirect for the given path.
 func (s *ChallSrv) DeleteHTTPRedirect(path string) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
