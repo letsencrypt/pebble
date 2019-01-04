@@ -128,11 +128,13 @@ To remove the redirect run:
 To add a DNS-01 challenge response for `_acme-challenge.test-host.letsencrypt.org` with
 the value `"foo"` run:
 
-    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "value": "foo"}' http://localhost:8055/add-txt
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org.", "value": "foo"}' http://localhost:8055/set-txt
 
 To remove the mocked DNS-01 challenge response run:
 
-    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org"}' http://localhost:8055/clear-txt
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org."}' http://localhost:8055/clear-txt
+
+Note that a period character is required at the end of the host name here.
 
 #### TLS-ALPN-01
 
@@ -143,7 +145,7 @@ To add a TLS-ALPN-01 challenge response certificate for the host
 
 To remove the mocked TLS-ALPN-01 challenge response run:
 
-    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-tlsalpn01
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/del-tlsalpn01
 
 #### Request History
 
