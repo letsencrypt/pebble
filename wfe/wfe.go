@@ -360,7 +360,13 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	response.WriteHeader(http.StatusNoContent)
+	statusCode := http.StatusOK
+	// The ACME specification says GET requets should receive http.StatusNoContent
+	// 	// and HEAD requests should receive http.StatusOK.
+	if request.Method == "GET" {
+		statusCode = http.StatusNoContent
+	}
+	response.WriteHeader(statusCode)
 }
 
 func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
