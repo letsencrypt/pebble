@@ -17,22 +17,17 @@ for BASE_NAME in ${BASE_NAMES[@]}; do
     echo "Updating docker ${IMAGE_NAME} image..."
 
     # create docker image
-    docker build -t ${IMAGE_NAME}:latest -f docker/${BASE_NAME}/Dockerfile .
+    docker build -t ${IMAGE_NAME}:temp -f docker/${BASE_NAME}/Dockerfile .
 
     # push images
-    echo "Try to publish image: ${IMAGE_NAME}:latest"
-    docker push ${IMAGE_NAME}:latest
-
-    if [[ -n "$TRAVIS_COMMIT" ]]; then
-        echo "Try to publish image: ${IMAGE_NAME}:${TRAVIS_COMMIT}"
-        docker tag ${IMAGE_NAME}:latest ${IMAGE_NAME}:${TRAVIS_COMMIT}
-        docker push ${IMAGE_NAME}:${TRAVIS_COMMIT}
-    fi
-
     if [[ -n "${TRAVIS_TAG}" ]]; then
         echo "Try to publish image: ${IMAGE_NAME}:${TRAVIS_TAG}"
-        docker tag ${IMAGE_NAME}:latest ${IMAGE_NAME}:${TRAVIS_TAG}
+        docker tag ${IMAGE_NAME}:temp ${IMAGE_NAME}:${TRAVIS_TAG}
         docker push ${IMAGE_NAME}:${TRAVIS_TAG}
+
+        echo "Try to publish image: ${IMAGE_NAME}:latest"
+        docker tag ${IMAGE_NAME}:${TRAVIS_TAG} ${IMAGE_NAME}:latest
+        docker push ${IMAGE_NAME}:latest
     fi
 done
 
