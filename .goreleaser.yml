@@ -1,0 +1,111 @@
+project_name: pebble
+
+builds:
+  - binary: pebble
+    main: ./cmd/pebble/
+    env:
+    - GO111MODULE=on
+    - CGO_ENABLED=0
+
+    goos:
+    - windows
+    - darwin
+    - linux
+    - freebsd
+    - openbsd
+    goarch:
+    - amd64
+    - 386
+    - arm
+    - arm64
+    goarm:
+    - 7
+
+    ignore:
+    - goos: openbsd
+      goarch: arm
+
+  - binary: pebble-client
+    main: ./cmd/pebble-client/
+    env:
+    - GO111MODULE=on
+    - CGO_ENABLED=0
+
+    goos:
+    - windows
+    - darwin
+    - linux
+    - freebsd
+    - openbsd
+    goarch:
+    - amd64
+    - 386
+    - arm
+    - arm64
+    goarm:
+    - 7
+
+    ignore:
+    - goos: openbsd
+      goarch: arm
+
+  - binary: pebble-challtestsrv
+    main: ./cmd/pebble-challtestsrv/
+    env:
+    - GO111MODULE=on
+    - CGO_ENABLED=0
+
+    goos:
+    - windows
+    - darwin
+    - linux
+    - freebsd
+    - openbsd
+    goarch:
+    - amd64
+    - 386
+    - arm
+    - arm64
+    goarm:
+    - 7
+
+    ignore:
+    - goos: openbsd
+      goarch: arm
+
+archive:
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm}}v{{ .Arm }}{{ end }}'
+  format: tar.gz
+  format_overrides:
+  - goos: windows
+    format: zip
+  files:
+  - LICENSE
+
+dockers:
+  - image_templates:
+    - "letsencrypt/pebble:latest"
+    - "letsencrypt/pebble:{{ .Tag }}"
+    - "letsencrypt/pebble:v{{ .Major }}"
+    - "letsencrypt/pebble:v{{ .Major }}.{{ .Minor }}"
+    binary: pebble
+    dockerfile: docker/pebble/release.Dockerfile
+#    skip_push: true
+    extra_files:
+    - test/
+
+  - image_templates:
+    - "letsencrypt/pebble-challtestsrv:latest"
+    - "letsencrypt/pebble-challtestsrv:{{ .Tag }}"
+    - "letsencrypt/pebble-challtestsrv:v{{ .Major }}"
+    - "letsencrypt/pebble-challtestsrv:v{{ .Major }}.{{ .Minor }}"
+    binary: pebble-challtestsrv
+    dockerfile: docker/pebble-challtestsrv/release.Dockerfile
+#    skip_push: true
+
+release:
+  disable: true
+
+## To test locally:
+## goreleaser release --skip-publish --skip-validate --rm-dist
+## goreleaser release --skip-publish --skip-validate --snapshot --rm-dist
