@@ -37,6 +37,9 @@ script:
   - go vet ./...
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
 
+after_success:
+  - test -n "$TRAVIS_TAG" && docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"
+
 deploy:
   - provider: script
     skip_cleanup: true
