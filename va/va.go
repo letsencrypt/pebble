@@ -1,6 +1,7 @@
 package va
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -56,6 +57,9 @@ const (
 	// validation attempts. Can be disabled or modified by the environment
 	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
 	defaultSleepTime = 5
+
+	// validationTimeout defines the timeout for validation attempts.
+	validationTimeout = 15 * time.Second
 
 	// noValidateEnvVar defines the environment variable name used to signal that
 	// the VA should *not* actually validate challenges. Set this to 1 when you
@@ -307,7 +311,10 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: va.clk.Now(),
 	}
 
-	txts, err := net.LookupTXT(challengeSubdomain)
+	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
+	defer cancelfunc()
+
+	txts, err := net.DefaultResolver.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem("Error retrieving TXT records for DNS challenge")
 		return result
@@ -422,7 +429,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 }
 
 func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls.ConnectionState, *acme.ProblemDetails) {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second * 5}, "tcp", hostPort, config)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, config)
 
 	if err != nil {
 		// TODO(@cpu): Return better err - see parseHTTPConnError from boulder
@@ -492,7 +499,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   time.Second * 5,
+		Timeout:   validationTimeout,
 	}
 
 	resp, err := client.Do(httpRequest)
