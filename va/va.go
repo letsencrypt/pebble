@@ -58,16 +58,8 @@ const (
 	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
 	defaultSleepTime = 5
 
-	// validateTimeoutEnvVar defines the environment variable name used to set the
-	// timeout for a validation attempt. Set this e.g. to 20 when you invoke Pebble if
-	// you wish the timeout for a validation attempt to be higher:
-	//   PEBBLE_VA_TIMEOUT=20 pebble
-	validateTimeoutEnvVar = "PEBBLE_VA_TIMEOUT"
-
-	// defaultTimeout defines the default timeout (in seconds) between
-	// validation attempts. Can be disabled or modified by the environment
-	// variable PEBBLE_VA_TIMEOUT (see above).
-	defaultTimeout = 5
+	// validationTimeout defines the timeout for validation attempts.
+	validationTimeout = 15 * time.Second
 
 	// noValidateEnvVar defines the environment variable name used to signal that
 	// the VA should *not* actually validate challenges. Set this to 1 when you
@@ -117,7 +109,6 @@ type VAImpl struct {
 	tasks       chan *vaTask
 	sleep       bool
 	sleepTime   int
-	timeout     time.Duration
 	alwaysValid bool
 	strict      bool
 }
@@ -135,7 +126,6 @@ func New(
 		tasks:     make(chan *vaTask, taskQueueSize),
 		sleep:     true,
 		sleepTime: defaultSleepTime,
-		timeout:   time.Second * defaultTimeout,
 		strict:    strict,
 	}
 
@@ -153,13 +143,6 @@ func New(
 	if err == nil && va.sleep && sleepTimeInt >= 1 {
 		va.sleepTime = sleepTimeInt
 		va.log.Printf("Setting maximum random VA sleep time to %d seconds", va.sleepTime)
-	}
-
-	timeoutVar := os.Getenv(validateTimeoutEnvVar)
-	timeoutSecs, err := strconv.Atoi(timeoutVar)
-	if err == nil && timeoutSecs >= 1 {
-		va.timeout = time.Duration(timeoutSecs) * time.Second
-		va.log.Printf("Setting VA timeout to %d seconds", timeoutSecs)
 	}
 
 	noValidate := os.Getenv(noValidateEnvVar)
@@ -328,7 +311,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: va.clk.Now(),
 	}
 
-	ctx, cancelfunc := context.WithTimeout(context.Background(), va.timeout)
+	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
 	defer cancelfunc()
 
 	txts, err := net.DefaultResolver.LookupTXT(ctx, challengeSubdomain)
@@ -446,7 +429,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 }
 
 func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls.ConnectionState, *acme.ProblemDetails) {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: va.timeout}, "tcp", hostPort, config)
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, config)
 
 	if err != nil {
 		// TODO(@cpu): Return better err - see parseHTTPConnError from boulder
@@ -516,7 +499,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   va.timeout,
+		Timeout:   validationTimeout,
 	}
 
 	resp, err := client.Do(httpRequest)
