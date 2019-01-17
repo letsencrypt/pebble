@@ -43,3 +43,4 @@ deploy:
     skip_cleanup: true
     on:
       repo: letsencrypt/pebble
+      tags: true
