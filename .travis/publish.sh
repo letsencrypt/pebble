@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-if [[ "${TRAVIS_PULL_REQUEST}" = "false" ]]; then
+if [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then
     echo "Publishing..."
 else
     echo "Skipping publishing"
@@ -20,7 +20,7 @@ for BASE_NAME in "${BASE_NAMES[@]}"; do
     docker build -t "${IMAGE_NAME}:temp" -f "docker/${BASE_NAME}/Dockerfile" .
 
     # push images
-    if [[ -n "${TRAVIS_TAG}" ]]; then
+    if [ -n "${TRAVIS_TAG}" ]; then
         echo "Try to publish image: ${IMAGE_NAME}:${TRAVIS_TAG}"
         docker tag "${IMAGE_NAME}:temp" "${IMAGE_NAME}:${TRAVIS_TAG}"
         docker push "${IMAGE_NAME}:${TRAVIS_TAG}"
