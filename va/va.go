@@ -495,6 +495,13 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
 		DisableKeepAlives: true,
+
+		// We always ask for a challenge on HTTP, but
+		// we should ignore certificate errors if we get redirected
+		// to an HTTPS host.
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
 	}
 
 	client := &http.Client{
