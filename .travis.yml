@@ -39,7 +39,7 @@ script:
 
 deploy:
   - provider: script
-    script: sh .travis/publish.sh
+    script: bash .travis/publish.sh
     skip_cleanup: true
     on:
       repo: letsencrypt/pebble
