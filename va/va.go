@@ -488,6 +488,14 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 		return nil, url.String(), acme.MalformedProblem(
 			fmt.Sprintf("Invalid URL %q\n", url.String()))
 	}
+	// trim the :80 port of the url off the host header
+	// if we're using the standard port.
+	// Certain HTTP routers (notably kubernetes nginx-ingress)
+	// gets confused by it
+	if va.httpPort == 80 {
+		httpRequest.Host = identifier
+	}
+
 	httpRequest.Header.Set("User-Agent", userAgent())
 	httpRequest.Header.Set("Accept", "*/*")
 
