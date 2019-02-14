@@ -16,7 +16,7 @@ services:
   - docker
 
 before_install:
-  - git clone https://github.com/certbot/certbot
+  - git checkout -b no-keyauthorization https://github.com/certbot/certbot
   - cd certbot
   - ./certbot-auto --os-packages-only -n
   - ./tools/venv.py
