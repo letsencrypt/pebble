@@ -270,17 +270,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
 	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
-
-	// GET and POST handlers
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
-
-	// POST handlers with legacy GET support
-	// NOTE(@cpu): These handlers will eventually not support GET. It is presently
-	// allowed when `-strict=false` to support ACME <=draft-14 which allowed
-	// unauthenticated GET access to these resources.
-	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET", "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
 
 	return m
 }
@@ -362,10 +355,8 @@ func (wfe *WebFrontEndImpl) Nonce(
 	request *http.Request) {
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD requests should receive http.StatusOK. We only return StatusOK for
-	// HEAD requests in strict mode because this was the legacy behaviour and it
-	// may break clients to change.
-	if wfe.strict && request.Method == "HEAD" {
+	// and HEAD requests should receive http.StatusOK.
+	if request.Method == "HEAD" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
@@ -486,19 +477,17 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 }
 
 func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetails {
-	if wfe.strict {
-		// Section 6.2 says to reject JWS requests without the expected Content-Type
-		// using a status code of http.UnsupportedMediaType
-		if _, present := request.Header["Content-Type"]; !present {
-			return acme.UnsupportedMediaTypeProblem(
-				`missing Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
-		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
-			return acme.UnsupportedMediaTypeProblem(
-				`Invalid Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
+	// Section 6.2 says to reject JWS requests without the expected Content-Type
+	// using a status code of http.UnsupportedMediaType
+	if _, present := request.Header["Content-Type"]; !present {
+		return acme.UnsupportedMediaTypeProblem(
+			`missing Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
+	}
+	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+		return acme.UnsupportedMediaTypeProblem(
+			`Invalid Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
 	}
 
 	if _, present := request.Header["Content-Length"]; !present {
@@ -758,7 +747,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	// if this update contains no contacts or deactivated status,
 	// simply return the existing account and return early.
 	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
-		if wfe.strict && !postData.postAsGet {
+		if !postData.postAsGet {
 			wfe.sendError(acme.MalformedProblem("Use POST-as-GET to retrieve account data instead of doing an empty update"), response)
 			return
 		}
@@ -1365,7 +1354,7 @@ func (wfe *WebFrontEndImpl) Order(
 	request *http.Request) {
 
 	var account *core.Account
-	if request.Method == "GET" && wfe.strict {
+	if request.Method == "GET" {
 		response.Header().Set("Allow", "POST")
 		wfe.sendError(acme.MethodNotAllowed(), response)
 		return
@@ -1586,14 +1575,6 @@ func (wfe *WebFrontEndImpl) Authz(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	// Only allow GET when not being strict
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
-		return
-	}
-
 	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
 	authz := wfe.db.GetAuthorizationByID(authzID)
 	if authz == nil {
@@ -1679,15 +1660,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	// Unauthenticated GETs to challenges are only allowed when not running in
-	// strict mode.
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
-		return
-	}
-
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
 	chal := wfe.db.GetChallengeByID(chalID)
 	if chal == nil {
@@ -1836,9 +1808,8 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// unnecessary, the server can calculate this itself. We could ignore this if
 	// sent (and that's what Boulder will do) but for Pebble we'd like to offer
 	// a way to be more aggressive about pushing clients implementations in the
-	// right direction, so we treat this as a malformed request when running in
-	// strict mode.
-	if wfe.strict && chalResp.KeyAuthorization != nil {
+	// right direction, so we treat this as a malformed request.
+	if chalResp.KeyAuthorization != nil {
 		wfe.sendError(
 			acme.MalformedProblem(
 				"Challenge response body contained legacy KeyAuthorization field, "+
@@ -1919,21 +1890,15 @@ func (wfe *WebFrontEndImpl) Certificate(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
-	} else if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		_, prob = wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
+	}
+	_, prob = wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	serial := strings.TrimPrefix(request.URL.Path, certPath)

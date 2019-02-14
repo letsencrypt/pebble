@@ -396,11 +396,6 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	for _, ext := range leafCert.Extensions {
 		if ext.Critical {
 			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
-			// For backwards compatibility, check old identifier
-			// as well if strict mode is not enabled
-			if !va.strict && IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
-				hasAcmeIdentifier = true
-			}
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
