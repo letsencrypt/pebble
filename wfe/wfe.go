@@ -1352,19 +1352,16 @@ func (wfe *WebFrontEndImpl) Order(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	var account *core.Account
 	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
 	}
-	acct, prob := wfe.validPOSTAsGET(postData)
+	account, prob := wfe.validPOSTAsGET(postData)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
 	}
-	account = acct
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
 	order := wfe.db.GetOrderByID(orderID)
@@ -1655,7 +1652,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// There are two possibilities:
 	// A) request is a POST to begin a challenge
 	// B) request is a POST-as-GET to poll a challenge
-	var account *core.Account
 	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -1670,17 +1666,17 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// If the post isn't a POST-as-GET its case A)
+	var account *core.Account
 	if !postData.postAsGet {
 		wfe.updateChallenge(ctx, postData, response, request)
 		return
 	} else {
 		// Otherwise it is case B)
-		acct, prob := wfe.validPOSTAsGET(postData)
+		account, prob = wfe.validPOSTAsGET(postData)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
-		account = acct
 	}
 
 	// Lock the challenge for reading in order to write the response
