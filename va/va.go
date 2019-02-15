@@ -73,11 +73,6 @@ const (
 // (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#page-4)
 var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
-// This is the identifier defined in draft-01. This is only supported for backwards
-// compatibility.
-// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#page-4)
-var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
-
 func userAgent() string {
 	return fmt.Sprintf(
 		"%s (%s; %s)",

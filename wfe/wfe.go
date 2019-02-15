@@ -1354,23 +1354,17 @@ func (wfe *WebFrontEndImpl) Order(
 	request *http.Request) {
 
 	var account *core.Account
-	if request.Method == "GET" {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
-	} else if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		acct, prob := wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		account = acct
 	}
+	acct, prob := wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+	account = acct
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
 	order := wfe.db.GetOrderByID(orderID)
@@ -1697,9 +1691,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	chal.RLock()
 	defer chal.RUnlock()
 
-	// If there was an account authenticating this GET request then make sure it
-	// owns the challenge.
-	if account != nil && chal.Authz.Order.AccountID != account.ID {
+	if chal.Authz.Order.AccountID != account.ID {
 		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
