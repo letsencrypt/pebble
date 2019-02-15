@@ -1569,6 +1569,15 @@ func (wfe *WebFrontEndImpl) Authz(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	// There are two types of requests we might get:
+	//   A) a POST to update the authorization
+	//   B) a POST-as-GET to get the authorization
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
 	authz := wfe.db.GetAuthorizationByID(authzID)
 	if authz == nil {
@@ -1576,66 +1585,55 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
-	// If the request was a POST there are two options:
-	//   A) a POST to update the authorization
-	//   B) a POST-as-GET to get the authorization
-	if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	// If the postData is not a POST-as-GET, treat this as case A) and update
+	// the authorization based on the postData
+	if !postData.postAsGet {
+		existingAcct, prob := wfe.getAcctByKey(postData.jwk)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
 
-		// If the postData is not a POST-as-GET, treat this as case A) and update
-		// the authorization based on the postData
-		if !postData.postAsGet {
-			existingAcct, prob := wfe.getAcctByKey(postData.jwk)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
+		if authz.Order.AccountID != existingAcct.ID {
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account does not own authorization"), response)
+			return
+		}
 
-			if authz.Order.AccountID != existingAcct.ID {
-				wfe.sendError(acme.UnauthorizedProblem(
-					"Account does not own authorization"), response)
-				return
-			}
+		var deactivateRequest struct {
+			Status string
+		}
+		err := json.Unmarshal(postData.body, &deactivateRequest)
+		if err != nil {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update: %s",
+					err.Error())), response)
+			return
+		}
 
-			var deactivateRequest struct {
-				Status string
-			}
-			err := json.Unmarshal(postData.body, &deactivateRequest)
-			if err != nil {
-				wfe.sendError(acme.MalformedProblem(
-					fmt.Sprintf("Malformed authorization update: %s",
-						err.Error())), response)
-				return
-			}
+		if deactivateRequest.Status != "deactivated" {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update, status must be \"deactivated\" not %q",
+					deactivateRequest.Status)), response)
+			return
+		}
+		authz.Status = acme.StatusDeactivated
+	} else {
+		// Otherwise this was a POST-as-GET request and we need to verify it
+		// accordingly and ensure the authorized account owns the authorization
+		// being fetched.
+		account, prob := wfe.validPOSTAsGET(postData)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
 
-			if deactivateRequest.Status != "deactivated" {
-				wfe.sendError(acme.MalformedProblem(
-					fmt.Sprintf("Malformed authorization update, status must be \"deactivated\" not %q",
-						deactivateRequest.Status)), response)
-				return
-			}
-			authz.Status = acme.StatusDeactivated
-		} else {
-			// Otherwise this was a POST-as-GET request and we need to verify it
-			// accordingly and ensure the authorized account owns the authorization
-			// being fetched.
-			account, prob := wfe.validPOSTAsGET(postData)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
-
-			if authz.Order.AccountID != account.ID {
-				response.WriteHeader(http.StatusForbidden)
-				wfe.sendError(acme.UnauthorizedProblem(
-					"Account authorizing the request is not the owner of the authorization"),
-					response)
-				return
-			}
+		if authz.Order.AccountID != account.ID {
+			response.WriteHeader(http.StatusForbidden)
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account authorizing the request is not the owner of the authorization"),
+				response)
+			return
 		}
 	}
 
@@ -1654,6 +1652,16 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	// There are two possibilities:
+	// A) request is a POST to begin a challenge
+	// B) request is a POST-as-GET to poll a challenge
+	var account *core.Account
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
 	chal := wfe.db.GetChallengeByID(chalID)
 	if chal == nil {
@@ -1661,30 +1669,18 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	// If the request is a POST there are two possibilities:
-	// A) it is a POST to begin a challenge
-	// B) it is a POST-as-GET to poll a challenge
-	var account *core.Account
-	if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	// If the post isn't a POST-as-GET its case A)
+	if !postData.postAsGet {
+		wfe.updateChallenge(ctx, postData, response, request)
+		return
+	} else {
+		// Otherwise it is case B)
+		acct, prob := wfe.validPOSTAsGET(postData)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
-
-		// If the post isn't a POST-as-GET its case A)
-		if !postData.postAsGet {
-			wfe.updateChallenge(ctx, postData, response, request)
-			return
-		} else {
-			// Otherwise it is case B)
-			acct, prob := wfe.validPOSTAsGET(postData)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
-			account = acct
-		}
+		account = acct
 	}
 
 	// Lock the challenge for reading in order to write the response
