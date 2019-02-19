@@ -16,7 +16,8 @@ services:
   - docker
 
 before_install:
-  - git clone https://github.com/certbot/certbot
+  # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
+  - git clone --depth=1 -b no-keyauthorization https://github.com/certbot/certbot
   - cd certbot
   - ./certbot-auto --os-packages-only -n
   - ./tools/venv.py

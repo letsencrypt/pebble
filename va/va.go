@@ -73,11 +73,6 @@ const (
 // (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#page-4)
 var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
-// This is the identifier defined in draft-01. This is only supported for backwards
-// compatibility.
-// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#page-4)
-var IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
-
 func userAgent() string {
 	return fmt.Sprintf(
 		"%s (%s; %s)",
@@ -396,11 +391,6 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	for _, ext := range leafCert.Extensions {
 		if ext.Critical {
 			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
-			// For backwards compatibility, check old identifier
-			// as well if strict mode is not enabled
-			if !va.strict && IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
-				hasAcmeIdentifier = true
-			}
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
