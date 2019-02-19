@@ -1879,7 +1879,7 @@ func (wfe *WebFrontEndImpl) Certificate(
 		wfe.sendError(prob, response)
 		return
 	}
-	_, prob = wfe.validPOSTAsGET(postData)
+	acct, prob := wfe.validPOSTAsGET(postData)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1889,6 +1889,13 @@ func (wfe *WebFrontEndImpl) Certificate(
 	cert := wfe.db.GetCertificateByID(serial)
 	if cert == nil {
 		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if cert.AccountID != acct.ID {
+		response.WriteHeader(http.StatusUnauthorized)
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Account authenticating request does not own certificate"), response)
 		return
 	}
 
