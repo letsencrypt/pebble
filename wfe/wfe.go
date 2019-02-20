@@ -202,6 +202,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 				}
 
+				// Per section 7.1 "Resources":
+				//   The "index" link relation is present on all resources other than the
+				//   directory and indicates the URL of the directory.
+				if pattern != DirectoryPath {
+					directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
+					response.Header().Add("Link", link(directoryURL, "index"))
+				}
+
 				logEvent.Endpoint = pattern
 				if request.URL != nil {
 					logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
