@@ -1451,7 +1451,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 
 	// The existing order must be in a ready status to finalize it
 	if orderStatus != acme.StatusReady {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
+		wfe.sendError(acme.OrderNotReadyProblem(fmt.Sprintf(
 			"Order's status (%q) was not %s", orderStatus, acme.StatusReady)), response)
 		return
 	}

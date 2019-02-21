@@ -18,6 +18,7 @@ const (
 	accountDoesNotExistErr = errNS + "accountDoesNotExist"
 	badRevocationReasonErr = errNS + "badRevocationReason"
 	alreadyRevokedErr      = errNS + "alreadyRevoked"
+	orderNotReadyErr       = errNS + "orderNotReady"
 )
 
 type ProblemDetails struct {
@@ -147,5 +148,13 @@ func AlreadyRevokedProblem(detail string) *ProblemDetails {
 		Type:       alreadyRevokedErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func OrderNotReadyProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       orderNotReadyErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
 	}
 }
