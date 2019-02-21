@@ -583,9 +583,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return result, nil
 }
 
-// Checks parsed JWS whether it matches the given public key
-// and checks whether the algorithm used is acceptable
-// (the latter is still to be implemented).
+// verifyJWSSignatureAndAlgorithm verifies the pubkey and JWS algorithms are
+// acceptable and that the JWS verifies with the provided pubkey.
 func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature) ([]byte, error) {

@@ -33,7 +33,7 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm. Precondition: parsedJws must have exactly one signature on
-// it. Returns stat name to increment if err is non-nil.
+// it.
 func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) error {
 	algorithm, err := algorithmForKey(key)
 	if err != nil {
