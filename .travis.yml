@@ -41,5 +41,5 @@ deploy:
     script: bash .ci/publish_linux.sh
     skip_cleanup: true
     on:
-      repo: adferrand/pebble
+      repo: letsencrypt/pebble
       tags: true

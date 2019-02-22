@@ -5,7 +5,7 @@ docker login -u "$DOCKER_USER" -p "$DOCKER_PASS"
 
 BASE_NAMES=(pebble pebble-challtestsrv)
 for BASE_NAME in "${BASE_NAMES[@]}"; do
-    IMAGE_NAME="adferrand/${BASE_NAME}"
+    IMAGE_NAME="letsencrypt/${BASE_NAME}"
 
     echo "Updating docker ${IMAGE_NAME} image..."
 

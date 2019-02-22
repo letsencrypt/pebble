@@ -10,7 +10,7 @@ if ($env:APPVEYOR_REPO_TAG -ne "true") {
 
     $basenames = @("pebble", "pebble-challtestsrv")
     foreach ($basename in $basenames) {
-        $image_name = "adferrand/$basename"
+        $image_name = "letsencrypt/$basename"
         $tag = "$env:APPVEYOR_REPO_TAG_NAME-nanoserver-sac2016"
 
         "Updating docker $basename image ..."

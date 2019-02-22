@@ -14,7 +14,7 @@ environment:
 
 install:
   - set PATH=C:\Python37;C:\Python37\Scripts;%PATH%
-  - git clone https://github.com/adferrand/certbot --branch fix-pipstrap-on-windows
+  - git clone https://github.com/certbot/certbot --branch fix-pipstrap-on-windows
   - cd certbot
   - python tools\venv3.py
   - venv3\Scripts\activate.bat
