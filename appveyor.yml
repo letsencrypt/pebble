@@ -1,0 +1,36 @@
+image: Visual Studio 2017
+
+hosts:
+  example.letsencrypt.org: 127.0.0.1
+  elpmaxe.letsencrypt.org: 127.0.0.1
+
+environment:
+  DOCKER_USER:
+    secure: E0lafFBkoStDl0EOWJ7RJg==
+  DOCKER_PASS:
+    secure: srzjN1Ls5U+eCDPfoovBlg==
+  GO111MODULE: on
+  GOPATH: C:\gopath
+
+install:
+  - set PATH=C:\Python37;C:\Python37\Scripts;%PATH%
+  - git clone https://github.com/adferrand/certbot --branch fix-pipstrap-on-windows
+  - cd certbot
+  - python tools\venv3.py
+  - venv3\Scripts\activate.bat
+  - cd ..
+
+build_script:
+  - go install -v -mod=vendor ./...
+  - ps: $PebbleProcess = Start-Process C:\gopath\bin\pebble.exe -PassThru
+
+test_script:
+  - go vet ./...
+  - set REQUESTS_CA_BUNDLE=test\certs\pebble.minica.pem
+  - python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+
+deploy_script:
+  - ps: .ci\publish_windows.ps1
+
+on_finish:
+  - ps: Stop-Process -Id $PebbleProcess.Id
