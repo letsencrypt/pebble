@@ -10,7 +10,7 @@ for BASE_NAME in "${BASE_NAMES[@]}"; do
     echo "Updating docker ${IMAGE_NAME} image..."
 
     # create docker image
-    docker build -t "${IMAGE_NAME}:temp" -f "docker/${BASE_NAME}/Dockerfile-linux" .
+    docker build -t "${IMAGE_NAME}:temp" -f "docker/${BASE_NAME}/Dockerfile.linux" .
 
     # push images
     if [ -n "${TRAVIS_TAG}" ]; then
