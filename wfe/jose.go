@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/letsencrypt/pebble/acme"
+
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -26,28 +28,28 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
-	return "", fmt.Errorf("no signature algorithms suitable for given key type")
+	return "", fmt.Errorf("no signature algorithms suitable for given key type: %T", key.Key)
 }
 
 // Check that (1) there is a suitable algorithm for the provided key based on its
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm. Precondition: parsedJws must have exactly one signature on
-// it. Returns stat name to increment if err is non-nil.
-func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) error {
+// it.
+func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) *acme.ProblemDetails {
 	algorithm, err := algorithmForKey(key)
 	if err != nil {
-		return err
+		return acme.BadPublicKeyProblem(err.Error())
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return fmt.Errorf(
+		return acme.MalformedProblem(fmt.Sprintf(
 			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			jwsAlgorithm)
+			jwsAlgorithm))
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return fmt.Errorf(
-			"algorithm '%s' on JWK is unacceptable", key.Algorithm)
+		return acme.BadPublicKeyProblem(fmt.Sprintf(
+			"algorithm '%s' on JWK is unacceptable", key.Algorithm))
 	}
 	return nil
 }

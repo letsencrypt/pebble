@@ -583,19 +583,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return result, nil
 }
 
-// Checks parsed JWS whether it matches the given public key
-// and checks whether the algorithm used is acceptable
-// (the latter is still to be implemented).
+// verifyJWSSignatureAndAlgorithm verifies the pubkey and JWS algorithms are
+// acceptable and that the JWS verifies with the provided pubkey.
 func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
-	parsedJWS *jose.JSONWebSignature) ([]byte, error) {
-	if err := checkAlgorithm(pubKey, parsedJWS); err != nil {
-		return nil, err
+	parsedJWS *jose.JSONWebSignature) ([]byte, *acme.ProblemDetails) {
+	if prob := checkAlgorithm(pubKey, parsedJWS); prob != nil {
+		return nil, prob
 	}
 
 	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
-		return nil, err
+		return nil, acme.MalformedProblem(fmt.Sprintf("JWS verification error: %s", err))
 	}
 	return []byte(payload), nil
 }
@@ -615,9 +614,9 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
 	request *http.Request) (*authenticatedPOST, *acme.ProblemDetails) {
-	payload, err := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
-	if err != nil {
-		return nil, acme.MalformedProblem("JWS verification error")
+	payload, prob := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
+	if prob != nil {
+		return nil, prob
 	}
 
 	headerURL, ok := wfe.extractJWSURL(parsedJWS)
@@ -881,9 +880,10 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	innerPayload, err := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
+	innerPayload, prob := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem("Inner JWS verification error"), response)
+		prob.Detail = "inner JWS error: " + prob.Detail
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1451,7 +1451,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 
 	// The existing order must be in a ready status to finalize it
 	if orderStatus != acme.StatusReady {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
+		wfe.sendError(acme.OrderNotReadyProblem(fmt.Sprintf(
 			"Order's status (%q) was not %s", orderStatus, acme.StatusReady)), response)
 		return
 	}
