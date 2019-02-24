@@ -15,7 +15,7 @@ if ($env:APPVEYOR_REPO_TAG -ne "true") {
 
         "Updating docker $basename image ..."
 
-        docker build -t="$image_name`:temp" -f="docker/$basename/Dockerfile.windows" .
+        docker build -t="$image_name`:temp" -f="docker/$basename/windows.Dockerfile" .
 
         "Try to publish image: $image_name`:$tag"
         docker tag "$image_name`:temp" "$image_name`:$tag"

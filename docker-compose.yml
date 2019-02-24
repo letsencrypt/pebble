@@ -3,7 +3,7 @@ services:
   pebble:
     build:
       context: .
-      dockerfile: docker/pebble/Dockerfile.linux
+      dockerfile: docker/pebble/linux.Dockerfile
     command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
     ports:
       # HTTPS ACME API
@@ -14,7 +14,7 @@ services:
   challtestsrv:
     build:
       context: .
-      dockerfile: docker/pebble-challtestsrv/Dockerfile.linux
+      dockerfile: docker/pebble-challtestsrv/linux.Dockerfile
     command: pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
       # HTTP Management Interface
