@@ -5,10 +5,6 @@ hosts:
   elpmaxe.letsencrypt.org: 127.0.0.1
 
 environment:
-  DOCKER_USER:
-    secure: E0lafFBkoStDl0EOWJ7RJg==
-  DOCKER_PASS:
-    secure: srzjN1Ls5U+eCDPfoovBlg==
   GO111MODULE: on
   GOPATH: C:\gopath
 
