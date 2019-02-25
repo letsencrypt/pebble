@@ -13,6 +13,7 @@ const (
 	StatusDeactivated = "deactivated"
 
 	IdentifierDNS = "dns"
+	IdentifierIP  = "ip"
 
 	ChallengeHTTP01    = "http-01"
 	ChallengeTLSALPN01 = "tls-alpn-01"
