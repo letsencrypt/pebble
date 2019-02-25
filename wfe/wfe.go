@@ -1048,9 +1048,19 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	}
 	// Check that all of the identifiers in the new-order are DNS type
 	for _, ident := range idents {
+		//ip check, we'll need to check for exclude private IPs on produciton, but I think this works for pebble
+		if ident.Type == acme.IdentifierIP {
+			ip := net.ParseIP(rawDomain)
+			if ip = nil {
+				return acme.MalformedProblem(fmt.Sprintf(
+					"Order included illegal IP address value: %q\n",
+					rawDomain))
+			}
+			continue
+		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included non-DNS type identifier: type %q, value %q",
+				"Order included illegal type identifier: type %q, value %q",
 				ident.Type, ident.Value))
 		}
 
@@ -1753,12 +1763,14 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	defer authz.RUnlock()
 
 	ident := authz.Identifier
-	if ident.Type != acme.IdentifierDNS {
-		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Authorization identifier was type %s, only %s is supported",
-				ident.Type, acme.IdentifierDNS))
-	}
-
+	switch ident.Type {
+		case acme.IdnetifierDNS:
+		case amce.IdentifierIP:
+		default :
+		 return nil, acme.MalformedProblem(
+			fmt.Sprintf("Authorization identifier was type %s, only %s,%s is supported",
+					ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
+	 }
 	now := wfe.clk.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
