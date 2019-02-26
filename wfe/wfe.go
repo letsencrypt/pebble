@@ -571,7 +571,7 @@ func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	if err != nil {
 		return nil, acme.MalformedProblem(fmt.Sprintf("JWS verification error: %s", err))
 	}
-	return []byte(payload), nil
+	return payload, nil
 }
 
 // Extracts URL header parameter from parsed JWS.
