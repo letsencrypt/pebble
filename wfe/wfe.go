@@ -302,7 +302,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
-	// This should never happen since we are just marshalling known strings
+	// This should never happen since we are just marshaling known strings
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +393,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 // jwsAuthType represents whether a given POST request is authenticated using
 // a JWS with an embedded JWK (new-account, possibly revoke-cert) or an
-// embeded Key ID or an unsupported/unknown auth type.
+// embedded Key ID or an unsupported/unknown auth type.
 type jwsAuthType int
 
 const (

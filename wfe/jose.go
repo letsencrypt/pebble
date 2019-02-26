@@ -80,7 +80,7 @@ func keyDigest(key crypto.PublicKey) (string, error) {
 func keyDigestEquals(j, k crypto.PublicKey) bool {
 	digestJ, errJ := keyDigest(j)
 	digestK, errK := keyDigest(k)
-	// Keys that don't have a valid digest (due to marshalling problems)
+	// Keys that don't have a valid digest (due to marshaling problems)
 	// are never equal. So, e.g. nil keys are not equal.
 	if errJ != nil || errK != nil {
 		return false
