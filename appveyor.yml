@@ -10,18 +10,27 @@ environment:
 
 install:
   - set PATH=C:\Python37;C:\Python37\Scripts;%PATH%
-  - git clone https://github.com/certbot/certbot --branch fix-pipstrap-on-windows
+  # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
+  - git clone --depth=1 -b no-keyauthorization https://github.com/certbot/certbot
   - cd certbot
   - python tools\venv3.py
   - venv3\Scripts\activate.bat
   - cd ..
 
 build_script:
+  - bash: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
+  - set GO111MODULE=off go get golang.org/x/tools/cmd/cover
+  - set GO111MODULE=off go get github.com/mattn/goveralls
   - go install -v -mod=vendor ./...
+
+after_build:
   - ps: $PebbleProcess = Start-Process C:\gopath\bin\pebble.exe -PassThru
 
 test_script:
-  - go vet -mod=vendor ./...
+  - go mod download
+  - golangci-lint run
+  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
+  - goveralls -coverprofile=coverage.out -service=appveyor
   - set REQUESTS_CA_BUNDLE=test\certs\pebble.minica.pem
   - python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
 
