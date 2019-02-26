@@ -16,7 +16,6 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,22 +85,15 @@ const (
 	aACompromiseRevocationReason = 10
 )
 
-type requestEvent struct {
-	ClientAddr string `json:",omitempty"`
-	Endpoint   string `json:",omitempty"`
-	Method     string `json:",omitempty"`
-	UserAgent  string `json:",omitempty"`
-}
+type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
 
-type wfeHandlerFunc func(context.Context, *requestEvent, http.ResponseWriter, *http.Request)
-
-func (f wfeHandlerFunc) ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request) {
+func (f wfeHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := context.TODO()
-	f(ctx, e, w, r)
+	f(ctx, w, r)
 }
 
 type wfeHandler interface {
-	ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request)
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 type topHandler struct {
@@ -109,14 +101,7 @@ type topHandler struct {
 }
 
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// TODO(@cpu): consider restoring X-Forwarded-For handling for ClientAddr
-	rEvent := &requestEvent{
-		ClientAddr: r.RemoteAddr,
-		Method:     r.Method,
-		UserAgent:  r.Header.Get("User-Agent"),
-	}
-
-	th.wfe.ServeHTTP(rEvent, w, r)
+	th.wfe.ServeHTTP(w, r)
 }
 
 type WebFrontEndImpl struct {
@@ -194,7 +179,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	methodsStr := strings.Join(methods, ", ")
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
-			wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
@@ -210,11 +195,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					response.Header().Add("Link", link(directoryURL, "index"))
 				}
 
-				logEvent.Endpoint = pattern
-				if request.URL != nil {
-					logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
-				}
-
 				addNoCacheHeader(response)
 
 				if !methodsMap[request.Method] {
@@ -223,12 +203,12 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					return
 				}
 
-				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, logEvent.Endpoint)
+				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, pattern)
 
 				// TODO(@cpu): Configurable request timeout
 				timeout := 1 * time.Minute
 				ctx, cancel := context.WithTimeout(ctx, timeout)
-				handler(ctx, logEvent, response, request)
+				handler(ctx, response, request)
 				cancel()
 			},
 			)})
@@ -248,7 +228,6 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 
 func (wfe *WebFrontEndImpl) RootCert(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -288,7 +267,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 
 func (wfe *WebFrontEndImpl) Directory(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -358,7 +336,6 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 
 func (wfe *WebFrontEndImpl) Nonce(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	statusCode := http.StatusNoContent
@@ -550,8 +527,6 @@ type authenticatedPOST struct {
 // presently handle the `regCheck` parameter or do any lookups for existing
 // accounts.
 func (wfe *WebFrontEndImpl) verifyPOST(
-	ctx context.Context,
-	logEvent *requestEvent,
 	request *http.Request,
 	kx keyExtractor) (*authenticatedPOST, *acme.ProblemDetails) {
 
@@ -716,10 +691,9 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 
 func (wfe *WebFrontEndImpl) UpdateAccount(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -851,11 +825,10 @@ func (wfe *WebFrontEndImpl) verifyKeyRollover(
 
 func (wfe *WebFrontEndImpl) KeyRollover(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	// Extract and parse outer JWS, and retrieve account
-	outerPostData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	outerPostData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -922,14 +895,13 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 
 func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
 	// We use extractJWK rather than lookupJWK here because the account is not yet
 	// created, so the user provides the full key in a JWS header rather than
 	// referring to an existing key.
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.extractJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1223,11 +1195,10 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 // NewOrder creates a new Order request and populates its authorizations
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1357,10 +1328,9 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 // Order retrieves the details of an existing order
 func (wfe *WebFrontEndImpl) Order(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1403,12 +1373,11 @@ func (wfe *WebFrontEndImpl) Order(
 
 func (wfe *WebFrontEndImpl) FinalizeOrder(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
 	// Verify the POST request
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1571,13 +1540,12 @@ func prepAuthorizationForDisplay(authz acme.Authorization) acme.Authorization {
 
 func (wfe *WebFrontEndImpl) Authz(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	// There are two types of requests we might get:
 	//   A) a POST to update the authorization
 	//   B) a POST-as-GET to get the authorization
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1654,13 +1622,12 @@ func (wfe *WebFrontEndImpl) Authz(
 
 func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 	// There are two possibilities:
 	// A) request is a POST to begin a challenge
 	// B) request is a POST-as-GET to poll a challenge
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1676,7 +1643,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// If the post isn't a POST-as-GET its case A)
 	var account *core.Account
 	if !postData.postAsGet {
-		wfe.updateChallenge(ctx, postData, response, request)
+		wfe.updateChallenge(postData, response, request)
 		return
 	} else {
 		// Otherwise it is case B)
@@ -1725,8 +1692,7 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 }
 
 func (wfe *WebFrontEndImpl) validateChallengeUpdate(
-	chal *core.Challenge,
-	acct *core.Account) (*core.Authorization, *acme.ProblemDetails) {
+	chal *core.Challenge) (*core.Authorization, *acme.ProblemDetails) {
 	// Lock the challenge for reading to do validation
 	chal.RLock()
 	defer chal.RUnlock()
@@ -1775,7 +1741,6 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 }
 
 func (wfe *WebFrontEndImpl) updateChallenge(
-	ctx context.Context,
 	postData *authenticatedPOST,
 	response http.ResponseWriter,
 	request *http.Request) {
@@ -1816,7 +1781,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	authz, prob := wfe.validateChallengeUpdate(existingChal, existingAcct)
+	authz, prob := wfe.validateChallengeUpdate(existingChal)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1879,10 +1844,9 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 func (wfe *WebFrontEndImpl) Certificate(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1965,7 +1929,6 @@ func uniqueLowerNames(names []string) []string {
 // This method does not percolate to a CRL or an OCSP response.
 func (wfe *WebFrontEndImpl) RevokeCert(
 	ctx context.Context,
-	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
 
@@ -2005,9 +1968,9 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
 	if authType == embeddedKeyID {
-		prob = wfe.revokeCertByKeyID(ctx, logEvent, parsedJWS, request)
+		prob = wfe.revokeCertByKeyID(parsedJWS, request)
 	} else if authType == embeddedJWK {
-		prob = wfe.revokeCertByJWK(ctx, logEvent, parsedJWS, request)
+		prob = wfe.revokeCertByJWK(parsedJWS, request)
 	} else {
 		prob = acme.MalformedProblem("Malformed JWS, no KeyID or embedded JWK")
 	}
@@ -2020,8 +1983,6 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 }
 
 func (wfe *WebFrontEndImpl) revokeCertByKeyID(
-	ctx context.Context,
-	logEvent *requestEvent,
 	jws *jose.JSONWebSignature,
 	request *http.Request) *acme.ProblemDetails {
 
@@ -2056,12 +2017,10 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 				"The certificate being revoked is not associated with account %q",
 				existingAcct.ID))
 	}
-	return wfe.processRevocation(ctx, postData.body, authorizedToRevoke, request, logEvent)
+	return wfe.processRevocation(postData.body, authorizedToRevoke)
 }
 
 func (wfe *WebFrontEndImpl) revokeCertByJWK(
-	ctx context.Context,
-	logEvent *requestEvent,
 	jws *jose.JSONWebSignature,
 	request *http.Request) *acme.ProblemDetails {
 
@@ -2086,7 +2045,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 		return acme.UnauthorizedProblem(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
-	return wfe.processRevocation(ctx, postData.body, authorizedToRevoke, request, logEvent)
+	return wfe.processRevocation(postData.body, authorizedToRevoke)
 }
 
 // authorizedToRevokeCert is a callback function that can be used to validate if
@@ -2098,11 +2057,8 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 type authorizedToRevokeCert func(*core.Certificate) *acme.ProblemDetails
 
 func (wfe *WebFrontEndImpl) processRevocation(
-	ctx context.Context,
 	jwsBody []byte,
-	authorizedToRevoke authorizedToRevokeCert,
-	request *http.Request,
-	logEvent *requestEvent) *acme.ProblemDetails {
+	authorizedToRevoke authorizedToRevokeCert) *acme.ProblemDetails {
 
 	// revokeCertReq is the ACME certificate information submitted by the client
 	var revokeCertReq struct {
