@@ -106,7 +106,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	defer m.Unlock()
 
 	acctID := strconv.Itoa(m.accountIDCounter)
-	m.accountIDCounter += 1
+	m.accountIDCounter++
 
 	if acct.Key == nil {
 		return 0, fmt.Errorf("account must not have a nil Key")
