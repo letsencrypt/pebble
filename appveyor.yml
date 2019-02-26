@@ -7,9 +7,9 @@ hosts:
 environment:
   GO111MODULE: on
   GOPATH: C:\gopath
+  PATH: C:\Python37;C:\msys64\mingw64\bin\;%PATH%
 
 install:
-  - set PATH=C:\Python37;C:\Python37\Scripts;%PATH%
   # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
   - git clone --depth=1 -b no-keyauthorization-windows https://github.com/certbot/certbot
   - cd certbot
