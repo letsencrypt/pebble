@@ -37,6 +37,7 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
+  - go mod download
   # Vet Go source code using the linter config (see .golang-ci.yml)
   - golangci-lint run
   # Run project unit tests (with the race detector enabled and atomic
