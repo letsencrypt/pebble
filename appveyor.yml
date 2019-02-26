@@ -21,7 +21,7 @@ build_script:
   - ps: $PebbleProcess = Start-Process C:\gopath\bin\pebble.exe -PassThru
 
 test_script:
-  - go vet ./...
+  - go vet -mod=vendor ./...
   - set REQUESTS_CA_BUNDLE=test\certs\pebble.minica.pem
   - python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
 
