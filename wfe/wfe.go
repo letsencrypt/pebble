@@ -1126,12 +1126,12 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	// Lock the order for reading
 	order.RLock()
 	// Create one authz for each name in the order's parsed CSR
-	for _, name := range order.Names {
+	for _, name := range order.Identifers {
 		now := wfe.clk.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
-			Type:  acme.IdentifierDNS,
-			Value: name,
+			Type:  name.Type,
+			Value: name.Value,
 		}
 		authz := &core.Authorization{
 			ID:          newToken(),
@@ -1280,10 +1280,17 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Collect all of the DNS identifier values up into a []string
+	// Collect all of the identifier values up into a []string, DNS firest and than IPs
 	var orderNames []string
 	for _, ident := range order.Identifiers {
-		orderNames = append(orderNames, ident.Value)
+		if ident.Type == acme.IdentifierDNS{
+		orderNames = append(orderNAmes,ident.Value)
+		}
+	}
+  for _, ident := range order.Identifiers {
+		if ident.Type == acme.IdentifierIP{
+		orderNames = append(orderNAmes,ident.Value)
+		}
 	}
 
 	// Store the unique lower version of the names on the order object
@@ -1866,6 +1873,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// Lock the authorization to get the identifier value
 	authz.RLock()
 	ident := authz.Identifier.Value
+	identType := authz.Identifer.Type
 	authz.RUnlock()
 
 	// If the identifier value is for a wildcard domain then strip the wildcard
@@ -1876,7 +1884,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct, identType)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()

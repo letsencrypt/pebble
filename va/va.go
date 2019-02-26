@@ -92,6 +92,7 @@ func certNames(cert *x509.Certificate) string {
 
 type vaTask struct {
 	Identifier string
+	IdentifierType string
 	Challenge  *core.Challenge
 	Account    *core.Account
 }
@@ -151,11 +152,12 @@ func New(
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account) {
+func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account, identType string) {
 	task := &vaTask{
 		Identifier: ident,
 		Challenge:  chal,
 		Account:    acct,
+		IdentifierType: identType
 	}
 	// Submit the task for validation
 	va.tasks <- task
