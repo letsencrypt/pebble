@@ -731,7 +731,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 			wfe.sendError(acme.MalformedProblem("Use POST-as-GET to retrieve account data instead of doing an empty update"), response)
 			return
 		}
-		err := wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+		err := wfe.writeJSONResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
 			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 			return
@@ -775,7 +775,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		return
 	}
 
-	err = wfe.writeJsonResponse(response, http.StatusOK, newAcct)
+	err = wfe.writeJSONResponse(response, http.StatusOK, newAcct)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 		return
@@ -932,7 +932,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			// the account and a 200 OK response
 			acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
 			response.Header().Set("Location", acctURL)
-			_ = wfe.writeJsonResponse(response, http.StatusOK, existingAcct)
+			_ = wfe.writeJSONResponse(response, http.StatusOK, existingAcct)
 		}
 		return
 	} else if existingAcct == nil && newAcctReq.OnlyReturnExisting {
@@ -980,7 +980,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, newAcct.ID))
 
 	response.Header().Add("Location", acctURL)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, newAcct)
+	err = wfe.writeJSONResponse(response, http.StatusCreated, newAcct)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
 		return
@@ -1275,7 +1275,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response.Header().Add("Location", orderURL)
 
 	orderResp := wfe.orderForDisplay(storedOrder, request)
-	err = wfe.writeJsonResponse(response, http.StatusCreated, orderResp)
+	err = wfe.writeJSONResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
@@ -1363,7 +1363,7 @@ func (wfe *WebFrontEndImpl) Order(
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(order, request)
-	err := wfe.writeJsonResponse(response, http.StatusOK, orderReq)
+	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
@@ -1492,7 +1492,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderReq := wfe.orderForDisplay(existingOrder, request)
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, existingOrder.ID))
 	response.Header().Add("Location", orderURL)
-	err = wfe.writeJsonResponse(response, http.StatusOK, orderReq)
+	err = wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
 		return
@@ -1609,7 +1609,7 @@ func (wfe *WebFrontEndImpl) Authz(
 		}
 	}
 
-	err := wfe.writeJsonResponse(
+	err := wfe.writeJSONResponse(
 		response,
 		http.StatusOK,
 		prepAuthorizationForDisplay(authz.Authorization))
@@ -1664,7 +1664,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	err := wfe.writeJsonResponse(response, http.StatusOK, chal.Challenge)
+	err := wfe.writeJSONResponse(response, http.StatusOK, chal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
@@ -1834,7 +1834,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	existingChal.RLock()
 	defer existingChal.RUnlock()
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
-	err = wfe.writeJsonResponse(response, http.StatusOK, existingChal.Challenge)
+	err = wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
@@ -1875,7 +1875,7 @@ func (wfe *WebFrontEndImpl) Certificate(
 	_, _ = response.Write(cert.Chain())
 }
 
-func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, status int, v interface{}) error {
+func (wfe *WebFrontEndImpl) writeJSONResponse(response http.ResponseWriter, status int, v interface{}) error {
 	jsonReply, err := marshalIndent(v)
 	if err != nil {
 		return err // All callers are responsible for handling this error
