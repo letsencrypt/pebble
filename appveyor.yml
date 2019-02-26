@@ -11,7 +11,7 @@ environment:
 install:
   - set PATH=C:\Python37;C:\Python37\Scripts;%PATH%
   # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
-  - git clone --depth=1 -b no-keyauthorization https://github.com/certbot/certbot
+  - git clone --depth=1 -b no-keyauthorization-windows https://github.com/certbot/certbot
   - cd certbot
   - python tools\venv3.py
   - venv3\Scripts\activate.bat
