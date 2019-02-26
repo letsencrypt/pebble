@@ -27,6 +27,8 @@ before_install:
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
 install:
+  # Install `golangci-lint` using their installer script
+  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
   - go install -v -mod=vendor ./...
 
 before_script:
@@ -35,7 +37,14 @@ before_script:
   - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
-  - go vet -mod=vendor ./...
+  # Vet Go source code using the linter config (see .golang-ci.yml)
+  - golangci-lint run
+  # Run project unit tests (with the race detector enabled and atomic
+  # coverage profile collection)
+  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
+  # Upload collected coverage profile to goveralls
+  - goveralls -coverprofile=coverage.out -service=travis-ci
+  # Perform a test issuance with chisel2.py
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
 
 deploy:
