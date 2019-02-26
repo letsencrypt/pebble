@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 )
@@ -68,10 +69,6 @@ const (
 	//   PEBBLE_VA_ALWAYS_VALID=1 pebble"
 	noValidateEnvVar = "PEBBLE_VA_ALWAYS_VALID"
 )
-
-// This is the identifier defined in draft-04 and newer, as registered with IANA
-// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#page-4)
-var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 
 func userAgent() string {
 	return fmt.Sprintf(
@@ -390,7 +387,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
 		if ext.Critical {
-			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
+			hasAcmeIdentifier := challtestsrv.IdPeAcmeIdentifier.Equal(ext.Id)
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {

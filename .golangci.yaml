@@ -1,0 +1,32 @@
+linters-settings:
+  gocyclo:
+    min-complexity: 25
+  govet:
+    check-shadowing: false
+  misspell:
+    locale: "US"
+
+linters:
+  enable-all: true
+  disable:
+    - stylecheck
+    - gosec
+    - dupl
+    - maligned
+    - depguard
+    - lll
+    - prealloc
+    - scopelint
+    - gocritic
+    - gochecknoinits
+    - gochecknoglobals
+
+issues:
+  exclude:
+    # The following excludes are considered false-positives/known-OK.
+    # ca/ca.go:
+    - "type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl"
+    # va/va.go:
+    - "type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl"
+    # wfe/wfe.go: L1647 and L1878
+    - "if` block ends with a `return` statement, so drop this `else` and outdent its block"
