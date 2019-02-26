@@ -330,8 +330,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 		host = "localhost"
 	}
 
-	resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
-	return resultUrl.String()
+	return (&url.URL{Scheme: proto, Host: host, Path: endpoint}).String()
 }
 
 func (wfe *WebFrontEndImpl) Nonce(
