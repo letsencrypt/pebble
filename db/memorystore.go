@@ -26,7 +26,6 @@ func (e ExistingAccountError) Error() string {
 	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
 }
 
-
 // Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
 // "database"
@@ -49,19 +48,19 @@ type MemoryStore struct {
 
 	challengesByID map[string]*core.Challenge
 
-	certificatesByID map[string]*core.Certificate
+	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.Certificate
 }
 
 func NewMemoryStore(clk clock.Clock) *MemoryStore {
 	return &MemoryStore{
-		clk:                    clk,
-		accountIDCounter:       1,
-		accountsByID:           make(map[string]*core.Account),
-		accountsByKeyID:        make(map[string]*core.Account),
-		ordersByID:             make(map[string]*core.Order),
-		authorizationsByID:     make(map[string]*core.Authorization),
-		challengesByID:         make(map[string]*core.Challenge),
+		clk:                     clk,
+		accountIDCounter:        1,
+		accountsByID:            make(map[string]*core.Account),
+		accountsByKeyID:         make(map[string]*core.Account),
+		ordersByID:              make(map[string]*core.Order),
+		authorizationsByID:      make(map[string]*core.Authorization),
+		challengesByID:          make(map[string]*core.Challenge),
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.Certificate),
 	}
@@ -107,7 +106,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	defer m.Unlock()
 
 	acctID := strconv.Itoa(m.accountIDCounter)
-	m.accountIDCounter += 1
+	m.accountIDCounter++
 
 	if acct.Key == nil {
 		return 0, fmt.Errorf("account must not have a nil Key")
