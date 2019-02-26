@@ -18,9 +18,6 @@ install:
   - cd ..
 
 build_script:
-  - bash: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
-  - set GO111MODULE=off go get golang.org/x/tools/cmd/cover
-  - set GO111MODULE=off go get github.com/mattn/goveralls
   - go install -v -mod=vendor ./...
 
 after_build:
@@ -28,11 +25,8 @@ after_build:
 
 test_script:
   - go mod download
-  - golangci-lint run
-  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
-  - goveralls -coverprofile=coverage.out -service=appveyor
-  - set REQUESTS_CA_BUNDLE=test\certs\pebble.minica.pem
-  - python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  - go test -mod=vendor -v -race ./...
+  - cmd /c "set REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem && python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org"
 
 deploy_script:
   - ps: .ci\publish_windows.ps1
