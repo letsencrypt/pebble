@@ -25,7 +25,7 @@ issues:
   exclude:
     # The following excludes are considered false-positives/known-OK.
     # ca/ca.go:
-    - "type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Imp"
+    - "type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl"
     # va/va.go:
     - "type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl"
     # wfe/wfe.go: L1647 and L1878
