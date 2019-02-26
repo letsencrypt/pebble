@@ -1,7 +1,6 @@
 # Pebble
 
 [![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
-[![Docker Build Status](https://img.shields.io/docker/build/letsencrypt/pebble.svg)](https://hub.docker.com/r/letsencrypt/pebble/builds/)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
 is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited

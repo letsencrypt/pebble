@@ -202,6 +202,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 				}
 
+				// Per section 7.1 "Resources":
+				//   The "index" link relation is present on all resources other than the
+				//   directory and indicates the URL of the directory.
+				if pattern != DirectoryPath {
+					directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
+					response.Header().Add("Link", link(directoryURL, "index"))
+				}
+
 				logEvent.Endpoint = pattern
 				if request.URL != nil {
 					logEvent.Endpoint = path.Join(logEvent.Endpoint, request.URL.Path)
@@ -270,17 +278,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
 	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
 	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
-
-	// GET and POST handlers
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
-
-	// POST handlers with legacy GET support
-	// NOTE(@cpu): These handlers will eventually not support GET. It is presently
-	// allowed when `-strict=false` to support ACME <=draft-14 which allowed
-	// unauthenticated GET access to these resources.
-	wfe.HandleFunc(m, orderPath, wfe.Order, "GET", "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "GET", "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
 
 	return m
 }
@@ -362,10 +363,8 @@ func (wfe *WebFrontEndImpl) Nonce(
 	request *http.Request) {
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
-	// and HEAD requests should receive http.StatusOK. We only return StatusOK for
-	// HEAD requests in strict mode because this was the legacy behaviour and it
-	// may break clients to change.
-	if wfe.strict && request.Method == "HEAD" {
+	// and HEAD requests should receive http.StatusOK.
+	if request.Method == "HEAD" {
 		statusCode = http.StatusOK
 	}
 	response.WriteHeader(statusCode)
@@ -486,19 +485,17 @@ func (wfe *WebFrontEndImpl) lookupJWK(request *http.Request, jws *jose.JSONWebSi
 }
 
 func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetails {
-	if wfe.strict {
-		// Section 6.2 says to reject JWS requests without the expected Content-Type
-		// using a status code of http.UnsupportedMediaType
-		if _, present := request.Header["Content-Type"]; !present {
-			return acme.UnsupportedMediaTypeProblem(
-				`missing Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
-		if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
-			return acme.UnsupportedMediaTypeProblem(
-				`Invalid Content-Type header on POST. ` +
-					`Content-Type must be "application/jose+json"`)
-		}
+	// Section 6.2 says to reject JWS requests without the expected Content-Type
+	// using a status code of http.UnsupportedMediaType
+	if _, present := request.Header["Content-Type"]; !present {
+		return acme.UnsupportedMediaTypeProblem(
+			`missing Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
+	}
+	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
+		return acme.UnsupportedMediaTypeProblem(
+			`Invalid Content-Type header on POST. ` +
+				`Content-Type must be "application/jose+json"`)
 	}
 
 	if _, present := request.Header["Content-Length"]; !present {
@@ -586,19 +583,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	return result, nil
 }
 
-// Checks parsed JWS whether it matches the given public key
-// and checks whether the algorithm used is acceptable
-// (the latter is still to be implemented).
+// verifyJWSSignatureAndAlgorithm verifies the pubkey and JWS algorithms are
+// acceptable and that the JWS verifies with the provided pubkey.
 func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
-	parsedJWS *jose.JSONWebSignature) ([]byte, error) {
-	if err := checkAlgorithm(pubKey, parsedJWS); err != nil {
-		return nil, err
+	parsedJWS *jose.JSONWebSignature) ([]byte, *acme.ProblemDetails) {
+	if prob := checkAlgorithm(pubKey, parsedJWS); prob != nil {
+		return nil, prob
 	}
 
 	payload, err := parsedJWS.Verify(pubKey)
 	if err != nil {
-		return nil, err
+		return nil, acme.MalformedProblem(fmt.Sprintf("JWS verification error: %s", err))
 	}
 	return []byte(payload), nil
 }
@@ -618,9 +614,9 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
 	request *http.Request) (*authenticatedPOST, *acme.ProblemDetails) {
-	payload, err := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
-	if err != nil {
-		return nil, acme.MalformedProblem("JWS verification error")
+	payload, prob := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
+	if prob != nil {
+		return nil, prob
 	}
 
 	headerURL, ok := wfe.extractJWSURL(parsedJWS)
@@ -758,7 +754,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	// if this update contains no contacts or deactivated status,
 	// simply return the existing account and return early.
 	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
-		if wfe.strict && !postData.postAsGet {
+		if !postData.postAsGet {
 			wfe.sendError(acme.MalformedProblem("Use POST-as-GET to retrieve account data instead of doing an empty update"), response)
 			return
 		}
@@ -884,9 +880,10 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		return
 	}
 
-	innerPayload, err := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
+	innerPayload, prob := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem("Inner JWS verification error"), response)
+		prob.Detail = "inner JWS error: " + prob.Detail
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1363,24 +1360,15 @@ func (wfe *WebFrontEndImpl) Order(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	var account *core.Account
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
-	} else if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		acct, prob := wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		account = acct
+	}
+	account, prob := wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	orderID := strings.TrimPrefix(request.URL.Path, orderPath)
@@ -1463,7 +1451,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 
 	// The existing order must be in a ready status to finalize it
 	if orderStatus != acme.StatusReady {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
+		wfe.sendError(acme.OrderNotReadyProblem(fmt.Sprintf(
 			"Order's status (%q) was not %s", orderStatus, acme.StatusReady)), response)
 		return
 	}
@@ -1586,11 +1574,12 @@ func (wfe *WebFrontEndImpl) Authz(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	// Only allow GET when not being strict
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	// There are two types of requests we might get:
+	//   A) a POST to update the authorization
+	//   B) a POST-as-GET to get the authorization
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1601,66 +1590,55 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
-	// If the request was a POST there are two options:
-	//   A) a POST to update the authorization
-	//   B) a POST-as-GET to get the authorization
-	if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	// If the postData is not a POST-as-GET, treat this as case A) and update
+	// the authorization based on the postData
+	if !postData.postAsGet {
+		existingAcct, prob := wfe.getAcctByKey(postData.jwk)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
 		}
 
-		// If the postData is not a POST-as-GET, treat this as case A) and update
-		// the authorization based on the postData
-		if !postData.postAsGet {
-			existingAcct, prob := wfe.getAcctByKey(postData.jwk)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
+		if authz.Order.AccountID != existingAcct.ID {
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account does not own authorization"), response)
+			return
+		}
 
-			if authz.Order.AccountID != existingAcct.ID {
-				wfe.sendError(acme.UnauthorizedProblem(
-					"Account does not own authorization"), response)
-				return
-			}
+		var deactivateRequest struct {
+			Status string
+		}
+		err := json.Unmarshal(postData.body, &deactivateRequest)
+		if err != nil {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update: %s",
+					err.Error())), response)
+			return
+		}
 
-			var deactivateRequest struct {
-				Status string
-			}
-			err := json.Unmarshal(postData.body, &deactivateRequest)
-			if err != nil {
-				wfe.sendError(acme.MalformedProblem(
-					fmt.Sprintf("Malformed authorization update: %s",
-						err.Error())), response)
-				return
-			}
+		if deactivateRequest.Status != "deactivated" {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Malformed authorization update, status must be \"deactivated\" not %q",
+					deactivateRequest.Status)), response)
+			return
+		}
+		authz.Status = acme.StatusDeactivated
+	} else {
+		// Otherwise this was a POST-as-GET request and we need to verify it
+		// accordingly and ensure the authorized account owns the authorization
+		// being fetched.
+		account, prob := wfe.validPOSTAsGET(postData)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
 
-			if deactivateRequest.Status != "deactivated" {
-				wfe.sendError(acme.MalformedProblem(
-					fmt.Sprintf("Malformed authorization update, status must be \"deactivated\" not %q",
-						deactivateRequest.Status)), response)
-				return
-			}
-			authz.Status = acme.StatusDeactivated
-		} else {
-			// Otherwise this was a POST-as-GET request and we need to verify it
-			// accordingly and ensure the authorized account owns the authorization
-			// being fetched.
-			account, prob := wfe.validPOSTAsGET(postData)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
-
-			if authz.Order.AccountID != account.ID {
-				response.WriteHeader(http.StatusForbidden)
-				wfe.sendError(acme.UnauthorizedProblem(
-					"Account authorizing the request is not the owner of the authorization"),
-					response)
-				return
-			}
+		if authz.Order.AccountID != account.ID {
+			response.WriteHeader(http.StatusForbidden)
+			wfe.sendError(acme.UnauthorizedProblem(
+				"Account authorizing the request is not the owner of the authorization"),
+				response)
+			return
 		}
 	}
 
@@ -1679,12 +1657,12 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	// Unauthenticated GETs to challenges are only allowed when not running in
-	// strict mode.
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	// There are two possibilities:
+	// A) request is a POST to begin a challenge
+	// B) request is a POST-as-GET to poll a challenge
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1695,29 +1673,17 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	// If the request is a POST there are two possibilities:
-	// A) it is a POST to begin a challenge
-	// B) it is a POST-as-GET to poll a challenge
+	// If the post isn't a POST-as-GET its case A)
 	var account *core.Account
-	if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if !postData.postAsGet {
+		wfe.updateChallenge(ctx, postData, response, request)
+		return
+	} else {
+		// Otherwise it is case B)
+		account, prob = wfe.validPOSTAsGET(postData)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
-		}
-
-		// If the post isn't a POST-as-GET its case A)
-		if !postData.postAsGet {
-			wfe.updateChallenge(ctx, postData, response, request)
-			return
-		} else {
-			// Otherwise it is case B)
-			acct, prob := wfe.validPOSTAsGET(postData)
-			if prob != nil {
-				wfe.sendError(prob, response)
-				return
-			}
-			account = acct
 		}
 	}
 
@@ -1725,9 +1691,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	chal.RLock()
 	defer chal.RUnlock()
 
-	// If there was an account authenticating this GET request then make sure it
-	// owns the challenge.
-	if account != nil && chal.Authz.Order.AccountID != account.ID {
+	if chal.Authz.Order.AccountID != account.ID {
 		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
@@ -1836,9 +1800,8 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// unnecessary, the server can calculate this itself. We could ignore this if
 	// sent (and that's what Boulder will do) but for Pebble we'd like to offer
 	// a way to be more aggressive about pushing clients implementations in the
-	// right direction, so we treat this as a malformed request when running in
-	// strict mode.
-	if wfe.strict && chalResp.KeyAuthorization != nil {
+	// right direction, so we treat this as a malformed request.
+	if chalResp.KeyAuthorization != nil {
 		wfe.sendError(
 			acme.MalformedProblem(
 				"Challenge response body contained legacy KeyAuthorization field, "+
@@ -1919,27 +1882,28 @@ func (wfe *WebFrontEndImpl) Certificate(
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	if request.Method == "GET" && wfe.strict {
-		response.Header().Set("Allow", "POST")
-		wfe.sendError(acme.MethodNotAllowed(), response)
+	postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
-	} else if request.Method == "POST" {
-		postData, prob := wfe.verifyPOST(ctx, logEvent, request, wfe.lookupJWK)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-		_, prob = wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
+	}
+	acct, prob := wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	serial := strings.TrimPrefix(request.URL.Path, certPath)
 	cert := wfe.db.GetCertificateByID(serial)
 	if cert == nil {
 		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if cert.AccountID != acct.ID {
+		response.WriteHeader(http.StatusUnauthorized)
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Account authenticating request does not own certificate"), response)
 		return
 	}
 
