@@ -90,7 +90,7 @@ Pebble includes a [docker-compose](https://docs.docker.com/compose/) file that
 will create a `pebble` instance that uses a `pebble-challtestsrv` instance for
 DNS resolution.
 
-To build and start the containers run:
+To download and start the containers run:
 
 ```
 docker-compose up
