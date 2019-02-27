@@ -6,8 +6,7 @@ hosts:
 
 environment:
   GO111MODULE: on
-  GOPATH: C:\gopath
-  PATH: C:\Python37;C:\msys64\mingw64\bin\;%PATH%
+  PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
 
 install:
   # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
@@ -21,12 +20,12 @@ build_script:
   # Install `cover` and `goveralls` without `GO111MODULE` enabled so that we
   # don't download ct-woodpecker dependencies and just put the tools in our
   # gobin.
-  - cmd /c "set GO111MODULE=off & go get golang.org/x/tools/cmd/cover"
-  - cmd /c "set GO111MODULE=off & go get github.com/mattn/goveralls"
+  - cmd /c "set "GO111MODULE=off" && go get golang.org/x/tools/cmd/cover"
+  - cmd /c "set "GO111MODULE=off" && go get github.com/mattn/goveralls"
   - go install -v -mod=vendor ./...
 
 after_build:
-  - ps: $PebbleProcess = Start-Process C:\gopath\bin\pebble.exe -PassThru
+  - ps: $PebbleProcess = Start-Process pebble -PassThru
 
 test_script:
   - go mod download
@@ -40,6 +39,3 @@ test_script:
 
 deploy_script:
   - ps: .ci\publish_windows.ps1
-
-on_finish:
-  - ps: Stop-Process -Id $PebbleProcess.Id
