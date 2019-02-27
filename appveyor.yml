@@ -6,7 +6,7 @@ hosts:
 
 environment:
   GO111MODULE: on
-  PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PROGRAMFILES%\Git;%PATH%
+  PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
 
 install:
   # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
@@ -17,8 +17,8 @@ install:
   - cd ..
 
 before_build:
-  # Install `golangci-lint` using their installer script
-  - git-bash -c "curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0"
+  # Install `golangci-lint` using go get (installer not available for Windows)
+  - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.15.0
   # Install `cover` and `goveralls` without `GO111MODULE` enabled so that we
   # don't download ct-woodpecker dependencies and just put the tools in our
   # gobin.
@@ -33,6 +33,8 @@ after_build:
 
 test_script:
   - go mod download
+  # Vet Go source code using the linter config (see .golang-ci.yml)
+  - golangci-lint run
   # Run project unit tests (with the race detector enabled and atomic
   # coverage profile collection)
   - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
