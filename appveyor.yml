@@ -21,8 +21,8 @@ build_script:
   # Install `cover` and `goveralls` without `GO111MODULE` enabled so that we
   # don't download ct-woodpecker dependencies and just put the tools in our
   # gobin.
-  - set GO111MODULE=off && go get golang.org/x/tools/cmd/cover && set GO111MODULE=on
-  - set GO111MODULE=off && go get github.com/mattn/goveralls && set GO111MODULE=on
+  - cmd /c "set GO111MODULE=off & go get golang.org/x/tools/cmd/cover"
+  - cmd /c "set GO111MODULE=off & go get github.com/mattn/goveralls"
   - go install -v -mod=vendor ./...
 
 after_build:
