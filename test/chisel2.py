@@ -9,7 +9,6 @@ $ pip install -r requirements.txt
 $ python chisel.py foo.com bar.com
 """
 from __future__ import print_function
-import json
 import logging
 import os
 import ssl
@@ -17,12 +16,8 @@ import sys
 import signal
 import threading
 import time
-try:
-    from urllib.request import urlopen
-    from urllib.error import URLError
-except ImportError:
-    from urllib2 import urlopen
-    from urllib2 import URLError
+
+import requests
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -53,16 +48,13 @@ CLEAR_TXT = "http://localhost:8055/clear-txt"
 
 def wait_for_acme_server():
     """Wait for directory URL set in the DIRECTORY env variable to respond"""
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
     while True:
         try:
-            urlopen(DIRECTORY, context=ctx)
-            break
-        except URLError as e:
-            print(e)
-            time.sleep(0.1)
+            if requests.get(DIRECTORY).status_code == 200:
+                return
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(0.1)
 
 def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
@@ -140,18 +132,16 @@ def do_dns_challenges(client, authzs):
         name, value = (c.validation_domain_name(a.body.identifier.value),
             c.validation(client.net.key))
         cleanup_hosts.append(name)
-        urlopen(SET_TXT,
-            data=json.dumps({
-                "host": name + ".",
-                "value": value,
-            })).read()
+        requests.post(SET_TXT, json={
+            "host": name + ".",
+            "value": value
+        }).raise_for_status()
         client.answer_challenge(c, c.response(client.net.key))
     def cleanup():
         for host in cleanup_hosts:
-            urlopen(CLEAR_TXT,
-                data=json.dumps({
-                    "host": host + ".",
-                })).read()
+            requests.post(CLEAR_TXT, json={
+                "host": host + "."
+            }).raise_for_status()
     return cleanup
 
 def do_http_challenges(client, authzs):
@@ -173,10 +163,11 @@ def do_http_challenges(client, authzs):
         # Loop until the HTTP01Server is ready.
         while True:
             try:
-                urlopen("http://localhost:%d" % port)
-                break
-            except URLError:
-                time.sleep(0.1)
+                if requests.get("http://localhost:{0}".format(port)).status_code == 200:
+                    break
+            except requests.exceptions.ConnectionError:
+                pass
+            time.sleep(0.1)
 
         for chall_body in challs:
             client.answer_challenge(chall_body, chall_body.response(client.net.key))
