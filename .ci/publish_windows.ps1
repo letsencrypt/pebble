@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 if ($env:APPVEYOR_REPO_TAG -ne "true") {
-    "Skipping publishing"
+    "Skipping publishing because this is not a tagged commit"
 } else {
-    "Publishing ..."
+    "Publishing the tagged commit..."
 
     $ErrorActionPreference = 'SilentlyContinue'
     docker login -u="$env:DOCKER_USER" -p="$env:DOCKER_PASS"
