@@ -144,6 +144,18 @@ docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,tar
 
 **Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
 
+### Default validation ports
+
+To make it easier to test ACME clients and run challenge response servers
+without root privileges Pebble defaults to validating ACME challenges using
+unprivileged high ports:
+
+* **Default HTTP-01 Port**: 5002
+* **Default TLS-ALPN-01 Port**: 5001
+
+These ports can be changed by editing the `"httpPort"` and `"tlsPort"` values of
+the Pebble `-config` file provided to `pebble`.
+
 ### Strict Mode
 
 Pebble's goal to aggressively support new protocol features and backwards
