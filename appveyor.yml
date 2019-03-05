@@ -1,4 +1,38 @@
-build: off
+image: Visual Studio 2017
+
+hosts:
+  example.letsencrypt.org: 127.0.0.1
+  elpmaxe.letsencrypt.org: 127.0.0.1
+
+environment:
+  GO111MODULE: on
+  PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+
+install:
+  - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
+  - cd certbot
+  - python tools\venv3.py
+  - venv3\Scripts\activate.bat
+  - cd ..
+
+before_build:
+  # Install `golangci-lint` using go get (installer not available for Windows)
+  - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.15.0
+
+build_script:
+  - go install -v -mod=vendor ./...
+
+after_build:
+  - ps: $PebbleProcess = Start-Process pebble -PassThru
 
 test_script:
-  - ps: Write-Host "Hello, world!"
+  - go mod download
+  # Vet Go source code using the linter config (see .golang-ci.yml)
+  - golangci-lint run
+  # Run project unit tests (with the race detector enabled)
+  - go test -mod=vendor -v -race ./...
+  # Perform a test issuance with chisel2.py
+  - cmd /c "set REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem && python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org"
+
+deploy_script:
+  - ps: .ci\publish_windows.ps1

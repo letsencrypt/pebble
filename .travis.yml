@@ -1,6 +1,7 @@
 language: go
 
 sudo: true
+dist: xenial
 addons:
   hosts:
     - example.letsencrypt.org
@@ -37,8 +38,6 @@ install:
 
 before_script:
   - pebble &
-  # Wait for pebble to come up
-  - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
 
 script:
   - go mod download
@@ -54,7 +53,7 @@ script:
 
 deploy:
   - provider: script
-    script: bash .travis/publish.sh
+    script: bash .ci/publish_linux.sh
     skip_cleanup: true
     on:
       repo: letsencrypt/pebble
