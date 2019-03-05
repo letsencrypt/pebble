@@ -48,7 +48,8 @@ script:
   # coverage profile collection)
   - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
   # Upload collected coverage profile to goveralls
-  - [[ -n "${GOVERALLS_TOKEN}" ]] && goveralls -coverprofile=coverage.out -service=travis-ci
+  # Don't run coverage on AppVeyor, for simplicity
+  - [[ -z "${APPVEYOR}" ]] && goveralls -coverprofile=coverage.out -service=travis-ci
   # Perform a test issuance with chisel2.py
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
 
