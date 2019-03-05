@@ -18,11 +18,6 @@ install:
 before_build:
   # Install `golangci-lint` using go get (installer not available for Windows)
   - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.15.0
-  # Install `cover` and `goveralls` without `GO111MODULE` enabled so that we
-  # don't download ct-woodpecker dependencies and just put the tools in our
-  # gobin.
-  - cmd /c "set "GO111MODULE=off" && go get golang.org/x/tools/cmd/cover"
-  - cmd /c "set "GO111MODULE=off" && go get github.com/mattn/goveralls"
 
 build_script:
   - go install -v -mod=vendor ./...
@@ -34,11 +29,8 @@ test_script:
   - go mod download
   # Vet Go source code using the linter config (see .golang-ci.yml)
   - golangci-lint run
-  # Run project unit tests (with the race detector enabled and atomic
-  # coverage profile collection)
-  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
-  # Upload collected coverage profile to goveralls
-  - goveralls -coverprofile=coverage.out -service=appveyor
+  # Run project unit tests (with the race detector enabled)
+  - go test -mod=vendor -v -race ./...
   # Perform a test issuance with chisel2.py
   - cmd /c "set REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem && python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org"
 
