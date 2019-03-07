@@ -1048,7 +1048,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	}
 	// Check that all of the identifiers in the new-order are DNS type
 	for _, ident := range idents {
-		//ip check, we'll need to check for exclude private IPs on produciton, but I think this works for pebble
+		//ip check, we'll need to check for exclude private IPs on production, but I think this works for pebble
 		if ident.Type == acme.IdentifierIP {
 			ip := net.ParseIP(ident.Value)
 			if ip == nil {
