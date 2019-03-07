@@ -1286,22 +1286,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Collect all of the identifier values up into a []string, DNS firest and than IPs
-	var orderNames []string
-	for _, ident := range order.Identifiers {
-		if ident.Type == acme.IdentifierDNS{
-		orderNames = append(orderNAmes,ident.Value)
-		}
-	}
-  for _, ident := range order.Identifiers {
-		if ident.Type == acme.IdentifierIP{
-		orderNames = append(orderNAmes,ident.Value)
-		}
-	}
-
-	// Store the unique lower version of the names on the order object
-	order.Names = uniqueLowerNames(orderNames)
-
 	// Create the authorizations for the order
 	err = wfe.makeAuthorizations(order, request)
 	if err != nil {
@@ -1516,19 +1500,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 
 	// spliting order identifiers per types
   var orderDNSs, orderIPs []string
-	for i, ident := range orderIdentifiers {
+	for _, ident := range orderIdentifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
-			orderDNSs == append(orderDNSs , ident.Value)
+			orderDNSs = append(orderDNSs , ident.Value)
 		case acme.IdentifierIP:
-			orderIPs == append(orderIPs, ident.Value)
+			orderIPs = append(orderIPs, ident.Value)
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes ilegal ident type"), response)
+					fmt.Sprintf("Order includes ilegal ident type %s", ident.Type)), response)
 		}
 	}
 	//and make uniqueLowerNames for DNSNames
-	orderDNSs == uniqueLowerNames(orderDNSs)
+	orderDNSs = uniqueLowerNames(orderDNSs)
 	// Check that the CSR has the same number of names as the initial order contained
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := parsedCSR.IPAddresses
@@ -1552,9 +1536,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 	for i, IP := range orderIPs {
-		if net.ParseIP(IP) != csrIPs[i] {
+		if csrIPs[i].Equal(net.ParseIP(IP)) == false {
 			wfe.sendError(acme.UnauthorizedProblem(
-				fmt.Sprintf("CSR is missing Order IP %q", name)), response)
+				fmt.Sprintf("CSR is missing Order IP %q", IP)), response)
 			return
 		}
 	}
