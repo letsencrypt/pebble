@@ -1536,7 +1536,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 	for i, IP := range orderIPs {
-		if csrIPs[i].Equal(net.ParseIP(IP)) == false {
+		if !csrIPs[i].Equal(net.ParseIP(IP)) {
 			wfe.sendError(acme.UnauthorizedProblem(
 				fmt.Sprintf("CSR is missing Order IP %q", IP)), response)
 			return
