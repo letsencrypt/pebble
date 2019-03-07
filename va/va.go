@@ -91,10 +91,10 @@ func certNames(cert *x509.Certificate) string {
 }
 
 type vaTask struct {
-	Identifier string
+	Identifier     string
 	IdentifierType string
-	Challenge  *core.Challenge
-	Account    *core.Account
+	Challenge      *core.Challenge
+	Account        *core.Account
 }
 
 type VAImpl struct {
@@ -154,9 +154,9 @@ func New(
 
 func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account, identType string) {
 	task := &vaTask{
-		Identifier: ident,
-		Challenge:  chal,
-		Account:    acct,
+		Identifier:     ident,
+		Challenge:      chal,
+		Account:        acct,
 		IdentifierType: identType,
 	}
 	// Submit the task for validation
@@ -467,11 +467,11 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 // purpose HTTP function
 func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
 	path := fmt.Sprintf("%s%s", acme.HTTP01BaseURL, token)
-  portString := strconv.Itoa(va.httpPort)
+	portString := strconv.Itoa(va.httpPort)
 
 	url := &url.URL{
 		Scheme: "http",
-    Host: net.JoinHostPort(identifier, portString),
+		Host:   net.JoinHostPort(identifier, portString),
 		Path:   path,
 	}
 

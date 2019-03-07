@@ -1213,9 +1213,9 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		var enabledChallenges []string
 		if authz.Identifier.Value == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
-		}	else {
-		// Non-wildcard authorizations get all of the enabled challenge types
-		enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+		} else {
+			// Non-wildcard authorizations get all of the enabled challenge types
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
 		}
 		for _, chalType := range enabledChallenges {
 			chal, err := wfe.makeChallenge(chalType, authz, request)
@@ -1443,9 +1443,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderAccountID := existingOrder.AccountID
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
-  // not using ordernames now, can't split dns and ips
-  //	orderNames := existingOrder.Names
-  orderIdentifiers := existingOrder.Identifiers
+	// not using ordernames now, can't split dns and ips
+	//	orderNames := existingOrder.Names
+	orderIdentifiers := existingOrder.Identifiers
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
@@ -1499,16 +1499,16 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// spliting order identifiers per types
-  var orderDNSs, orderIPs []string
+	var orderDNSs, orderIPs []string
 	for _, ident := range orderIdentifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
-			orderDNSs = append(orderDNSs , ident.Value)
+			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, ident.Value)
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
-					fmt.Sprintf("Order includes ilegal ident type %s", ident.Type)), response)
+				fmt.Sprintf("Order includes ilegal ident type %s", ident.Type)), response)
 		}
 	}
 	//and make uniqueLowerNames for DNSNames
@@ -1791,13 +1791,13 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 
 	ident := authz.Identifier
 	switch ident.Type {
-		case acme.IdentifierDNS:
-		case acme.IdentifierIP:
-		default :
-		 return nil, acme.MalformedProblem(
+	case acme.IdentifierDNS:
+	case acme.IdentifierIP:
+	default:
+		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization identifier was type %s, only %s,%s is supported",
-					ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
-	 }
+				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
+	}
 	now := wfe.clk.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
