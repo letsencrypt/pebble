@@ -1050,11 +1050,11 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	for _, ident := range idents {
 		//ip check, we'll need to check for exclude private IPs on produciton, but I think this works for pebble
 		if ident.Type == acme.IdentifierIP {
-			ip := net.ParseIP(rawDomain)
-			if ip = nil {
+			ip := net.ParseIP(ident.Value)
+			if ip == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
 					"Order included illegal IP address value: %q\n",
-					rawDomain))
+					ident.Value))
 			}
 			continue
 		}
@@ -1126,7 +1126,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	// Lock the order for reading
 	order.RLock()
 	// Create one authz for each name in the order's parsed CSR
-	for _, name := range order.Identifers {
+	for _, name := range order.Identifiers {
 		now := wfe.clk.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
@@ -1209,8 +1209,14 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		}
 		chals = []*core.Challenge{chal}
 	} else {
+		// IP addresses get HTTP-01 and TLS-ALPN challenges
+		var enabledChallenges []string
+		if authz.Identifier.Value == acme.IdentifierIP {
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
+		}	else {
 		// Non-wildcard authorizations get all of the enabled challenge types
-		enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+		enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+		}
 		for _, chalType := range enabledChallenges {
 			chal, err := wfe.makeChallenge(chalType, authz, request)
 			if err != nil {
@@ -1453,7 +1459,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderAccountID := existingOrder.AccountID
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
-	orderNames := existingOrder.Names
+  // not using ordernames now, can't split dns and ips
+  //	orderNames := existingOrder.Names
+  orderIdentifiers := existingOrder.Identifiers
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
@@ -1506,19 +1514,47 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
+	// spliting order identifiers per types
+  var orderDNSs, orderIPs []string
+	for i, ident := range orderIdentifiers {
+		switch ident.Type {
+		case acme.IdentifierDNS:
+			orderDNSs == append(orderDNSs , ident.Value)
+		case acme.IdentifierIP:
+			orderIPs == append(orderIPs, ident.Value)
+		default:
+			wfe.sendError(acme.UnauthorizedProblem(
+			"Order includes ilegal ident type"), response)
+		}
+	}
+	//and make uniqueLowerNames for DNSNames
+	orderDNSs == uniqueLowerNames(orderDNSs)
 	// Check that the CSR has the same number of names as the initial order contained
-	csrNames := uniqueLowerNames(parsedCSR.DNSNames)
-	if len(csrNames) != len(orderNames) {
+	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
+	csrIPs := parsedCSR.IPAddresses
+	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of names than CSR specifies"), response)
+			"Order includes different number of DNSnames than CSR specifies"), response)
+		return
+	}
+	if len(csrIPs) != len(orderIPs) {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Order includes different number of IP addresses than CSR specifies"), response)
 		return
 	}
 
 	// Check that the CSR's names match the order names exactly
-	for i, name := range orderNames {
-		if name != csrNames[i] {
+	for i, name := range orderDNSs {
+		if name != csrDNSs[i] {
 			wfe.sendError(acme.UnauthorizedProblem(
 				fmt.Sprintf("CSR is missing Order domain %q", name)), response)
+			return
+		}
+	}
+	for i, IP := range orderIPs {
+		if net.ParseIP(IP) != csrIPs[i] {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("CSR is missing Order IP %q", name)), response)
 			return
 		}
 	}
@@ -1771,8 +1807,8 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 
 	ident := authz.Identifier
 	switch ident.Type {
-		case acme.IdnetifierDNS:
-		case amce.IdentifierIP:
+		case acme.IdentifierDNS:
+		case acme.IdentifierIP:
 		default :
 		 return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization identifier was type %s, only %s,%s is supported",
@@ -1873,7 +1909,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// Lock the authorization to get the identifier value
 	authz.RLock()
 	ident := authz.Identifier.Value
-	identType := authz.Identifer.Type
+	identType := authz.Identifier.Type
 	authz.RUnlock()
 
 	// If the identifier value is for a wildcard domain then strip the wildcard

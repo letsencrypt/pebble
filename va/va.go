@@ -157,7 +157,7 @@ func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *cor
 		Identifier: ident,
 		Challenge:  chal,
 		Account:    acct,
-		IdentifierType: identType
+		IdentifierType: identType,
 	}
 	// Submit the task for validation
 	va.tasks <- task
