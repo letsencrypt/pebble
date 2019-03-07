@@ -467,10 +467,11 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 // purpose HTTP function
 func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
 	path := fmt.Sprintf("%s%s", acme.HTTP01BaseURL, token)
+  portString := strconv.Itoa(va.httpPort)
 
 	url := &url.URL{
 		Scheme: "http",
-		Host:   fmt.Sprintf("%s:%d", identifier, va.httpPort),
+    Host: net.JoinHostPort(identifier, portString),
 		Path:   path,
 	}
 
