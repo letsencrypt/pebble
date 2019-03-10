@@ -549,7 +549,7 @@ func alpnaddr(addr string) (arpa string, err error) {
 		return "", &net.DNSError{Err: "unrecognized address", Name: addr}
 	}
 	if ip.To4() != nil {
-		return string(uint(ip[15])) + "." + string(uint(ip[14])) + "." + string(uint(ip[13])) + "." + string(uint(ip[12])) + ".in-addr.arpa.", nil
+		return strconv.Itoa(int(ip[15])) + "." + strconv.Itoa(int(ip[14])) + "." + strconv.Itoa(int(ip[13])) + "." + strconv.Itoa(int(ip[12])) + ".in-addr.arpa.", nil
 	}
 	// Must be IPv6
 	buf := make([]byte, 0, len(ip)*4+len("ip6.arpa."))

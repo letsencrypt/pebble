@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -1499,23 +1500,32 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// spliting order identifiers per types
-	var orderDNSs, orderIPs []string
+	var orderDNSs []string
+	var orderIPs []net.IP
 	for _, ident := range orderIdentifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
 			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierIP:
-			orderIPs = append(orderIPs, ident.Value)
+			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
 				fmt.Sprintf("Order includes illegal ident type %s", ident.Type)), response)
 		}
 	}
+	//first sort IPs
+	sort.Slice(orderIPs, func(i, j int) bool {
+		return bytes.Compare(orderIPs[i], orderIPs[j]) < 0
+	})
 	//and make uniqueLowerNames for DNSNames
 	orderDNSs = uniqueLowerNames(orderDNSs)
 	// Check that the CSR has the same number of names as the initial order contained
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := parsedCSR.IPAddresses
+	//sort this too
+	sort.Slice(csrIPs, func(i, j int) bool {
+		return bytes.Compare(csrIPs[i], csrIPs[j]) < 0
+	})
 	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Order includes different number of DNSnames than CSR specifies"), response)
@@ -1536,7 +1546,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 	for i, IP := range orderIPs {
-		if !csrIPs[i].Equal(net.ParseIP(IP)) {
+		if !csrIPs[i].Equal(IP) {
 			wfe.sendError(acme.UnauthorizedProblem(
 				fmt.Sprintf("CSR is missing Order IP %q", IP)), response)
 			return
