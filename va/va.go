@@ -87,6 +87,9 @@ func certNames(cert *x509.Certificate) string {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
+	for i := range cert.IPAddresses {
+		names = append(names, cert.IPAddresses[i].String())
+	}
 	return strings.Join(names, ", ")
 }
 
@@ -376,7 +379,14 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	leafCert := certs[0]
 
 	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], task.Identifier) {
+	namematch := false
+	switch task.IdentifierType {
+	case acme.IdentifierDNS:
+		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier)
+	case acme.IdentifierIP:
+		namematch = len(leafCert.IPAddresses) == 1 && leafCert.IPAddresses[0].Equal(net.ParseIP(task.Identifier))
+	}
+	if !namematch {
 		names := certNames(leafCert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
