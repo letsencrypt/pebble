@@ -1508,7 +1508,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			orderIPs = append(orderIPs, ident.Value)
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
-				fmt.Sprintf("Order includes ilegal ident type %s", ident.Type)), response)
+				fmt.Sprintf("Order includes illegal ident type %s", ident.Type)), response)
 		}
 	}
 	//and make uniqueLowerNames for DNSNames
