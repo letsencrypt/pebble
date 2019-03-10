@@ -1795,7 +1795,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	case acme.IdentifierIP:
 	default:
 		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Authorization identifier was type %s, only %s,%s is supported",
+			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
 	}
 	now := wfe.clk.Now()
