@@ -1508,7 +1508,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			orderIPs = append(orderIPs, ident.Value)
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
-				fmt.Sprintf("Order includes ilegal ident type %s", ident.Type)), response)
+				fmt.Sprintf("Order includes illegal ident type %s", ident.Type)), response)
 		}
 	}
 	//and make uniqueLowerNames for DNSNames
@@ -1795,7 +1795,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	case acme.IdentifierIP:
 	default:
 		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Authorization identifier was type %s, only %s,%s is supported",
+			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
 	}
 	now := wfe.clk.Now()
