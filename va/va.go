@@ -346,14 +346,19 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(task.Identifier, portString)
-
+	var serverNameIdentifier string
+	if task.IdentifierType == acme.IdentifierDNS {
+		serverNameIdentifier = task.Identifier
+	} else {
+		serverNameIdentifier, _ = alpnaddr(task.Identifier)
+	}
 	result := &core.ValidationRecord{
 		URL:         hostPort,
 		ValidatedAt: va.clk.Now(),
 	}
 
 	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
-		ServerName:         task.Identifier,
+		ServerName:         serverNameIdentifier,
 		NextProtos:         []string{acme.ACMETLS1Protocol},
 		InsecureSkipVerify: true,
 	})
@@ -536,4 +541,27 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	return body, url.String(), nil
+}
+func alpnaddr(addr string) (arpa string, err error) {
+	const hexDigit = "0123456789abcdef"
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return "", &net.DNSError{Err: "unrecognized address", Name: addr}
+	}
+	if ip.To4() != nil {
+		return string(uint(ip[15])) + "." + string(uint(ip[14])) + "." + string(uint(ip[13])) + "." + string(uint(ip[12])) + ".in-addr.arpa.", nil
+	}
+	// Must be IPv6
+	buf := make([]byte, 0, len(ip)*4+len("ip6.arpa."))
+	// Add it, in reverse, to the buffer
+	for i := len(ip) - 1; i >= 0; i-- {
+		v := ip[i]
+		buf = append(buf, hexDigit[v&0xF],
+			'.',
+			hexDigit[v>>4],
+			'.')
+	}
+	// Append "ip6.arpa." and return (buf already has the final .)
+	buf = append(buf, "ip6.arpa."...)
+	return string(buf), nil
 }
