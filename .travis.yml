@@ -8,7 +8,7 @@ addons:
     - elpmaxe.letsencrypt.org
 
 go:
-  - "1.11.x"
+  - "1.12.x"
 
 env:
   - GO111MODULE=on
