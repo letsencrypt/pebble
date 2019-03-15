@@ -1,6 +1,6 @@
 language: go
 go:
-  - "1.11.x"
+  - "stable"
 env:
   - GO111MODULE=on
 
