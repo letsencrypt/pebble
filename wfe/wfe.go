@@ -1053,14 +1053,14 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 			ip := net.ParseIP(ident.Value)
 			if ip == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included illegal IP address value: %q\n",
+					"Order included malformed IP type identifier value: %q\n",
 					ident.Value))
 			}
 			continue
 		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included illegal type identifier: type %q, value %q",
+				"Order included unsupported type identifier: type %q, value %q",
 				ident.Type, ident.Value))
 		}
 
@@ -1214,7 +1214,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		if authz.Identifier.Value == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
-			// Non-wildcard authorizations get all of the enabled challenge types
+			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
 		}
 		for _, chalType := range enabledChallenges {
@@ -1509,30 +1509,30 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
 		default:
 			wfe.sendError(acme.UnauthorizedProblem(
-				fmt.Sprintf("Order includes illegal ident type %s", ident.Type)), response)
+				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 		}
 	}
-	//first sort IPs
+	// first sort IPs
 	sort.Slice(orderIPs, func(i, j int) bool {
 		return bytes.Compare(orderIPs[i], orderIPs[j]) < 0
 	})
-	//and make uniqueLowerNames for DNSNames
+	// and make uniqueLowerNames for DNSNames
 	orderDNSs = uniqueLowerNames(orderDNSs)
 	// Check that the CSR has the same number of names as the initial order contained
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := parsedCSR.IPAddresses
-	//sort this too
+	// sort this too
 	sort.Slice(csrIPs, func(i, j int) bool {
 		return bytes.Compare(csrIPs[i], csrIPs[j]) < 0
 	})
 	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of DNSnames than CSR specifies"), response)
+			"Order includes different number of DNSnames identifiers than CSR specifies"), response)
 		return
 	}
 	if len(csrIPs) != len(orderIPs) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of IP addresses than CSR specifies"), response)
+			"Order includes different number of IP address identifiers than CSR specifies"), response)
 		return
 	}
 

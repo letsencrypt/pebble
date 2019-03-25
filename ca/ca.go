@@ -164,7 +164,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	} else if len(ips) > 0 {
 		cn = ips[0].String()
 	} else {
-		return nil, fmt.Errorf("must specify at least one domain name or IPs")
+		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
 	issuer := ca.intermediate
