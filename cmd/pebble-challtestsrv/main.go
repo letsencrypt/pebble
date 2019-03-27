@@ -116,6 +116,8 @@ func main() {
 		http.HandleFunc("/clear-aaaa", oobSrv.delDNSAAAARecord)
 		http.HandleFunc("/add-caa", oobSrv.addDNSCAARecord)
 		http.HandleFunc("/clear-caa", oobSrv.delDNSCAARecord)
+		http.HandleFunc("/set-cname", oobSrv.addDNSCNAMERecord)
+		http.HandleFunc("/clear-cname", oobSrv.delDNSCNAMERecord)
 
 		srv.SetDefaultDNSIPv4(*defaultIPv4)
 		srv.SetDefaultDNSIPv6(*defaultIPv6)
