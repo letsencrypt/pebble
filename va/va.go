@@ -87,17 +87,13 @@ func certNames(cert *x509.Certificate) string {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
-	for i := range cert.IPAddresses {
-		names = append(names, cert.IPAddresses[i].String())
-	}
 	return strings.Join(names, ", ")
 }
 
 type vaTask struct {
-	Identifier     string
-	IdentifierType string
-	Challenge      *core.Challenge
-	Account        *core.Account
+	Identifier acme.Identifier
+	Challenge  *core.Challenge
+	Account    *core.Account
 }
 
 type VAImpl struct {
@@ -155,12 +151,11 @@ func New(
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account, identType string) {
+func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
 	task := &vaTask{
-		Identifier:     ident,
-		Challenge:      chal,
-		Account:        acct,
-		IdentifierType: identType,
+		Identifier: ident,
+		Challenge:  chal,
+		Account:    acct,
 	}
 	// Submit the task for validation
 	va.tasks <- task
@@ -284,7 +279,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		// type. For example comparison, a real DNS-01 validation would set
 		// the URL to the `_acme-challenge` subdomain.
 		results <- &core.ValidationRecord{
-			URL:         task.Identifier,
+			URL:         task.Identifier.Value,
 			ValidatedAt: va.clk.Now(),
 		}
 		return
@@ -345,12 +340,12 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(task.Identifier, portString)
+	hostPort := net.JoinHostPort(task.Identifier.Value, portString)
 	var serverNameIdentifier string
-	if task.IdentifierType == acme.IdentifierDNS {
-		serverNameIdentifier = task.Identifier
+	if task.Identifier.Type == acme.IdentifierDNS {
+		serverNameIdentifier = task.Identifier.Value
 	} else {
-		serverNameIdentifier, _ = alpnaddr(task.Identifier)
+		serverNameIdentifier, _ = alpnaddr(task.Identifier.Value)
 	}
 	result := &core.ValidationRecord{
 		URL:         hostPort,
@@ -385,11 +380,11 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 
 	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
 	namematch := false
-	switch task.IdentifierType {
+	switch task.Identifier.Type {
 	case acme.IdentifierDNS:
-		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier)
+		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier.Value)
 	case acme.IdentifierIP:
-		namematch = len(leafCert.IPAddresses) == 1 && leafCert.IPAddresses[0].Equal(net.ParseIP(task.Identifier))
+		namematch = len(leafCert.IPAddresses) == 1 && leafCert.IPAddresses[0].Equal(net.ParseIP(task.Identifier.Value))
 	}
 	if !namematch {
 		names := certNames(leafCert)
@@ -454,7 +449,7 @@ func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls
 }
 
 func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
-	body, url, err := va.fetchHTTP(task.Identifier, task.Challenge.Token)
+	body, url, err := va.fetchHTTP(task.Identifier.Value, task.Challenge.Token)
 
 	result := &core.ValidationRecord{
 		URL:         url,

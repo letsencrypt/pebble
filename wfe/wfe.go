@@ -1901,19 +1901,18 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Lock the authorization to get the identifier value
 	authz.RLock()
-	ident := authz.Identifier.Value
-	identType := authz.Identifier.Type
+	ident := authz.Identifier
 	authz.RUnlock()
 
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
 	// validated.
-	if strings.HasPrefix(ident, "*.") {
-		ident = strings.TrimPrefix(ident, "*.")
+	if strings.HasPrefix(ident.Value, "*.") {
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingAcct, identType)
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()
