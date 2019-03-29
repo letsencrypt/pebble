@@ -342,10 +342,11 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(task.Identifier.Value, portString)
 	var serverNameIdentifier string
-	if task.Identifier.Type == acme.IdentifierDNS {
+	switch task.Identifier.Type {
+	case acme.IdentifierDNS:
 		serverNameIdentifier = task.Identifier.Value
-	} else {
-		serverNameIdentifier, _ = alpnaddr(task.Identifier.Value)
+	case acme.IdentifierIP:
+		serverNameIdentifier = reverseaddr(task.Identifier.Value)
 	}
 	result := &core.ValidationRecord{
 		URL:         hostPort,
@@ -379,7 +380,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	leafCert := certs[0]
 
 	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	namematch := false
+	var namematch bool
 	switch task.Identifier.Type {
 	case acme.IdentifierDNS:
 		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier.Value)
@@ -537,18 +538,22 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 	return body, url.String(), nil
 }
-func alpnaddr(addr string) (arpa string, err error) {
+
+//this reverseaddr funntion is from net/dnsclient.go form golang
+func reverseaddr(addr string) string {
 	const hexDigit = "0123456789abcdef"
 	ip := net.ParseIP(addr)
 	if ip == nil {
-		return "", &net.DNSError{Err: "unrecognized address", Name: addr}
+		return ""
 	}
+	// Apperently IP type in net package saves all ip in ipv6 formant, from biggest byte to smallest. we need last 4 bytes, so ip[15] to ip[12]
 	if ip.To4() != nil {
-		return strconv.Itoa(int(ip[15])) + "." + strconv.Itoa(int(ip[14])) + "." + strconv.Itoa(int(ip[13])) + "." + strconv.Itoa(int(ip[12])) + ".in-addr.arpa.", nil
+		return strconv.Itoa(int(ip[15])) + "." + strconv.Itoa(int(ip[14])) + "." + strconv.Itoa(int(ip[13])) + "." + strconv.Itoa(int(ip[12])) + ".in-addr.arpa."
 	}
 	// Must be IPv6
 	buf := make([]byte, 0, len(ip)*4+len("ip6.arpa."))
 	// Add it, in reverse, to the buffer
+	// each part of slice has two quads, so manual hex conversion is needed and fmt %x doesn't help
 	for i := len(ip) - 1; i >= 0; i-- {
 		v := ip[i]
 		buf = append(buf, hexDigit[v&0xF],
@@ -556,7 +561,7 @@ func alpnaddr(addr string) (arpa string, err error) {
 			hexDigit[v>>4],
 			'.')
 	}
-	// Append "ip6.arpa." and return (buf already has the final .)
+	// Append "ip6.arpa." and return (buf already has the final .) see RFC3152 for how this address constructed.
 	buf = append(buf, "ip6.arpa."...)
-	return string(buf), nil
+	return string(buf)
 }

@@ -1047,7 +1047,8 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
-	// Check that all of the identifiers in the new-order are DNS type
+	// Check that all of the identifiers in the new-order are DNS or IPaddress type
+	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
 		if ident.Type == acme.IdentifierIP {
 			ip := net.ParseIP(ident.Value)
@@ -1443,8 +1444,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderAccountID := existingOrder.AccountID
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
-	// not using ordernames now, can't split dns and ips
-	//	orderNames := existingOrder.Names
 	orderIdentifiers := existingOrder.Identifiers
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
@@ -1512,15 +1511,12 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 		}
 	}
-	// first sort IPs
-	sort.Slice(orderIPs, func(i, j int) bool {
-		return bytes.Compare(orderIPs[i], orderIPs[j]) < 0
-	})
-	// and make uniqueLowerNames for DNSNames
+	// sort and deduplicate Names
 	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderIPs = uniqueIPs(orderIPs)
 	// Check that the CSR has the same number of names as the initial order contained
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
-	csrIPs := parsedCSR.IPAddresses
+	csrIPs := uniqueIPs(parsedCSR.IPAddresses)
 	// sort this too
 	sort.Slice(csrIPs, func(i, j int) bool {
 		return bytes.Compare(csrIPs[i], csrIPs[j]) < 0
@@ -1799,10 +1795,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	defer authz.RUnlock()
 
 	ident := authz.Identifier
-	switch ident.Type {
-	case acme.IdentifierDNS:
-	case acme.IdentifierIP:
-	default:
+	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
@@ -2000,6 +1993,21 @@ func uniqueLowerNames(names []string) []string {
 		unique = append(unique, name)
 	}
 	sort.Strings(unique)
+	return unique
+}
+
+// uniqueIPs returns the set of all unique IP addresses in the input.
+// The returned names will be sorted in assending order.
+func uniqueIPs(IPs []net.IP) []net.IP {
+	var stringips []string
+	for _, ip := range IPs {
+		stringips = append(stringips, ip.String())
+	}
+	stringips = uniqueLowerNames(stringips)
+	var unique []net.IP
+	for _, ip := range stringips {
+		unique = append(unique, net.ParseIP(ip))
+	}
 	return unique
 }
 
