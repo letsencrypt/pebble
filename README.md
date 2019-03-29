@@ -98,7 +98,7 @@ docker-compose up
 
 Afterwards you can access the ACME API from your host machine at
 `https://localhost:14000/dir` and the `pebble-challtestsrv`'s management
-interface at `http://locahost:8055`.
+interface at `http://localhost:8055`.
 
 To get started you may want to update the `pebble-challtestsrv` mock DNS data
 with a new default IPv4 address to use to respond to `A` queries from `pebble`:
