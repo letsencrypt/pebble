@@ -386,6 +386,8 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier.Value)
 	case acme.IdentifierIP:
 		namematch = len(leafCert.IPAddresses) == 1 && leafCert.IPAddresses[0].Equal(net.ParseIP(task.Identifier.Value))
+	default:
+		namematch = false
 	}
 	if !namematch {
 		names := certNames(leafCert)
