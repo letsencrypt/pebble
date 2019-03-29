@@ -1998,6 +1998,7 @@ func uniqueLowerNames(names []string) []string {
 
 // uniqueIPs returns the set of all unique IP addresses in the input.
 // The returned names will be sorted in assending order.
+// this internally call UniqueLowerNames as map doesn't support net.IP as key
 func uniqueIPs(IPs []net.IP) []net.IP {
 	var stringips []string
 	for _, ip := range IPs {
