@@ -111,7 +111,7 @@ func (o *Order) GetStatus(clk clock.Clock) (string, error) {
 type Account struct {
 	acme.Account
 	Key *jose.JSONWebKey `json:"key"`
-	ID  string
+	ID  string           `json:"-"`
 }
 
 type Authorization struct {
