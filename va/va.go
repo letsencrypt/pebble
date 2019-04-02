@@ -387,7 +387,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
 		if ext.Critical {
-			hasAcmeIdentifier := challtestsrv.IdPeAcmeIdentifier.Equal(ext.Id)
+			hasAcmeIdentifier := challtestsrv.IDPeAcmeIdentifier.Equal(ext.Id)
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {
