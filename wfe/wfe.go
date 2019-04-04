@@ -1051,8 +1051,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
 		if ident.Type == acme.IdentifierIP {
-			ip := net.ParseIP(ident.Value)
-			if ip == nil {
+			if net.ParseIP(ident.Value) == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
 					"Order included malformed IP type identifier value: %q\n",
 					ident.Value))
