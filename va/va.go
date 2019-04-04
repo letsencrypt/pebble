@@ -543,27 +543,22 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 //this reverseaddr funntion is from net/dnsclient.go form golang
 func reverseaddr(addr string) string {
-	const hexDigit = "0123456789abcdef"
 	ip := net.ParseIP(addr)
 	if ip == nil {
 		return ""
 	}
 	// Apperently IP type in net package saves all ip in ipv6 formant, from biggest byte to smallest. we need last 4 bytes, so ip[15] to ip[12]
 	if ip.To4() != nil {
-		return strconv.Itoa(int(ip[15])) + "." + strconv.Itoa(int(ip[14])) + "." + strconv.Itoa(int(ip[13])) + "." + strconv.Itoa(int(ip[12])) + ".in-addr.arpa."
+		return fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa.", ip[15], ip[14], ip[13], ip[12])
 	}
 	// Must be IPv6
-	buf := make([]byte, 0, len(ip)*4+len("ip6.arpa."))
+	buf := make([]string, 0, len(ip)+1)
 	// Add it, in reverse, to the buffer
 	// each part of slice has two quads, so manual hex conversion is needed and fmt %x doesn't help
 	for i := len(ip) - 1; i >= 0; i-- {
-		v := ip[i]
-		buf = append(buf, hexDigit[v&0xF],
-			'.',
-			hexDigit[v>>4],
-			'.')
+		buf = append(buf, fmt.Sprintf("%x.%x", ip[i]&0x0F, ip[i]>>4))
 	}
 	// Append "ip6.arpa." and return (buf already has the final .) see RFC3152 for how this address constructed.
-	buf = append(buf, "ip6.arpa."...)
-	return string(buf)
+	buf = append(buf, "ip6.arpa.")
+	return strings.Join(buf, ".")
 }
