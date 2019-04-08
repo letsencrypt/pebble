@@ -1556,6 +1556,10 @@ func (wfe *WebFrontEndImpl) Authz(
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
+	authz.Lock()
+	defer authz.Unlock()
+	authz.Order.Lock()
+	defer authz.Order.Unlock()
 
 	// If the postData is not a POST-as-GET, treat this as case A) and update
 	// the authorization based on the postData
