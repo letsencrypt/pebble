@@ -24,7 +24,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
@@ -109,7 +108,6 @@ type WebFrontEndImpl struct {
 	db              *db.MemoryStore
 	nonce           *nonceMap
 	nonceErrPercent int
-	clk             clock.Clock
 	va              *va.VAImpl
 	ca              *ca.CAImpl
 	strict          bool
@@ -119,7 +117,6 @@ const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
 func New(
 	log *log.Logger,
-	clk clock.Clock,
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
@@ -152,7 +149,6 @@ func New(
 		db:              db,
 		nonce:           newNonceMap(),
 		nonceErrPercent: nonceErrPercent,
-		clk:             clk,
 		va:              va,
 		ca:              ca,
 		strict:          strict,
@@ -1088,7 +1084,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	order.RLock()
 	// Create one authz for each name in the order's parsed CSR
 	for _, name := range order.Names {
-		now := wfe.clk.Now().UTC()
+		now := time.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
 			Type:  acme.IdentifierDNS,
@@ -1425,7 +1421,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// The existing order must not be expired
-	if orderExpires.Before(wfe.clk.Now()) {
+	if orderExpires.Before(time.Now()) {
 		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
 			"Order %q expired %s", orderID, orderExpires)), response)
 		return
@@ -1724,7 +1720,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 				ident.Type, acme.IdentifierDNS))
 	}
 
-	now := wfe.clk.Now()
+	now := time.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization expired %s",
@@ -1806,7 +1802,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Lock the order for reading to check the expiry date
 	existingOrder.RLock()
-	now := wfe.clk.Now()
+	now := time.Now()
 	if now.After(existingOrder.ExpiresDate) {
 		wfe.sendError(
 			acme.MalformedProblem(fmt.Sprintf("order expired %s",

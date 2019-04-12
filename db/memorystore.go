@@ -12,7 +12,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -32,8 +31,6 @@ func (e ExistingAccountError) Error() string {
 type MemoryStore struct {
 	sync.RWMutex
 
-	clk clock.Clock
-
 	accountIDCounter int
 
 	accountsByID map[string]*core.Account
@@ -52,9 +49,8 @@ type MemoryStore struct {
 	revokedCertificatesByID map[string]*core.Certificate
 }
 
-func NewMemoryStore(clk clock.Clock) *MemoryStore {
+func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		clk:                     clk,
 		accountIDCounter:        1,
 		accountsByID:            make(map[string]*core.Account),
 		accountsByKeyID:         make(map[string]*core.Account),
@@ -180,7 +176,7 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	defer m.RUnlock()
 
 	if order, ok := m.ordersByID[id]; ok {
-		orderStatus, err := order.GetStatus(m.clk)
+		orderStatus, err := order.GetStatus()
 		if err != nil {
 			panic(err)
 		}
