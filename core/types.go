@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/acme"
 	"gopkg.in/square/go-jose.v2"
 )
@@ -28,7 +27,7 @@ type Order struct {
 	CertificateObject    *Certificate
 }
 
-func (o *Order) GetStatus(clk clock.Clock) (string, error) {
+func (o *Order) GetStatus() (string, error) {
 	// Lock the order for reading
 	o.RLock()
 	defer o.RUnlock()
@@ -49,7 +48,7 @@ func (o *Order) GetStatus(clk clock.Clock) (string, error) {
 
 		authzStatuses[authzStatus]++
 
-		if authzExpires.Before(clk.Now()) {
+		if authzExpires.Before(time.Now()) {
 			authzStatuses[acme.StatusExpired]++
 		}
 	}

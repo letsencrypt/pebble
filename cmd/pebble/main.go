@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/cmd"
 	"github.com/letsencrypt/pebble/db"
@@ -57,12 +56,11 @@ func main() {
 		setupCustomDNSResolver(*resolverAddress)
 	}
 
-	clk := clock.New()
-	db := db.NewMemoryStore(clk)
+	db := db.NewMemoryStore()
 	ca := ca.New(logger, db)
-	va := va.New(logger, clk, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
+	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
-	wfeImpl := wfe.New(logger, clk, db, va, ca, *strictMode)
+	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
 	muxHandler := wfeImpl.Handler()
 
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
