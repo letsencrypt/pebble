@@ -1185,7 +1185,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	authz.Lock()
 	authz.Challenges = nil
 	for _, c := range chals {
-		authz.Challenges = append(authz.Challenges, &c.Challenge)
+		authz.Challenges = append(authz.Challenges, c.Challenge)
 	}
 	authz.Unlock()
 	return nil
@@ -1516,7 +1516,7 @@ func prepAuthorizationForDisplay(authz acme.Authorization) acme.Authorization {
 	// If the authz isn't pending then we need to filter the challenges displayed
 	// to only those that were used to make the authz valid || invalid.
 	if result.Status != acme.StatusPending {
-		var chals []*acme.Challenge
+		var chals []acme.Challenge
 		// Scan each of the authz's challenges
 		for _, c := range result.Challenges {
 			// Include any that have an associated error, or that are status valid
@@ -1557,6 +1557,12 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
+	authz.Lock()
+	defer authz.Unlock()
+	authz.Order.RLock()
+	orderAcctID := authz.Order.AccountID
+	authz.Order.RUnlock()
+
 	// If the postData is not a POST-as-GET, treat this as case A) and update
 	// the authorization based on the postData
 	if !postData.postAsGet {
@@ -1566,7 +1572,7 @@ func (wfe *WebFrontEndImpl) Authz(
 			return
 		}
 
-		if authz.Order.AccountID != existingAcct.ID {
+		if orderAcctID != existingAcct.ID {
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account does not own authorization"), response)
 			return
@@ -1600,7 +1606,7 @@ func (wfe *WebFrontEndImpl) Authz(
 			return
 		}
 
-		if authz.Order.AccountID != account.ID {
+		if orderAcctID != account.ID {
 			response.WriteHeader(http.StatusForbidden)
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account authorizing the request is not the owner of the authorization"),

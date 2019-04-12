@@ -49,10 +49,10 @@ type Order struct {
 
 // An Authorization is created for each identifier in an order
 type Authorization struct {
-	Status     string       `json:"status"`
-	Identifier Identifier   `json:"identifier"`
-	Challenges []*Challenge `json:"challenges"`
-	Expires    string       `json:"expires"`
+	Status     string      `json:"status"`
+	Identifier Identifier  `json:"identifier"`
+	Challenges []Challenge `json:"challenges"`
+	Expires    string      `json:"expires"`
 	// Wildcard is a Let's Encrypt specific Authorization field that indicates the
 	// authorization was created as a result of an order containing a name with
 	// a `*.`wildcard prefix. This will help convey to users that an
