@@ -54,7 +54,7 @@ script:
   # Run the load-generator briefly - note, because Pebble isn't using the
   # load-generator's mock DNS server none of the issuances will succeed. This
   # step is performed just to shake out data races with concurrent requests.
-  - load-generator -config ./test/config/load-generator-config.json
+  - load-generator -config ./test/config/load-generator-config.json > /dev/null
 
 deploy:
   - provider: script

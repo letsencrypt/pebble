@@ -7,7 +7,7 @@
             "finalizeOrder"
         ],
         "rate": 10,
-        "runtime": "30s",
+        "runtime": "10s",
         "rateDelta": "1/10s"
     },
     "directoryURL": "https://localhost:14000/dir",
