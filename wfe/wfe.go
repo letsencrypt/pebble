@@ -1183,10 +1183,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 
 	// Lock the authorization for writing to update the challenges
 	authz.Lock()
-	authz.Challenges = nil
-	for _, c := range chals {
-		authz.Challenges = append(authz.Challenges, c.Challenge)
-	}
+	authz.Challenges = chals
 	authz.Unlock()
 	return nil
 }
@@ -1500,12 +1497,13 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 }
 
 // prepAuthorizationForDisplay prepares the provided acme.Authorization for
-// display to an ACME client.
-func prepAuthorizationForDisplay(authz acme.Authorization) acme.Authorization {
+// display to an ACME client. It assumes the `authz` is already locked for
+// reading by the caller.
+func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 	// Copy the authz to mutate and return
-	result := authz
-
+	result := authz.Authorization
 	identVal := result.Identifier.Value
+
 	// If the authorization identifier has a wildcard in the value, remove it and
 	// set the Wildcard field to true
 	if strings.HasPrefix(identVal, "*.") {
@@ -1513,20 +1511,20 @@ func prepAuthorizationForDisplay(authz acme.Authorization) acme.Authorization {
 		result.Wildcard = true
 	}
 
-	// If the authz isn't pending then we need to filter the challenges displayed
-	// to only those that were used to make the authz valid || invalid.
-	if result.Status != acme.StatusPending {
-		var chals []acme.Challenge
-		// Scan each of the authz's challenges
-		for _, c := range result.Challenges {
-			// Include any that have an associated error, or that are status valid
-			if c.Error != nil || c.Status == acme.StatusValid {
-				chals = append(chals, c)
-			}
+	// Build a list of plain acme.Challenges to display using the core.Challenge
+	// objects from the authorization.
+	var chals []acme.Challenge
+	for _, c := range authz.Challenges {
+		c.RLock()
+		// If the authz isn't pending then we need to filter the challenges displayed
+		// to only those that were used to make the authz valid || invalid.
+		if result.Status != acme.StatusPending && (c.Error == nil && c.Status != acme.StatusValid) {
+			continue
 		}
-		// Replace the authz's challenges with the filtered set
-		result.Challenges = chals
+		chals = append(chals, c.Challenge)
+		c.RUnlock()
 	}
+	result.Challenges = chals
 
 	// Randomize the order of the challenges in the returned authorization.
 	// Clients should not make any assumptions about the sort order.
@@ -1618,7 +1616,7 @@ func (wfe *WebFrontEndImpl) Authz(
 	err := wfe.writeJSONResponse(
 		response,
 		http.StatusOK,
-		prepAuthorizationForDisplay(authz.Authorization))
+		prepAuthorizationForDisplay(authz))
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
 		return
@@ -1797,7 +1795,13 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	if authz.Order.AccountID != existingAcct.ID {
+	authz.RLock()
+	authz.Order.RLock()
+	orderAcctID := authz.Order.AccountID
+	authz.Order.RUnlock()
+	authz.RUnlock()
+
+	if orderAcctID != existingAcct.ID {
 		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
