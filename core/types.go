@@ -120,6 +120,7 @@ type Authorization struct {
 	URL         string
 	ExpiresDate time.Time
 	Order       *Order
+	Challenges  []*Challenge
 }
 
 type Challenge struct {
