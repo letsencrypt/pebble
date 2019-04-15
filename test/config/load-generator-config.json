@@ -22,6 +22,5 @@
     "regEmail": "loadtesting@letsencrypt.org",
     "maxRegs": 20,
     "maxNamesPerCert": 20,
-    "externalState": "state.json",
-    "dontSaveState": false
+    "dontSaveState": true
 }
