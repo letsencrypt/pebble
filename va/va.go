@@ -555,7 +555,6 @@ func reverseaddr(addr string) string {
 	// Must be IPv6
 	buf := make([]string, 0, len(ip)+1)
 	// Add it, in reverse, to the buffer
-	// each part of slice has two quads, so manual hex conversion is needed and fmt %x doesn't help
 	for i := len(ip) - 1; i >= 0; i-- {
 		buf = append(buf, fmt.Sprintf("%x.%x", ip[i]&0x0F, ip[i]>>4))
 	}
