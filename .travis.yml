@@ -1,13 +1,14 @@
 language: go
 
 sudo: true
+dist: xenial
 addons:
   hosts:
     - example.letsencrypt.org
     - elpmaxe.letsencrypt.org
 
 go:
-  - "1.11.x"
+  - "1.12.x"
 
 env:
   - GO111MODULE=on
@@ -16,8 +17,7 @@ services:
   - docker
 
 before_install:
-  # TODO(#204): Change back to cloning master once Certbot omits keyAuthorization.
-  - git clone --depth=1 -b no-keyauthorization https://github.com/certbot/certbot
+  - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
   - ./certbot-auto --os-packages-only -n
   - ./tools/venv.py
@@ -27,20 +27,38 @@ before_install:
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
 install:
-  - go install -v -mod=vendor ./...
+  # Install `golangci-lint` using their installer script
+  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
+  # Install tools without `GO111MODULE` enabled so that we
+  # don't download Pebble's deps and just put the tools in our
+  # gobin.
+  - GO111MODULE=off go get golang.org/x/tools/cmd/cover
+  - GO111MODULE=off go get github.com/mattn/goveralls
+  - GO111MODULE=off go get github.com/letsencrypt/boulder/test/load-generator
+  - go install -v -race -mod=vendor ./...
 
 before_script:
-  - pebble &
-  # Wait for pebble to come up
-  - until </dev/tcp/localhost/14000 ; do sleep 0.1 ; done
+  - GORACE="halt_on_error=1" pebble &
 
 script:
-  - go vet -mod=vendor ./...
+  - go mod download
+  # Vet Go source code using the linter config (see .golang-ci.yml)
+  - golangci-lint run
+  # Run project unit tests (with the race detector enabled and atomic
+  # coverage profile collection)
+  - go test -mod=vendor -v -race -covermode=atomic -coverprofile=coverage.out ./...
+  # Upload collected coverage profile to goveralls
+  - goveralls -coverprofile=coverage.out -service=travis-ci
+  # Perform a test issuance with chisel2.py
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  # Run the load-generator briefly - note, because Pebble isn't using the
+  # load-generator's mock DNS server none of the issuances will succeed. This
+  # step is performed just to shake out data races with concurrent requests.
+  - load-generator -config ./test/config/load-generator-config.json > /dev/null
 
 deploy:
   - provider: script
-    script: bash .travis/publish.sh
+    script: bash .ci/publish_linux.sh
     skip_cleanup: true
     on:
       repo: letsencrypt/pebble

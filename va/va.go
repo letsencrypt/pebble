@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 )
@@ -69,10 +69,6 @@ const (
 	noValidateEnvVar = "PEBBLE_VA_ALWAYS_VALID"
 )
 
-// This is the identifier defined in draft-04 and newer, as registered with IANA
-// (https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#page-4)
-var IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
-
 func userAgent() string {
 	return fmt.Sprintf(
 		"%s (%s; %s)",
@@ -98,7 +94,6 @@ type vaTask struct {
 
 type VAImpl struct {
 	log         *log.Logger
-	clk         clock.Clock
 	httpPort    int
 	tlsPort     int
 	tasks       chan *vaTask
@@ -110,12 +105,10 @@ type VAImpl struct {
 
 func New(
 	log *log.Logger,
-	clk clock.Clock,
 	httpPort, tlsPort int,
 	strict bool) *VAImpl {
 	va := &VAImpl{
 		log:       log,
-		clk:       clk,
 		httpPort:  httpPort,
 		tlsPort:   tlsPort,
 		tasks:     make(chan *vaTask, taskQueueSize),
@@ -265,7 +258,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		// Sleep for a random amount of time between 0 and va.sleepTime seconds
 		len := time.Duration(rand.Intn(va.sleepTime))
 		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
-		va.clk.Sleep(time.Second * len)
+		time.Sleep(time.Second * len)
 	}
 
 	// If `alwaysValid` is true then return a validation record immediately
@@ -405,7 +398,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
 		if ext.Critical {
-			hasAcmeIdentifier := IdPeAcmeIdentifier.Equal(ext.Id)
+			hasAcmeIdentifier := challtestsrv.IDPeAcmeIdentifier.Equal(ext.Id)
 			if hasAcmeIdentifier {
 				var extValue []byte
 				if _, err := asn1.Unmarshal(ext.Value, &extValue); err != nil {

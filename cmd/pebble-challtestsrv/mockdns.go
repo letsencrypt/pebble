@@ -238,3 +238,59 @@ func (srv *managementServer) delDNSCAARecord(w http.ResponseWriter, r *http.Requ
 	srv.log.Printf("Removed response for DNS CAA queries to %q", request.Host)
 	w.WriteHeader(http.StatusOK)
 }
+
+// addDNSCNAMERecord handles an HTTP POST request to add a mock CNAME query
+// response record and alias for a host.
+//
+// The POST body is expected to have two non-empty parameters:
+// "host" - the hostname that should be treated as an alias to the target
+// "target" - the hostname whose mocked DNS records should be returned
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) addDNSCNAMERecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host   string
+		Target string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has no host or no caa policies it's a bad request
+	if request.Host == "" || request.Target == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.AddDNSCNAMERecord(request.Host, request.Target)
+	srv.log.Printf("Added response for DNS CNAME queries to %q targeting %q", request.Host, request.Target)
+	w.WriteHeader(http.StatusOK)
+}
+
+// delDNSCNAMERecord handles an HTTP POST request to delete an existing mock
+// CNAME record for a host.
+//
+// The POST body is expected to have one non-empty parameters:
+// "host" - the hostname to remove the mock CNAME alias for.
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) delDNSCNAMERecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has an empty host it's a bad request
+	if request.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.DeleteDNSCAARecord(request.Host)
+	srv.log.Printf("Removed response for DNS CNAME queries to %q", request.Host)
+	w.WriteHeader(http.StatusOK)
+}

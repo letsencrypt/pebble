@@ -12,7 +12,6 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -26,14 +25,11 @@ func (e ExistingAccountError) Error() string {
 	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
 }
 
-
 // Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
 // "database"
 type MemoryStore struct {
 	sync.RWMutex
-
-	clk clock.Clock
 
 	accountIDCounter int
 
@@ -49,19 +45,18 @@ type MemoryStore struct {
 
 	challengesByID map[string]*core.Challenge
 
-	certificatesByID map[string]*core.Certificate
+	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.Certificate
 }
 
-func NewMemoryStore(clk clock.Clock) *MemoryStore {
+func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		clk:                    clk,
-		accountIDCounter:       1,
-		accountsByID:           make(map[string]*core.Account),
-		accountsByKeyID:        make(map[string]*core.Account),
-		ordersByID:             make(map[string]*core.Order),
-		authorizationsByID:     make(map[string]*core.Authorization),
-		challengesByID:         make(map[string]*core.Challenge),
+		accountIDCounter:        1,
+		accountsByID:            make(map[string]*core.Account),
+		accountsByKeyID:         make(map[string]*core.Account),
+		ordersByID:              make(map[string]*core.Order),
+		authorizationsByID:      make(map[string]*core.Authorization),
+		challengesByID:          make(map[string]*core.Challenge),
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.Certificate),
 	}
@@ -107,7 +102,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	defer m.Unlock()
 
 	acctID := strconv.Itoa(m.accountIDCounter)
-	m.accountIDCounter += 1
+	m.accountIDCounter++
 
 	if acct.Key == nil {
 		return 0, fmt.Errorf("account must not have a nil Key")
@@ -181,7 +176,7 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	defer m.RUnlock()
 
 	if order, ok := m.ordersByID[id]; ok {
-		orderStatus, err := order.GetStatus(m.clk)
+		orderStatus, err := order.GetStatus()
 		if err != nil {
 			panic(err)
 		}

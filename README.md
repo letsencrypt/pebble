@@ -1,6 +1,9 @@
 # Pebble
 
 [![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg?branch=cpu-goveralls)](https://coveralls.io/github/letsencrypt/pebble?branch=cpu-goveralls)
+[![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
+[![GolangCI](https://golangci.com/badges/github.com/letsencrypt/pebble.svg)](https://golangci.com/r/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
 is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited
@@ -87,7 +90,7 @@ Pebble includes a [docker-compose](https://docs.docker.com/compose/) file that
 will create a `pebble` instance that uses a `pebble-challtestsrv` instance for
 DNS resolution.
 
-To build and start the containers run:
+To download and start the containers run:
 
 ```
 docker-compose up
@@ -95,7 +98,7 @@ docker-compose up
 
 Afterwards you can access the ACME API from your host machine at
 `https://localhost:14000/dir` and the `pebble-challtestsrv`'s management
-interface at `http://locahost:8055`.
+interface at `http://localhost:8055`.
 
 To get started you may want to update the `pebble-challtestsrv` mock DNS data
 with a new default IPv4 address to use to respond to `A` queries from `pebble`:
@@ -140,6 +143,18 @@ docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,tar
 ```
 
 **Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
+
+### Default validation ports
+
+To make it easier to test ACME clients and run challenge response servers
+without root privileges Pebble defaults to validating ACME challenges using
+unprivileged high ports:
+
+* **Default HTTP-01 Port**: 5002
+* **Default TLS-ALPN-01 Port**: 5001
+
+These ports can be changed by editing the `"httpPort"` and `"tlsPort"` values of
+the Pebble `-config` file provided to `pebble`.
 
 ### Strict Mode
 

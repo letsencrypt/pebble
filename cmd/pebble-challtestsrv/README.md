@@ -93,6 +93,16 @@ To remove the mocked CAA policy for `test-host.letsencrypt.org` run:
 
     curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-caa
 
+##### Mocked CNAME Responses
+
+To add a mocked CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
+
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "target": "challenges.letsencrypt.org"}' http://localhost:8055/set-cname
+
+To remove a mocked CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
+
+    curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "target": "challenges.letsencrypt.org"}' http://localhost:8055/clear-cname
+
 #### HTTP-01
 
 To add an HTTP-01 challenge response for the token `"aaaa"` with the content `"bbbb"` run:
