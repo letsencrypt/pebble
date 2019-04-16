@@ -541,7 +541,8 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	return body, url.String(), nil
 }
 
-//this reverseaddr funntion is from net/dnsclient.go form golang
+// reverseaddr function is borrowed from net/dnsclient.go[0] and the Go std library.
+// [0]: https://golang.org/src/net/dnsclient.go
 func reverseaddr(addr string) string {
 	ip := net.ParseIP(addr)
 	if ip == nil {
@@ -558,7 +559,7 @@ func reverseaddr(addr string) string {
 	for i := len(ip) - 1; i >= 0; i-- {
 		buf = append(buf, fmt.Sprintf("%x.%x", ip[i]&0x0F, ip[i]>>4))
 	}
-	// Append "ip6.arpa." and return (buf already has the final .) see RFC3152 for how this address constructed.
+	// Append "ip6.arpa." and return (buf already has the final '.') see RFC3152 for how this address is constructed.
 	buf = append(buf, "ip6.arpa.")
 	return strings.Join(buf, ".")
 }
