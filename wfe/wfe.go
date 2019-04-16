@@ -1484,7 +1484,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// The existing order must not be expired
-	if orderExpires.Before(wfe.clk.Now()) {
+	if orderExpires.Before(time.Now()) {
 		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
 			"Order %q expired %s", orderID, orderExpires)), response)
 		return
@@ -1817,7 +1817,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
 	}
-	now := wfe.clk.Now()
+	now := time.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization expired %s",
@@ -1900,7 +1900,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Lock the order for reading to check the expiry date
 	existingOrder.RLock()
-	now := wfe.clk.Now()
+	now := time.Now()
 	if now.After(existingOrder.ExpiresDate) {
 		wfe.sendError(
 			acme.MalformedProblem(fmt.Sprintf("order expired %s",

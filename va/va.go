@@ -184,7 +184,7 @@ func (va VAImpl) setAuthzValid(authz *core.Authorization, chal *core.Challenge) 
 	authz.Lock()
 	defer authz.Unlock()
 	// Update the authz expiry for the new validity period
-	now := va.clk.Now().UTC()
+	now := time.Now().UTC()
 	authz.ExpiresDate = now.Add(validAuthzExpire)
 	authz.Expires = authz.ExpiresDate.Format(time.RFC3339)
 	// Update the authz status
@@ -232,7 +232,7 @@ func (va VAImpl) process(task *vaTask) {
 	chal := task.Challenge
 	chal.Lock()
 	// Update the validated date for the challenge
-	now := va.clk.Now().UTC()
+	now := time.Now().UTC()
 	chal.ValidatedDate = now
 	chal.Validated = chal.ValidatedDate.Format(time.RFC3339)
 	authz := chal.Authz
@@ -280,7 +280,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		// the URL to the `_acme-challenge` subdomain.
 		results <- &core.ValidationRecord{
 			URL:         task.Identifier.Value,
-			ValidatedAt: va.clk.Now(),
+			ValidatedAt: time.Now(),
 		}
 		return
 	}
@@ -303,7 +303,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
-		ValidatedAt: va.clk.Now(),
+		ValidatedAt: time.Now(),
 	}
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
@@ -350,7 +350,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	}
 	result := &core.ValidationRecord{
 		URL:         hostPort,
-		ValidatedAt: va.clk.Now(),
+		ValidatedAt: time.Now(),
 	}
 
 	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
@@ -456,7 +456,7 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 
 	result := &core.ValidationRecord{
 		URL:         url,
-		ValidatedAt: va.clk.Now(),
+		ValidatedAt: time.Now(),
 		Error:       err,
 	}
 	if result.Error != nil {
