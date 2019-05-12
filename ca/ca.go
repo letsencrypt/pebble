@@ -29,6 +29,11 @@ type CAImpl struct {
 	db               *db.MemoryStore
 	ocspResponderURL string
 
+	mainChain         *chain
+	alternativeChains []*chain
+}
+
+type chain struct {
 	root         *issuer
 	intermediate *issuer
 }
@@ -58,7 +63,8 @@ func makeKey() (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-func (ca *CAImpl) makeRootCert(
+func (chain *chain) makeRootCert(
+	ca *CAImpl,
 	subjectKey crypto.Signer,
 	subjCNPrefix string,
 	signer *issuer) (*core.Certificate, error) {
@@ -114,19 +120,19 @@ func (ca *CAImpl) makeRootCert(
 	return newCert, nil
 }
 
-func (ca *CAImpl) newRootIssuer() error {
+func (chain *chain) newRootIssuer(ca *CAImpl) error {
 	// Make a root private key
 	rk, err := makeKey()
 	if err != nil {
 		return err
 	}
 	// Make a self-signed root certificate
-	rc, err := ca.makeRootCert(rk, rootCAPrefix, nil)
+	rc, err := chain.makeRootCert(ca, rk, rootCAPrefix, nil)
 	if err != nil {
 		return err
 	}
 
-	ca.root = &issuer{
+	chain.root = &issuer{
 		key:  rk,
 		cert: rc,
 	}
@@ -134,28 +140,33 @@ func (ca *CAImpl) newRootIssuer() error {
 	return nil
 }
 
-func (ca *CAImpl) newIntermediateIssuer() error {
-	if ca.root == nil {
+func (chain *chain) newIntermediateIssuer(ca *CAImpl, ik crypto.Signer) error {
+	if chain.root == nil {
 		return fmt.Errorf("newIntermediateIssuer() called before newRootIssuer()")
 	}
 
-	// Make an intermediate private key
-	ik, err := makeKey()
-	if err != nil {
-		return err
-	}
-
 	// Make an intermediate certificate with the root issuer
-	ic, err := ca.makeRootCert(ik, intermediateCAPrefix, ca.root)
+	ic, err := chain.makeRootCert(ca, ik, intermediateCAPrefix, chain.root)
 	if err != nil {
 		return err
 	}
-	ca.intermediate = &issuer{
+	chain.intermediate = &issuer{
 		key:  ik,
 		cert: ic,
 	}
 	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
 	return nil
+}
+
+func newChain(ca *CAImpl, ik crypto.Signer) *chain {
+	chain := &chain{}
+	if err := chain.newRootIssuer(ca); err != nil {
+		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
+	}
+	if err := chain.newIntermediateIssuer(ca, ik); err != nil {
+		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
+	}
+	return chain
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
@@ -168,7 +179,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
-	issuer := ca.intermediate
+	issuer := ca.mainChain.intermediate
 	if issuer == nil || issuer.cert == nil {
 		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
 	}
@@ -203,13 +214,19 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, err
 	}
 
+	altIssuers := make([]*core.Certificate, len(ca.alternativeChains))
+	for i := 0; i < len(ca.alternativeChains); i++ {
+		altIssuers[i] = ca.alternativeChains[i].intermediate.cert
+	}
+
 	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:        hexSerial,
-		AccountID: accountID,
-		Cert:      cert,
-		DER:       der,
-		Issuer:    issuer.cert,
+		ID:                 hexSerial,
+		AccountID:          accountID,
+		Cert:               cert,
+		DER:                der,
+		Issuer:             issuer.cert,
+		AlternativeIssuers: altIssuers,
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -218,7 +235,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int) *CAImpl {
 	ca := &CAImpl{
 		log: log,
 		db:  db,
@@ -229,13 +246,16 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string) *CAImpl {
 		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspResponderURL)
 	}
 
-	err := ca.newRootIssuer()
+	ik, err := makeKey()
 	if err != nil {
-		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
+		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
-	err = ca.newIntermediateIssuer()
-	if err != nil {
-		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
+	ca.mainChain = newChain(ca, ik)
+
+	// Create alternative chains
+	ca.alternativeChains = make([]*chain, alternateRoots)
+	for i := 0; i < len(ca.alternativeChains); i++ {
+		ca.alternativeChains[i] = newChain(ca, ik)
 	}
 	return ca
 }
@@ -279,38 +299,56 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
-func (ca *CAImpl) GetRootCert() *core.Certificate {
-	if ca.root == nil {
-		return nil
-	}
-	return ca.root.cert
+func (ca *CAImpl) GetNumberOfAlternativeRootCerts() int {
+	return len(ca.alternativeChains)
 }
 
-func (ca *CAImpl) GetRootKey() *rsa.PrivateKey {
-	if ca.root == nil {
+func (ca *CAImpl) getChain(no int) *chain {
+	if no == 0 {
+		return ca.mainChain
+	} else if 0 < no && no <= len(ca.alternativeChains) {
+		return ca.alternativeChains[no-1]
+	} else {
+		return nil
+	}
+}
+
+func (ca *CAImpl) GetRootCert(no int) *core.Certificate {
+	chain := ca.getChain(no)
+	if chain == nil {
+		return nil
+	}
+	return chain.root.cert
+}
+
+func (ca *CAImpl) GetRootKey(no int) *rsa.PrivateKey {
+	chain := ca.getChain(no)
+	if chain == nil {
 		return nil
 	}
 
-	switch key := ca.root.key.(type) {
+	switch key := chain.root.key.(type) {
 	case *rsa.PrivateKey:
 		return key
 	}
 	return nil
 }
 
-func (ca *CAImpl) GetIntermediateCert() *core.Certificate {
-	if ca.intermediate == nil {
+func (ca *CAImpl) GetIntermediateCert(no int) *core.Certificate {
+	chain := ca.getChain(no)
+	if chain == nil {
 		return nil
 	}
-	return ca.intermediate.cert
+	return chain.intermediate.cert
 }
 
-func (ca *CAImpl) GetIntermediateKey() *rsa.PrivateKey {
-	if ca.intermediate == nil {
+func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
+	chain := ca.getChain(no)
+	if chain == nil {
 		return nil
 	}
 
-	switch key := ca.intermediate.key.(type) {
+	switch key := chain.intermediate.key.(type) {
 	case *rsa.PrivateKey:
 		return key
 	}
