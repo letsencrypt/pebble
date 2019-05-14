@@ -1812,14 +1812,16 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Lock the order for reading to check the expiry date
 	existingOrder.RLock()
+	expiry := existingOrder.ExpiresDate
+	existingOrder.RUnlock()
+
 	now := time.Now()
-	if now.After(existingOrder.ExpiresDate) {
+	if now.After(expiry) {
 		wfe.sendError(
 			acme.MalformedProblem(fmt.Sprintf("order expired %s",
-				existingOrder.ExpiresDate.Format(time.RFC3339))), response)
+				expiry.Format(time.RFC3339))), response)
 		return
 	}
-	existingOrder.RUnlock()
 
 	// Lock the authorization to get the identifier value
 	authz.RLock()
