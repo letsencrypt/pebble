@@ -32,8 +32,9 @@ type CAImpl struct {
 }
 
 type issuer struct {
-	key  crypto.Signer
-	cert *core.Certificate
+	key    crypto.Signer
+	keyRaw *rsa.PrivateKey
+	cert   *core.Certificate
 }
 
 func makeSerial() *big.Int {
@@ -73,7 +74,7 @@ func (ca *CAImpl) makeRootCert(
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  true,
+		IsCA: true,
 	}
 
 	var signerKey crypto.Signer
@@ -125,8 +126,9 @@ func (ca *CAImpl) newRootIssuer() error {
 	}
 
 	ca.root = &issuer{
-		key:  rk,
-		cert: rc,
+		key:    rk,
+		keyRaw: rk,
+		cert:   rc,
 	}
 	ca.log.Printf("Generated new root issuer with serial %s\n", rc.ID)
 	return nil
@@ -149,8 +151,9 @@ func (ca *CAImpl) newIntermediateIssuer() error {
 		return err
 	}
 	ca.intermediate = &issuer{
-		key:  ik,
-		cert: ic,
+		key:    ik,
+		keyRaw: ik,
+		cert:   ic,
 	}
 	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
 	return nil
@@ -182,7 +185,7 @@ func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey, account
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  false,
+		IsCA: false,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
 	if err != nil {
@@ -268,4 +271,12 @@ func (ca *CAImpl) GetRootCert() *core.Certificate {
 		return nil
 	}
 	return ca.root.cert
+}
+
+func (ca *CAImpl) GetRootKey() *rsa.PrivateKey {
+	if ca.root == nil {
+		return nil
+	}
+
+	return ca.root.keyRaw
 }
