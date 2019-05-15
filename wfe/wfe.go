@@ -51,9 +51,11 @@ const (
 	revokeCertPath    = "/revoke-cert"
 	keyRolloverPath   = "/rollover-account-key"
 
-	// This entrypoint is obviously not a part of the standard ACME endpoints,
-	// and is pushed in Pebble as an integration tests tool.
-	RootKeyPath = "/root-key"
+	// Theses entrypoint is obviously not a part of the standard ACME endpoints,
+	// and are expose by Pebble as an integration tests tool.
+	IntermediateCertPath = "/intermediate"
+	IntermediateKeyPath  = "/intermediate-key"
+	RootKeyPath          = "/root-key"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -271,6 +273,49 @@ func (wfe *WebFrontEndImpl) RootKey(
 	_, _ = response.Write(buf.Bytes())
 }
 
+func (wfe *WebFrontEndImpl) IntermediateCert(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	intermediate := wfe.ca.GetIntermediateCert()
+	if intermediate == nil {
+		response.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(intermediate.PEM())
+}
+
+func (wfe *WebFrontEndImpl) IntermediateKey(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	key := wfe.ca.GetIntermediateKey()
+	if key == nil {
+		response.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	var buf bytes.Buffer
+
+	err := pem.Encode(&buf, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	})
+	if err != nil {
+		panic(fmt.Sprintf("Unable to encode private key to PEM: %s",
+			err.Error()))
+	}
+
+	response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(buf.Bytes())
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
@@ -279,6 +324,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, RootCertPath, wfe.RootCert, "GET")
 	wfe.HandleFunc(m, RootKeyPath, wfe.RootKey, "GET")
+	wfe.HandleFunc(m, IntermediateCertPath, wfe.RootCert, "GET")
+	wfe.HandleFunc(m, IntermediateKeyPath, wfe.RootKey, "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")

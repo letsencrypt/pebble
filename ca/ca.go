@@ -280,3 +280,18 @@ func (ca *CAImpl) GetRootKey() *rsa.PrivateKey {
 
 	return ca.root.keyRaw
 }
+
+func (ca *CAImpl) GetIntermediateCert() *core.Certificate {
+	if ca.root == nil {
+		return nil
+	}
+	return ca.intermediate.cert
+}
+
+func (ca *CAImpl) GetIntermediateKey() *rsa.PrivateKey {
+	if ca.root == nil {
+		return nil
+	}
+
+	return ca.intermediate.keyRaw
+}
