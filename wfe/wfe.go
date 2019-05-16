@@ -52,7 +52,7 @@ const (
 	keyRolloverPath   = "/rollover-account-key"
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
-	// and are expose by Pebble as an integration tests tool.
+	// and are exposed by Pebble as an integration test tool.
 	IntermediateCertPath = "/intermediate"
 	IntermediateKeyPath  = "/intermediate-key"
 	RootKeyPath          = "/root-key"
