@@ -264,8 +264,8 @@ func (wfe *WebFrontEndImpl) RootKey(
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	})
 	if err != nil {
-		panic(fmt.Sprintf("Unable to encode private key to PEM: %s",
-			err.Error()))
+		wfe.sendError(acme.InternalErrorProblem("unable to encode private key to PEM"), response)
+		return
 	}
 
 	response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
@@ -307,8 +307,8 @@ func (wfe *WebFrontEndImpl) IntermediateKey(
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
 	})
 	if err != nil {
-		panic(fmt.Sprintf("Unable to encode private key to PEM: %s",
-			err.Error()))
+		wfe.sendError(acme.InternalErrorProblem("unable to encode private key to PEM"), response)
+		return
 	}
 
 	response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
