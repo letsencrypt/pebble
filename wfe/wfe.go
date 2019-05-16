@@ -51,7 +51,7 @@ const (
 	revokeCertPath    = "/revoke-cert"
 	keyRolloverPath   = "/rollover-account-key"
 
-	// Theses entrypoint is obviously not a part of the standard ACME endpoints,
+	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are expose by Pebble as an integration tests tool.
 	IntermediateCertPath = "/intermediate"
 	IntermediateKeyPath  = "/intermediate-key"
