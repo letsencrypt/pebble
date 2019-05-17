@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -230,90 +231,49 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	_, _ = response.Write(problemDoc)
 }
 
-func (wfe *WebFrontEndImpl) RootCert(
+func (wfe *WebFrontEndImpl) handleCert(
+	cert *core.Certificate) func(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
+	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+		if cert == nil {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 
-	root := wfe.ca.GetRootCert()
-	if root == nil {
-		response.WriteHeader(http.StatusServiceUnavailable)
-		return
+		response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write(cert.PEM())
 	}
-
-	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
-	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(root.PEM())
 }
 
-func (wfe *WebFrontEndImpl) RootKey(
+func (wfe *WebFrontEndImpl) handleKey(
+	key *rsa.PrivateKey) func(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
+	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+		if key == nil {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 
-	key := wfe.ca.GetRootKey()
-	if key == nil {
-		response.WriteHeader(http.StatusServiceUnavailable)
-		return
+		var buf bytes.Buffer
+
+		err := pem.Encode(&buf, &pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(key),
+		})
+		if err != nil {
+			wfe.sendError(acme.InternalErrorProblem("unable to encode private key to PEM"), response)
+			return
+		}
+
+		response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write(buf.Bytes())
 	}
-
-	var buf bytes.Buffer
-
-	err := pem.Encode(&buf, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("unable to encode private key to PEM"), response)
-		return
-	}
-
-	response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
-	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(buf.Bytes())
-}
-
-func (wfe *WebFrontEndImpl) IntermediateCert(
-	ctx context.Context,
-	response http.ResponseWriter,
-	request *http.Request) {
-
-	intermediate := wfe.ca.GetIntermediateCert()
-	if intermediate == nil {
-		response.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
-	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
-	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(intermediate.PEM())
-}
-
-func (wfe *WebFrontEndImpl) IntermediateKey(
-	ctx context.Context,
-	response http.ResponseWriter,
-	request *http.Request) {
-
-	key := wfe.ca.GetIntermediateKey()
-	if key == nil {
-		response.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
-	var buf bytes.Buffer
-
-	err := pem.Encode(&buf, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("unable to encode private key to PEM"), response)
-		return
-	}
-
-	response.Header().Set("Content-Type", "application/x-pem-file; charset=utf-8")
-	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(buf.Bytes())
 }
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
@@ -322,10 +282,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.RootCert, "GET")
-	wfe.HandleFunc(m, RootKeyPath, wfe.RootKey, "GET")
-	wfe.HandleFunc(m, IntermediateCertPath, wfe.RootCert, "GET")
-	wfe.HandleFunc(m, IntermediateKeyPath, wfe.RootKey, "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert()), "GET")
+	wfe.HandleFunc(m, RootKeyPath, wfe.handleKey(wfe.ca.GetRootKey()), "GET")
+	wfe.HandleFunc(m, IntermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert()), "GET")
+	wfe.HandleFunc(m, IntermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey()), "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
