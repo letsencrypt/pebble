@@ -271,7 +271,7 @@ and `https://localhost:14000/intermediate` respectively.
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
-The private keys of these certificates can also be retreived by a `GET` request
+The private keys of these certificates can also be retrieved by a `GET` request
 to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
 respectively.
 
