@@ -57,7 +57,7 @@ const (
 	intermediateCertPath = "/intermediate"
 	rootKeyPath          = "/root-key"
         // We export RootCertPath so that the pebble binary can reference it
-        RootCertPath         = "/root"
+        RootCertPath = "/root"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -283,8 +283,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, rootCertPath, wfe.handleCert(wfe.ca.GetRootCert()), "GET")
-	wfe.HandleFunc(m, RootKeyPath, wfe.handleKey(wfe.ca.GetRootKey()), "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert()), "GET")
+	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey()), "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert()), "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey()), "GET")
 
