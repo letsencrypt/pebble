@@ -52,12 +52,12 @@ const (
 	keyRolloverPath   = "/rollover-account-key"
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
-	// and are exposed by Pebble as an integration test tool.
-	intermediateKeyPath  = "/intermediate-key"
+	// and are exposed by Pebble as an integration test tool. We export
+        // RootCertPath so that the pebble binary can reference it.
+        RootCertPath         = "/root"
+        rootKeyPath          = "/root-key"
 	intermediateCertPath = "/intermediate"
-	rootKeyPath          = "/root-key"
-        // We export RootCertPath so that the pebble binary can reference it
-        RootCertPath = "/root"
+	intermediateKeyPath  = "/intermediate-key"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
