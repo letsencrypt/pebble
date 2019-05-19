@@ -53,9 +53,9 @@ const (
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool. We export
-        // RootCertPath so that the pebble binary can reference it.
-        RootCertPath         = "/root"
-        rootKeyPath          = "/root-key"
+	// RootCertPath so that the pebble binary can reference it.
+	RootCertPath         = "/root"
+	rootKeyPath          = "/root-key"
 	intermediateCertPath = "/intermediate"
 	intermediateKeyPath  = "/intermediate-key"
 
