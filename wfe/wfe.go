@@ -37,9 +37,8 @@ import (
 const (
 	// Note: We deliberately pick endpoint paths that differ from Boulder to
 	// exercise clients processing of the /directory response
-	// We export the DirectoryPath and RootCertPath so that the pebble binary can reference it
+	// We export the DirectoryPath so that the pebble binary can reference it
 	DirectoryPath     = "/dir"
-	RootCertPath      = "/root"
 	noncePath         = "/nonce-plz"
 	newAccountPath    = "/sign-me-up"
 	acctPath          = "/my-account/"
@@ -54,9 +53,11 @@ const (
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool.
-	IntermediateCertPath = "/intermediate"
-	IntermediateKeyPath  = "/intermediate-key"
-	RootKeyPath          = "/root-key"
+	intermediateKeyPath  = "/intermediate-key"
+	intermediateCertPath = "/intermediate"
+	rootKeyPath          = "/root-key"
+        // We export RootCertPath so that the pebble binary can reference it
+        RootCertPath         = "/root"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -282,10 +283,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert()), "GET")
+	wfe.HandleFunc(m, rootCertPath, wfe.handleCert(wfe.ca.GetRootCert()), "GET")
 	wfe.HandleFunc(m, RootKeyPath, wfe.handleKey(wfe.ca.GetRootKey()), "GET")
-	wfe.HandleFunc(m, IntermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert()), "GET")
-	wfe.HandleFunc(m, IntermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey()), "GET")
+	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert()), "GET")
+	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey()), "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
