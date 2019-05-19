@@ -278,6 +278,6 @@ respectively.
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
 store that you use for ordinary browsing or that is used for non-testing
 purposes, since Pebble and its generated keys are not audited or held to the
-same standards as the Let's Encrypt production CA and their keys, are exposed
-by Pebble and so are not safe to use for anything other than testing. Also,
-their private keys will be lost as soon as the Pebble process terminates.**
+same standards as the Let's Encrypt production CA and their keys. Moreover
+these keys are exposed by Pebble and will be lost as soon as the process
+terminates: so they are not safe to use for anything other than testing.**
