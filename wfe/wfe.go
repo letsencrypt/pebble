@@ -1240,11 +1240,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 		}
 	}
+	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderIPs = uniqueIPs(orderIPs)
 	var uniquenames []acme.Identifier
-	for _, name := range uniqueLowerNames(orderDNSs) {
+	for _, name := range orderDNSs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: name, Type: acme.IdentifierDNS})
 	}
-	for _, ip := range uniqueIPs(orderIPs) {
+	for _, ip := range orderIPs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: ip.String(), Type: acme.IdentifierIP})
 	}
 	expires := time.Now().AddDate(0, 0, 1)
@@ -1491,9 +1493,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 		}
 	}
-	// looks like this spliting doesn't preserve order or Identifiers, so sort them again.
-	orderDNSs = uniqueLowerNames(orderDNSs)
-	orderIPs = uniqueIPs(orderIPs)
+
 	// sort and deduplicate CSR SANs
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := uniqueIPs(parsedCSR.IPAddresses)
