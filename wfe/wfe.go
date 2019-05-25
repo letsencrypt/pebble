@@ -1477,7 +1477,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
-	// spliting order identifiers per types
+	// split order identifiers per types
 	var orderDNSs []string
 	var orderIPs []net.IP
 	for _, ident := range orderIdentifiers {
@@ -1494,13 +1494,10 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// looks like this spliting doesn't preserve order or Identifiers, so sort them again.
 	orderDNSs = uniqueLowerNames(orderDNSs)
 	orderIPs = uniqueIPs(orderIPs)
-
+	// sort and deduplicate CSR SANs
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := uniqueIPs(parsedCSR.IPAddresses)
-	// sort and deduplicate CSR SANs
-	sort.Slice(csrIPs, func(i, j int) bool {
-		return bytes.Compare(csrIPs[i], csrIPs[j]) < 0
-	})
+
 	// Check that the CSR has the same number of names as the initial order contained
 	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
@@ -1996,6 +1993,9 @@ func uniqueIPs(IPs []net.IP) []net.IP {
 	for _, v := range uniqMap {
 		results = append(results, v)
 	}
+	sort.Slice(results, func(i, j int) bool {
+		return bytes.Compare(results[i], results[j]) < 0
+	})
 	return results
 }
 
