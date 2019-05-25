@@ -1493,6 +1493,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 		}
 	}
+	// looks like saving order to db doesn't preserve order of Identifiers, so sort them again.
+	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderIPs = uniqueIPs(orderIPs)
 
 	// sort and deduplicate CSR SANs
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
