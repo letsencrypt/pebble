@@ -1994,7 +1994,7 @@ func uniqueIPs(IPs []net.IP) []net.IP {
 	for _, ip := range IPs {
 		uniqMap[ip.String()] = ip
 	}
-	results := make([]net.IP, len(uniqMap))
+	results := make([]net.IP, 0, len(uniqMap))
 	for _, v := range uniqMap {
 		results = append(results, v)
 	}
