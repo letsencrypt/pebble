@@ -73,7 +73,7 @@ func (o *Order) GetStatus() (string, error) {
 		return acme.StatusPending, nil
 	}
 
-	fullyAuthorized := len(o.Names) == authzStatuses[acme.StatusValid]
+	fullyAuthorized := len(o.Identifiers) == authzStatuses[acme.StatusValid]
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned

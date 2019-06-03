@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
@@ -1013,11 +1014,20 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
-	// Check that all of the identifiers in the new-order are DNS type
+	// Check that all of the identifiers in the new-order are DNS or IPaddress type
+	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
+		if ident.Type == acme.IdentifierIP {
+			if net.ParseIP(ident.Value) == nil {
+				return acme.MalformedProblem(fmt.Sprintf(
+					"Order included malformed IP type identifier value: %q\n",
+					ident.Value))
+			}
+			continue
+		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included non-DNS type identifier: type %q, value %q",
+				"Order included unsupported type identifier: type %q, value %q",
 				ident.Type, ident.Value))
 		}
 
@@ -1083,12 +1093,12 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	// Lock the order for reading
 	order.RLock()
 	// Create one authz for each name in the order's parsed CSR
-	for _, name := range order.Names {
+	for _, name := range order.Identifiers {
 		now := time.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
-			Type:  acme.IdentifierDNS,
-			Value: name,
+			Type:  name.Type,
+			Value: name.Value,
 		}
 		authz := &core.Authorization{
 			ID:          newToken(),
@@ -1166,8 +1176,14 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		}
 		chals = []*core.Challenge{chal}
 	} else {
-		// Non-wildcard authorizations get all of the enabled challenge types
-		enabledChallenges := []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+		// IP addresses get HTTP-01 and TLS-ALPN challenges
+		var enabledChallenges []string
+		if authz.Identifier.Value == acme.IdentifierIP {
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
+		} else {
+			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+		}
 		for _, chalType := range enabledChallenges {
 			chal, err := wfe.makeChallenge(chalType, authz, request)
 			if err != nil {
@@ -1211,6 +1227,28 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	var orderDNSs []string
+	var orderIPs []net.IP
+	for _, ident := range newOrder.Identifiers {
+		switch ident.Type {
+		case acme.IdentifierDNS:
+			orderDNSs = append(orderDNSs, ident.Value)
+		case acme.IdentifierIP:
+			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
+		default:
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+		}
+	}
+	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderIPs = uniqueIPs(orderIPs)
+	var uniquenames []acme.Identifier
+	for _, name := range orderDNSs {
+		uniquenames = append(uniquenames, acme.Identifier{Value: name, Type: acme.IdentifierDNS})
+	}
+	for _, ip := range orderIPs {
+		uniquenames = append(uniquenames, acme.Identifier{Value: ip.String(), Type: acme.IdentifierIP})
+	}
 	expires := time.Now().AddDate(0, 0, 1)
 	order := &core.Order{
 		ID:        newToken(),
@@ -1220,7 +1258,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			Expires: expires.UTC().Format(time.RFC3339),
 			// Only the Identifiers, NotBefore and NotAfter from the submitted order
 			// are carried forward
-			Identifiers: newOrder.Identifiers,
+			Identifiers: uniquenames,
 			NotBefore:   newOrder.NotBefore,
 			NotAfter:    newOrder.NotAfter,
 		},
@@ -1232,15 +1270,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(err, response)
 		return
 	}
-
-	// Collect all of the DNS identifier values up into a []string
-	var orderNames []string
-	for _, ident := range order.Identifiers {
-		orderNames = append(orderNames, ident.Value)
-	}
-
-	// Store the unique lower version of the names on the order object
-	order.Names = uniqueLowerNames(orderNames)
 
 	// Create the authorizations for the order
 	err = wfe.makeAuthorizations(order, request)
@@ -1397,7 +1426,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderAccountID := existingOrder.AccountID
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
-	orderNames := existingOrder.Names
+	orderIdentifiers := existingOrder.Identifiers
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
@@ -1450,19 +1479,52 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
+	// split order identifiers per types
+	var orderDNSs []string
+	var orderIPs []net.IP
+	for _, ident := range orderIdentifiers {
+		switch ident.Type {
+		case acme.IdentifierDNS:
+			orderDNSs = append(orderDNSs, ident.Value)
+		case acme.IdentifierIP:
+			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
+		default:
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+		}
+	}
+	// looks like saving order to db doesn't preserve order of Identifiers, so sort them again.
+	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderIPs = uniqueIPs(orderIPs)
+
+	// sort and deduplicate CSR SANs
+	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
+	csrIPs := uniqueIPs(parsedCSR.IPAddresses)
+
 	// Check that the CSR has the same number of names as the initial order contained
-	csrNames := uniqueLowerNames(parsedCSR.DNSNames)
-	if len(csrNames) != len(orderNames) {
+	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of names than CSR specifies"), response)
+			"Order includes different number of DNSnames identifiers than CSR specifies"), response)
+		return
+	}
+	if len(csrIPs) != len(orderIPs) {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Order includes different number of IP address identifiers than CSR specifies"), response)
 		return
 	}
 
 	// Check that the CSR's names match the order names exactly
-	for i, name := range orderNames {
-		if name != csrNames[i] {
+	for i, name := range orderDNSs {
+		if name != csrDNSs[i] {
 			wfe.sendError(acme.UnauthorizedProblem(
 				fmt.Sprintf("CSR is missing Order domain %q", name)), response)
+			return
+		}
+	}
+	for i, IP := range orderIPs {
+		if !csrIPs[i].Equal(IP) {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("CSR is missing Order IP %q", IP)), response)
 			return
 		}
 	}
@@ -1718,12 +1780,11 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	defer authz.RUnlock()
 
 	ident := authz.Identifier
-	if ident.Type != acme.IdentifierDNS {
+	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP {
 		return nil, acme.MalformedProblem(
-			fmt.Sprintf("Authorization identifier was type %s, only %s is supported",
-				ident.Type, acme.IdentifierDNS))
+			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
+				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
 	}
-
 	now := time.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
@@ -1825,14 +1886,14 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// Lock the authorization to get the identifier value
 	authz.RLock()
-	ident := authz.Identifier.Value
+	ident := authz.Identifier
 	authz.RUnlock()
 
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
 	// validated.
-	if strings.HasPrefix(ident, "*.") {
-		ident = strings.TrimPrefix(ident, "*.")
+	if strings.HasPrefix(ident.Value, "*.") {
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
@@ -1924,6 +1985,23 @@ func uniqueLowerNames(names []string) []string {
 	}
 	sort.Strings(unique)
 	return unique
+}
+
+// uniqueIPs returns the set of all unique IP addresses in the input.
+// The returned IP addresses will be sorted in ascending order in text form.
+func uniqueIPs(IPs []net.IP) []net.IP {
+	uniqMap := make(map[string]net.IP)
+	for _, ip := range IPs {
+		uniqMap[ip.String()] = ip
+	}
+	results := make([]net.IP, len(uniqMap))
+	for _, v := range uniqMap {
+		results = append(results, v)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return bytes.Compare(results[i], results[j]) < 0
+	})
+	return results
 }
 
 // RevokeCert revokes an ACME certificate.

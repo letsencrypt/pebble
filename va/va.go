@@ -87,7 +87,7 @@ func certNames(cert *x509.Certificate) string {
 }
 
 type vaTask struct {
-	Identifier string
+	Identifier acme.Identifier
 	Challenge  *core.Challenge
 	Account    *core.Account
 }
@@ -144,7 +144,7 @@ func New(
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident string, chal *core.Challenge, acct *core.Account) {
+func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
 	task := &vaTask{
 		Identifier: ident,
 		Challenge:  chal,
@@ -272,7 +272,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		// type. For example comparison, a real DNS-01 validation would set
 		// the URL to the `_acme-challenge` subdomain.
 		results <- &core.ValidationRecord{
-			URL:         task.Identifier,
+			URL:         task.Identifier.Value,
 			ValidatedAt: time.Now(),
 		}
 		return
@@ -333,15 +333,21 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(task.Identifier, portString)
-
+	hostPort := net.JoinHostPort(task.Identifier.Value, portString)
+	var serverNameIdentifier string
+	switch task.Identifier.Type {
+	case acme.IdentifierDNS:
+		serverNameIdentifier = task.Identifier.Value
+	case acme.IdentifierIP:
+		serverNameIdentifier = reverseaddr(task.Identifier.Value)
+	}
 	result := &core.ValidationRecord{
 		URL:         hostPort,
 		ValidatedAt: time.Now(),
 	}
 
 	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
-		ServerName:         task.Identifier,
+		ServerName:         serverNameIdentifier,
 		NextProtos:         []string{acme.ACMETLS1Protocol},
 		InsecureSkipVerify: true,
 	})
@@ -367,7 +373,16 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	leafCert := certs[0]
 
 	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], task.Identifier) {
+	var namematch bool
+	switch task.Identifier.Type {
+	case acme.IdentifierDNS:
+		namematch = len(leafCert.DNSNames) == 1 && strings.EqualFold(leafCert.DNSNames[0], task.Identifier.Value)
+	case acme.IdentifierIP:
+		namematch = len(leafCert.IPAddresses) == 1 && leafCert.IPAddresses[0].Equal(net.ParseIP(task.Identifier.Value))
+	default:
+		namematch = false
+	}
+	if !namematch {
 		names := certNames(leafCert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
@@ -430,7 +445,7 @@ func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls
 }
 
 func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
-	body, url, err := va.fetchHTTP(task.Identifier, task.Challenge.Token)
+	body, url, err := va.fetchHTTP(task.Identifier.Value, task.Challenge.Token)
 
 	result := &core.ValidationRecord{
 		URL:         url,
@@ -458,10 +473,11 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 // purpose HTTP function
 func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
 	path := fmt.Sprintf("%s%s", acme.HTTP01BaseURL, token)
+	portString := strconv.Itoa(va.httpPort)
 
 	url := &url.URL{
 		Scheme: "http",
-		Host:   fmt.Sprintf("%s:%d", identifier, va.httpPort),
+		Host:   net.JoinHostPort(identifier, portString),
 		Path:   path,
 	}
 
@@ -516,4 +532,26 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	return body, url.String(), nil
+}
+
+// reverseaddr function is borrowed from net/dnsclient.go[0] and the Go std library.
+// [0]: https://golang.org/src/net/dnsclient.go
+func reverseaddr(addr string) string {
+	ip := net.ParseIP(addr)
+	if ip == nil {
+		return ""
+	}
+	// Apperently IP type in net package saves all ip in ipv6 formant, from biggest byte to smallest. we need last 4 bytes, so ip[15] to ip[12]
+	if ip.To4() != nil {
+		return fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa.", ip[15], ip[14], ip[13], ip[12])
+	}
+	// Must be IPv6
+	buf := make([]string, 0, len(ip)+1)
+	// Add it, in reverse, to the buffer
+	for i := len(ip) - 1; i >= 0; i-- {
+		buf = append(buf, fmt.Sprintf("%x.%x", ip[i]&0x0F, ip[i]>>4))
+	}
+	// Append "ip6.arpa." and return (buf already has the final '.') see RFC3152 for how this address is constructed.
+	buf = append(buf, "ip6.arpa.")
+	return strings.Join(buf, ".")
 }

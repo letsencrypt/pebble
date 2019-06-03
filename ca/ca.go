@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"net"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -156,12 +157,14 @@ func (ca *CAImpl) newIntermediateIssuer() error {
 	return nil
 }
 
-func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
+	} else if len(ips) > 0 {
+		cn = ips[0].String()
 	} else {
-		return nil, fmt.Errorf("must specify at least one domain name")
+		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
 	issuer := ca.intermediate
@@ -171,7 +174,8 @@ func (ca *CAImpl) newCertificate(domains []string, key crypto.PublicKey, account
 
 	serial := makeSerial()
 	template := &x509.Certificate{
-		DNSNames: domains,
+		DNSNames:    domains,
+		IPAddresses: ips,
 		Subject: pkix.Name{
 			CommonName: cn,
 		},
@@ -250,7 +254,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.PublicKey, order.AccountID)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
