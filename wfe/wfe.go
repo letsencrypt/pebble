@@ -232,8 +232,8 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	_, _ = response.Write(problemDoc)
 }
 
-type certGetter func(no int) *core.Certificate;
-type keyGetter func(no int) *rsa.PrivateKey;
+type certGetter func(no int) *core.Certificate
+type keyGetter func(no int) *rsa.PrivateKey
 
 func (wfe *WebFrontEndImpl) handleCert(
 	certGet certGetter,
@@ -248,7 +248,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 		noStr := request.URL.Query().Get("no")
 		if noStr != "" {
 			noInt, err := strconv.Atoi(noStr)
-			if err != nil || noInt < 0 || noInt >= wfe.ca.GetNumberOfAlternativeRootCerts() {
+			if err != nil || noInt < 0 || noInt >= numberOfAlternativeRootCerts {
 				response.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -256,7 +256,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 		}
 
 		// Get hold of root certificate
-		cert := certGet(no);
+		cert := certGet(no)
 		if cert == nil {
 			response.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -266,7 +266,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 		if no != 0 {
 			response.Header().Add("Link", link(wfe.relativeEndpoint(request, relPath), "alternate"))
 		}
-		for i := 0; i < wfe.ca.GetNumberOfAlternativeRootCerts(); i++ {
+		for i := 0; i < numberOfAlternativeRootCerts; i++ {
 			if no == i+1 {
 				continue
 			}
@@ -294,7 +294,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 		noStr := request.URL.Query().Get("no")
 		if noStr != "" {
 			noInt, err := strconv.Atoi(noStr)
-			if err != nil || noInt < 0 || noInt >= wfe.ca.GetNumberOfAlternativeRootCerts() {
+			if err != nil || noInt < 0 || noInt >= numberOfAlternativeRootCerts {
 				response.WriteHeader(http.StatusNotFound)
 				return
 			}
@@ -302,7 +302,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 		}
 
 		// Get hold of root certificate's key
-		key := keyGet(no);
+		key := keyGet(no)
 		if key == nil {
 			response.WriteHeader(http.StatusServiceUnavailable)
 			return
@@ -312,7 +312,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 		if no != 0 {
 			response.Header().Add("Link", link(wfe.relativeEndpoint(request, relPath), "alternate"))
 		}
-		for i := 0; i < wfe.ca.GetNumberOfAlternativeRootCerts(); i++ {
+		for i := 0; i < numberOfAlternativeRootCerts; i++ {
 			if no == i+1 {
 				continue
 			}
@@ -346,22 +346,22 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
 	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(
 		func(no int) *core.Certificate {
-			return wfe.ca.GetRootCert(no);
+			return wfe.ca.GetRootCert(no)
 		},
 		wfe.ca.GetNumberOfAlternativeRootCerts(), RootCertPath), "GET")
 	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
-			return wfe.ca.GetRootKey(no);
+			return wfe.ca.GetRootKey(no)
 		},
 		wfe.ca.GetNumberOfAlternativeRootCerts(), rootKeyPath), "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(
 		func(no int) *core.Certificate {
-			return wfe.ca.GetIntermediateCert(no);
+			return wfe.ca.GetIntermediateCert(no)
 		},
 		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateCertPath), "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
-			return wfe.ca.GetIntermediateKey(no);
+			return wfe.ca.GetIntermediateKey(no)
 		},
 		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateKeyPath), "GET")
 
