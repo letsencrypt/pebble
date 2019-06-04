@@ -292,7 +292,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 
 func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	const dns01Prefix = "_acme-challenge"
-	challengeSubdomain := fmt.Sprintf("%s.%s", dns01Prefix, task.Identifier)
+	challengeSubdomain := fmt.Sprintf("%s.%s", dns01Prefix, task.Identifier.Value)
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
@@ -304,7 +304,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 	txts, err := net.DefaultResolver.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		result.Error = acme.UnauthorizedProblem("Error retrieving TXT records for DNS challenge")
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS challenge (%q)", err))
 		return result
 	}
 
