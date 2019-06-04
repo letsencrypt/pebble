@@ -304,7 +304,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 	txts, err := net.DefaultResolver.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		result.Error = acme.UnauthorizedProblem("Error retrieving TXT records for DNS challenge")
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS challenge (%q)", err))
 		return result
 	}
 
