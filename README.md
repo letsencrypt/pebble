@@ -262,17 +262,22 @@ store or to any production systems/codebases. The private key for this CA is
 intentionally made [publicly available in this
 repo](test/certs/pebble.minica.key.pem).**
 
-### CA Root Certificate
+### CA Root and Intermediate Certificates
 
-Note that the CA's root certificate is regenerated on every launch. It can be
-retrieved by a `GET` request to `https://localhost:14000/root`.
+Note that the CA's root and intermediate certificates are regenerated on every
+launch. It can be retrieved by a `GET` request to `https://localhost:14000/root`
+and `https://localhost:14000/intermediate` respectively.
 
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
+The private keys of these certificates can also be retrieved by a `GET` request
+to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
+respectively.
+
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
 store that you use for ordinary browsing or that is used for non-testing
 purposes, since Pebble and its generated keys are not audited or held to the
-same standards as the Let's Encrypt production CA and their keys, and so are
-not safe to use for anything other than testing. Also, their private keys
-will be lost as soon as the Pebble process terminates.**
+same standards as the Let's Encrypt production CA and their keys. Moreover
+these keys are exposed by Pebble and will be lost as soon as the process
+terminates: so they are not safe to use for anything other than testing.**

@@ -273,3 +273,34 @@ func (ca *CAImpl) GetRootCert() *core.Certificate {
 	}
 	return ca.root.cert
 }
+
+func (ca *CAImpl) GetRootKey() *rsa.PrivateKey {
+	if ca.root == nil {
+		return nil
+	}
+
+	switch key := ca.root.key.(type) {
+	case *rsa.PrivateKey:
+		return key
+	}
+	return nil
+}
+
+func (ca *CAImpl) GetIntermediateCert() *core.Certificate {
+	if ca.intermediate == nil {
+		return nil
+	}
+	return ca.intermediate.cert
+}
+
+func (ca *CAImpl) GetIntermediateKey() *rsa.PrivateKey {
+	if ca.intermediate == nil {
+		return nil
+	}
+
+	switch key := ca.intermediate.key.(type) {
+	case *rsa.PrivateKey:
+		return key
+	}
+	return nil
+}
