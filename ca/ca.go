@@ -139,22 +139,21 @@ func newRootIssuer(ca *CAImpl) (*issuer, error) {
 	}, nil
 }
 
-func (chain *chain) newIntermediateIssuer(ca *CAImpl, ik crypto.Signer) error {
-	if chain.root == nil {
-		return fmt.Errorf("newIntermediateIssuer() called before newRootIssuer()")
+func newIntermediateIssuer(root *issuer, ca *CAImpl, ik crypto.Signer) (*issuer, error) {
+	if root == nil {
+		return nil, fmt.Errorf("newIntermediateIssuer() called before newRootIssuer()")
 	}
 
 	// Make an intermediate certificate with the root issuer
-	ic, err := makeRootCert(ca, ik, intermediateCAPrefix, chain.root)
+	ic, err := makeRootCert(ca, ik, intermediateCAPrefix, root)
 	if err != nil {
-		return err
-	}
-	chain.intermediate = &issuer{
-		key:  ik,
-		cert: ic,
+		return nil, err
 	}
 	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
-	return nil
+	return &issuer{
+		key:  ik,
+		cert: ic,
+	}, nil
 }
 
 func newChain(ca *CAImpl, ik crypto.Signer) *chain {
@@ -164,9 +163,11 @@ func newChain(ca *CAImpl, ik crypto.Signer) *chain {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
 	chain.root = root
-	if err := chain.newIntermediateIssuer(ca, ik); err != nil {
+	intermediate, err := newIntermediateIssuer(chain.root, ca, ik)
+	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
+	chain.intermediate = intermediate
 	return chain
 }
 
