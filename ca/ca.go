@@ -157,18 +157,18 @@ func newIntermediateIssuer(root *issuer, ca *CAImpl, ik crypto.Signer) (*issuer,
 }
 
 func newChain(ca *CAImpl, ik crypto.Signer) *chain {
-	chain := &chain{}
 	root, err := newRootIssuer(ca)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
-	chain.root = root
-	intermediate, err := newIntermediateIssuer(chain.root, ca, ik)
+	intermediate, err := newIntermediateIssuer(root, ca, ik)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
-	chain.intermediate = intermediate
-	return chain
+	return &chain{
+		root:         root,
+		intermediate: intermediate,
+	}
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
