@@ -292,7 +292,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 
 func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	const dns01Prefix = "_acme-challenge"
-	challengeSubdomain := fmt.Sprintf("%s.%s", dns01Prefix, task.Identifier)
+	challengeSubdomain := fmt.Sprintf("%s.%s", dns01Prefix, task.Identifier.Value)
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
