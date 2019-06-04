@@ -63,7 +63,7 @@ func makeKey() (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-func (chain *chain) makeRootCert(
+func makeRootCert(
 	ca *CAImpl,
 	subjectKey crypto.Signer,
 	subjCNPrefix string,
@@ -120,24 +120,23 @@ func (chain *chain) makeRootCert(
 	return newCert, nil
 }
 
-func (chain *chain) newRootIssuer(ca *CAImpl) error {
+func newRootIssuer(ca *CAImpl) (*issuer, error) {
 	// Make a root private key
 	rk, err := makeKey()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Make a self-signed root certificate
-	rc, err := chain.makeRootCert(ca, rk, rootCAPrefix, nil)
+	rc, err := makeRootCert(ca, rk, rootCAPrefix, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	chain.root = &issuer{
+	ca.log.Printf("Generated new root issuer with serial %s\n", rc.ID)
+	return &issuer{
 		key:  rk,
 		cert: rc,
-	}
-	ca.log.Printf("Generated new root issuer with serial %s\n", rc.ID)
-	return nil
+	}, nil
 }
 
 func (chain *chain) newIntermediateIssuer(ca *CAImpl, ik crypto.Signer) error {
@@ -146,7 +145,7 @@ func (chain *chain) newIntermediateIssuer(ca *CAImpl, ik crypto.Signer) error {
 	}
 
 	// Make an intermediate certificate with the root issuer
-	ic, err := chain.makeRootCert(ca, ik, intermediateCAPrefix, chain.root)
+	ic, err := makeRootCert(ca, ik, intermediateCAPrefix, chain.root)
 	if err != nil {
 		return err
 	}
@@ -160,9 +159,11 @@ func (chain *chain) newIntermediateIssuer(ca *CAImpl, ik crypto.Signer) error {
 
 func newChain(ca *CAImpl, ik crypto.Signer) *chain {
 	chain := &chain{}
-	if err := chain.newRootIssuer(ca); err != nil {
+	root, err := newRootIssuer(ca)
+	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
+	chain.root = root
 	if err := chain.newIntermediateIssuer(ca, ik); err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
