@@ -169,6 +169,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux *http.ServeMux,
 	pattern string,
 	handler wfeHandlerFunc,
+	includeTrailingSlash bool,
 	methods ...string) {
 
 	methodsMap := make(map[string]bool)
@@ -183,42 +184,44 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	}
 
 	methodsStr := strings.Join(methods, ", ")
-	defaultHandler := http.StripPrefix(pattern,
-		&topHandler{
-			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
-				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
-				// requests to the dedicated newNonce endpoint, or in replies to POST
-				// requests that consumed a nonce.
-				if request.Method == "POST" || pattern == noncePath {
-					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
-				}
+	tHandler := &topHandler{
+		wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+			// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
+			// requests to the dedicated newNonce endpoint, or in replies to POST
+			// requests that consumed a nonce.
+			if request.Method == "POST" || pattern == noncePath {
+				response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
+			}
 
-				// Per section 7.1 "Resources":
-				//   The "index" link relation is present on all resources other than the
-				//   directory and indicates the URL of the directory.
-				if pattern != DirectoryPath {
-					directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
-					response.Header().Add("Link", link(directoryURL, "index"))
-				}
+			// Per section 7.1 "Resources":
+			//   The "index" link relation is present on all resources other than the
+			//   directory and indicates the URL of the directory.
+			if pattern != DirectoryPath {
+				directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
+				response.Header().Add("Link", link(directoryURL, "index"))
+			}
 
-				addNoCacheHeader(response)
+			addNoCacheHeader(response)
 
-				if !methodsMap[request.Method] {
-					response.Header().Set("Allow", methodsStr)
-					wfe.sendError(acme.MethodNotAllowed(), response)
-					return
-				}
+			if !methodsMap[request.Method] {
+				response.Header().Set("Allow", methodsStr)
+				wfe.sendError(acme.MethodNotAllowed(), response)
+				return
+			}
 
-				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, pattern)
+			wfe.log.Printf("%s %s -> calling handler()\n", request.Method, pattern)
 
-				// TODO(@cpu): Configurable request timeout
-				timeout := 1 * time.Minute
-				ctx, cancel := context.WithTimeout(ctx, timeout)
-				handler(ctx, response, request)
-				cancel()
-			},
-			)})
-	mux.Handle(pattern, defaultHandler)
+			// TODO(@cpu): Configurable request timeout
+			timeout := 1 * time.Minute
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			handler(ctx, response, request)
+			cancel()
+		},
+		)}
+	mux.Handle(pattern, http.StripPrefix(pattern, tHandler))
+	if includeTrailingSlash {
+		mux.Handle(pattern+"/", http.StripPrefix(pattern+"/", tHandler))
+	}
 }
 
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
@@ -230,6 +233,44 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	response.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
 	response.WriteHeader(prob.HTTPStatus)
 	_, _ = response.Write(problemDoc)
+}
+
+func getAlternateNo(url string) (string, int, int) {
+	urlSplit := strings.SplitN(url, "/alternate/", 2)
+	if len(urlSplit) == 0 {
+		return url, 0, 0
+	}
+	var urlTrunc string
+	var noStr string
+	if len(urlSplit) == 1 {
+		if strings.HasPrefix(url, "alternate/") {
+			urlTrunc = ""
+			noStr = url[len("alternate/"):len(url)]
+		} else {
+			return url, 0, 0
+		}
+	} else {
+		urlTrunc = urlSplit[0]
+		noStr = urlSplit[1]
+	}
+	no, err := strconv.Atoi(noStr)
+	if err != nil || no < 0 {
+		return url, 0, http.StatusNotFound
+	}
+	return urlTrunc, no + 1, 0
+}
+
+func addAlternateLinks(response http.ResponseWriter, url string, no int, numberOfAlternates int) {
+	if no != 0 {
+		response.Header().Add("Link", link(url, "alternate"))
+	}
+	for i := 0; i < numberOfAlternates; i++ {
+		if no == i+1 {
+			continue
+		}
+		path := fmt.Sprintf("%s/alternate/%d", url, i)
+		response.Header().Add("Link", link(path, "alternate"))
+	}
 }
 
 type certGetter func(no int) *core.Certificate
@@ -244,15 +285,10 @@ func (wfe *WebFrontEndImpl) handleCert(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		var no int
-		noStr := request.URL.Query().Get("no")
-		if noStr != "" {
-			noInt, err := strconv.Atoi(noStr)
-			if err != nil || noInt < 0 || noInt >= numberOfAlternativeRootCerts {
-				response.WriteHeader(http.StatusNotFound)
-				return
-			}
-			no = noInt + 1
+		_, no, status := getAlternateNo(request.URL.Path)
+		if status != 0 || no > numberOfAlternativeRootCerts {
+			response.WriteHeader(status)
+			return
 		}
 
 		// Get hold of root certificate
@@ -263,16 +299,8 @@ func (wfe *WebFrontEndImpl) handleCert(
 		}
 
 		// Add links to alternate roots
-		if no != 0 {
-			response.Header().Add("Link", link(wfe.relativeEndpoint(request, relPath), "alternate"))
-		}
-		for i := 0; i < numberOfAlternativeRootCerts; i++ {
-			if no == i+1 {
-				continue
-			}
-			path := fmt.Sprintf("%s?no=%d", relPath, i)
-			response.Header().Add("Link", link(wfe.relativeEndpoint(request, path), "alternate"))
-		}
+		basePath := wfe.relativeEndpoint(request, relPath)
+		addAlternateLinks(response, basePath, no, numberOfAlternativeRootCerts)
 
 		// Write main response
 		response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
@@ -290,15 +318,10 @@ func (wfe *WebFrontEndImpl) handleKey(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		var no int
-		noStr := request.URL.Query().Get("no")
-		if noStr != "" {
-			noInt, err := strconv.Atoi(noStr)
-			if err != nil || noInt < 0 || noInt >= numberOfAlternativeRootCerts {
-				response.WriteHeader(http.StatusNotFound)
-				return
-			}
-			no = noInt + 1
+		_, no, status := getAlternateNo(request.URL.Path)
+		if status != 0 || no > numberOfAlternativeRootCerts {
+			response.WriteHeader(status)
+			return
 		}
 
 		// Get hold of root certificate's key
@@ -309,16 +332,8 @@ func (wfe *WebFrontEndImpl) handleKey(
 		}
 
 		// Add links to alternate root keys
-		if no != 0 {
-			response.Header().Add("Link", link(wfe.relativeEndpoint(request, relPath), "alternate"))
-		}
-		for i := 0; i < numberOfAlternativeRootCerts; i++ {
-			if no == i+1 {
-				continue
-			}
-			path := fmt.Sprintf("%s?no=%d", relPath, i)
-			response.Header().Add("Link", link(wfe.relativeEndpoint(request, path), "alternate"))
-		}
+		basePath := wfe.relativeEndpoint(request, relPath)
+		addAlternateLinks(response, basePath, no, numberOfAlternativeRootCerts)
 
 		// Write main response
 		var buf bytes.Buffer
@@ -341,41 +356,41 @@ func (wfe *WebFrontEndImpl) handleKey(
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
-	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, false, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
-	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, false, "GET")
 	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(
 		func(no int) *core.Certificate {
 			return wfe.ca.GetRootCert(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), RootCertPath), "GET")
+		wfe.ca.GetNumberOfAlternativeRootCerts(), RootCertPath), true, "GET")
 	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
 			return wfe.ca.GetRootKey(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), rootKeyPath), "GET")
+		wfe.ca.GetNumberOfAlternativeRootCerts(), rootKeyPath), true, "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(
 		func(no int) *core.Certificate {
 			return wfe.ca.GetIntermediateCert(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateCertPath), "GET")
+		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateCertPath), true, "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
 			return wfe.ca.GetIntermediateKey(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateKeyPath), "GET")
+		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateKeyPath), true, "GET")
 
 	// POST only handlers
-	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
-	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
-	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
-	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
-	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, false, "POST")
+	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, false, "POST")
+	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, false, "POST")
+	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, false, "POST")
+	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, false, "POST")
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, false, "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, false, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, false, "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, false, "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, false, "POST")
 
 	return m
 }
@@ -2044,12 +2059,11 @@ func (wfe *WebFrontEndImpl) Certificate(
 	}
 
 	serialAlt := strings.TrimPrefix(request.URL.Path, certPath)
-	serialSplit := strings.SplitN(serialAlt, "/alternate/", 2)
-	if len(serialSplit) == 0 {
-		response.WriteHeader(http.StatusNotFound)
+	serial, no, status := getAlternateNo(serialAlt)
+	if status != 0 {
+		response.WriteHeader(status)
 		return
 	}
-	serial := serialSplit[0]
 	cert := wfe.db.GetCertificateByID(serial)
 	if cert == nil {
 		response.WriteHeader(http.StatusNotFound)
@@ -2063,28 +2077,14 @@ func (wfe *WebFrontEndImpl) Certificate(
 		return
 	}
 
-	var no int
-	if len(serialSplit) == 2 {
-		noInt, err := strconv.Atoi(serialSplit[1])
-		if err != nil || noInt < 0 || noInt >= len(cert.AlternativeIssuers) {
-			response.WriteHeader(http.StatusNotFound)
-			return
-		}
-		no = noInt + 1
+	if no > len(cert.AlternativeIssuers) {
+		response.WriteHeader(http.StatusNotFound)
+		return
 	}
 
 	// Add links to alternate roots
-	basePath := fmt.Sprintf("%s%s", certPath, serial)
-	if no != 0 {
-		response.Header().Add("Link", link(wfe.relativeEndpoint(request, basePath), "alternate"))
-	}
-	for i := 0; i < len(cert.AlternativeIssuers); i++ {
-		if no == i+1 {
-			continue
-		}
-		path := fmt.Sprintf("%s/alternate/%d", basePath, i)
-		response.Header().Add("Link", link(wfe.relativeEndpoint(request, path), "alternate"))
-	}
+	basePath := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, serial))
+	addAlternateLinks(response, basePath, no, len(cert.AlternativeIssuers))
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
