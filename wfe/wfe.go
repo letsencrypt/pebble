@@ -245,7 +245,7 @@ func getAlternateNo(url string) (string, int, int) {
 	if len(urlSplit) == 1 {
 		if strings.HasPrefix(url, "alternate/") {
 			urlTrunc = ""
-			noStr = url[len("alternate/"):len(url)]
+			noStr = url[len("alternate/"):]
 		} else {
 			return url, 0, 0
 		}
