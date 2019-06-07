@@ -145,12 +145,11 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 }
 
 type Certificate struct {
-	ID                 string
-	Cert               *x509.Certificate
-	DER                []byte
-	Issuer             *Certificate
-	AlternativeIssuers []*Certificate
-	AccountID          string
+	ID        string
+	Cert      *x509.Certificate
+	DER       []byte
+	Issuers   []*Certificate
+	AccountID string
 }
 
 func (c Certificate) PEM() []byte {
@@ -175,18 +174,18 @@ func (c Certificate) Chain(no int) []byte {
 	chain = append(chain, c.PEM())
 
 	// Add zero or more issuers
-	issuer := c.Issuer
-	if no != 0 && 0 < no && no <= len(c.AlternativeIssuers) {
-		issuer = c.AlternativeIssuers[no-1]
+	var issuer *Certificate
+	if 0 <= no && no < len(c.Issuers) {
+		issuer = c.Issuers[no]
 	}
 	for {
 		// if the issuer is nil, or the issuer's issuer is nil then we've reached
 		// the root of the chain and can break
-		if issuer == nil || issuer.Issuer == nil {
+		if issuer == nil || len(issuer.Issuers) == 0 {
 			break
 		}
 		chain = append(chain, issuer.PEM())
-		issuer = issuer.Issuer
+		issuer = issuer.Issuers[0]
 	}
 
 	// Return the chain, leaf cert first

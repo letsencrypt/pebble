@@ -260,12 +260,12 @@ func getAlternateNo(url string) (string, int, int) {
 	return urlTrunc, no + 1, 0
 }
 
-func addAlternateLinks(response http.ResponseWriter, url string, no int, numberOfAlternates int) {
+func addAlternateLinks(response http.ResponseWriter, url string, no int, number int) {
 	if no != 0 {
 		response.Header().Add("Link", link(url, "alternate"))
 	}
-	for i := 0; i < numberOfAlternates; i++ {
-		if no == i+1 {
+	for i := 1; i < number; i++ {
+		if no == i {
 			continue
 		}
 		path := fmt.Sprintf("%s/alternate/%d", url, i)
@@ -278,7 +278,7 @@ type keyGetter func(no int) *rsa.PrivateKey
 
 func (wfe *WebFrontEndImpl) handleCert(
 	certGet certGetter,
-	numberOfAlternativeRootCerts int,
+	numberOfRootCerts int,
 	relPath string) func(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -286,7 +286,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		_, no, status := getAlternateNo(request.URL.Path)
-		if status != 0 || no > numberOfAlternativeRootCerts {
+		if status != 0 || no >= numberOfRootCerts {
 			response.WriteHeader(status)
 			return
 		}
@@ -300,7 +300,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 
 		// Add links to alternate roots
 		basePath := wfe.relativeEndpoint(request, relPath)
-		addAlternateLinks(response, basePath, no, numberOfAlternativeRootCerts)
+		addAlternateLinks(response, basePath, no, numberOfRootCerts)
 
 		// Write main response
 		response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
@@ -311,7 +311,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 
 func (wfe *WebFrontEndImpl) handleKey(
 	keyGet keyGetter,
-	numberOfAlternativeRootCerts int,
+	numberOfRootCerts int,
 	relPath string) func(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -319,7 +319,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		_, no, status := getAlternateNo(request.URL.Path)
-		if status != 0 || no > numberOfAlternativeRootCerts {
+		if status != 0 || no >= numberOfRootCerts {
 			response.WriteHeader(status)
 			return
 		}
@@ -333,7 +333,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 
 		// Add links to alternate root keys
 		basePath := wfe.relativeEndpoint(request, relPath)
-		addAlternateLinks(response, basePath, no, numberOfAlternativeRootCerts)
+		addAlternateLinks(response, basePath, no, numberOfRootCerts)
 
 		// Write main response
 		var buf bytes.Buffer
@@ -363,22 +363,22 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 		func(no int) *core.Certificate {
 			return wfe.ca.GetRootCert(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), RootCertPath), true, "GET")
+		wfe.ca.GetNumberOfRootCerts(), RootCertPath), true, "GET")
 	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
 			return wfe.ca.GetRootKey(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), rootKeyPath), true, "GET")
+		wfe.ca.GetNumberOfRootCerts(), rootKeyPath), true, "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(
 		func(no int) *core.Certificate {
 			return wfe.ca.GetIntermediateCert(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateCertPath), true, "GET")
+		wfe.ca.GetNumberOfRootCerts(), intermediateCertPath), true, "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(
 		func(no int) *rsa.PrivateKey {
 			return wfe.ca.GetIntermediateKey(no)
 		},
-		wfe.ca.GetNumberOfAlternativeRootCerts(), intermediateKeyPath), true, "GET")
+		wfe.ca.GetNumberOfRootCerts(), intermediateKeyPath), true, "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, false, "POST")
@@ -2077,14 +2077,14 @@ func (wfe *WebFrontEndImpl) Certificate(
 		return
 	}
 
-	if no > len(cert.AlternativeIssuers) {
+	if no >= len(cert.Issuers) {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	// Add links to alternate roots
 	basePath := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, serial))
-	addAlternateLinks(response, basePath, no, len(cert.AlternativeIssuers))
+	addAlternateLinks(response, basePath, no, len(cert.Issuers))
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)

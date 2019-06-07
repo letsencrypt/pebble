@@ -29,8 +29,7 @@ type CAImpl struct {
 	db               *db.MemoryStore
 	ocspResponderURL string
 
-	mainChain         *chain
-	alternativeChains []*chain
+	chains []*chain
 }
 
 type chain struct {
@@ -111,7 +110,8 @@ func makeRootCert(
 		DER:  der,
 	}
 	if signer != nil && signer.cert != nil {
-		newCert.Issuer = signer.cert
+		newCert.Issuers = make([]*core.Certificate, 1)
+		newCert.Issuers[0] = signer.cert
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -181,7 +181,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
-	issuer := ca.mainChain.intermediate
+	issuer := ca.chains[0].intermediate
 	if issuer == nil || issuer.cert == nil {
 		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
 	}
@@ -216,19 +216,18 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, err
 	}
 
-	altIssuers := make([]*core.Certificate, len(ca.alternativeChains))
-	for i := 0; i < len(ca.alternativeChains); i++ {
-		altIssuers[i] = ca.alternativeChains[i].intermediate.cert
+	issuers := make([]*core.Certificate, len(ca.chains))
+	for i := 0; i < len(ca.chains); i++ {
+		issuers[i] = ca.chains[i].intermediate.cert
 	}
 
 	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:                 hexSerial,
-		AccountID:          accountID,
-		Cert:               cert,
-		DER:                der,
-		Issuer:             issuer.cert,
-		AlternativeIssuers: altIssuers,
+		ID:        hexSerial,
+		AccountID: accountID,
+		Cert:      cert,
+		DER:       der,
+		Issuers:   issuers,
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -252,12 +251,9 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
-	ca.mainChain = newChain(ca, ik)
-
-	// Create alternative chains
-	ca.alternativeChains = make([]*chain, alternateRoots)
-	for i := 0; i < len(ca.alternativeChains); i++ {
-		ca.alternativeChains[i] = newChain(ca, ik)
+	ca.chains = make([]*chain, 1+alternateRoots)
+	for i := 0; i < len(ca.chains); i++ {
+		ca.chains[i] = newChain(ca, ik)
 	}
 	return ca
 }
@@ -301,15 +297,13 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
-func (ca *CAImpl) GetNumberOfAlternativeRootCerts() int {
-	return len(ca.alternativeChains)
+func (ca *CAImpl) GetNumberOfRootCerts() int {
+	return len(ca.chains)
 }
 
 func (ca *CAImpl) getChain(no int) *chain {
-	if no == 0 {
-		return ca.mainChain
-	} else if 0 < no && no <= len(ca.alternativeChains) {
-		return ca.alternativeChains[no-1]
+	if 0 <= no && no < len(ca.chains) {
+		return ca.chains[no]
 	} else {
 		return nil
 	}
