@@ -68,3 +68,12 @@ deploy:
     on:
       repo: letsencrypt/pebble
       tags: true
+  - provider: releases
+    api_key:
+      secure: WjI+eKF6EAZECNxn5QdWwqeM4tq9HJYmI30mSWXL0q5X9fuLLOxYBgicEulJlOo3auXqIEjbqQ1/2VNWrY/JvFTfgma9VNR1deJzZReOjswfqncUrK97u4y1hOWAHQZHAuVgko50qYEZY1sx95JOobYRgqZz2HYYmL+tHgVRyi19+5hv/SQM+/sOL5nszOJaJBU0HZ3NuLTdPxALGs8XfpJmBg74agiMmCAdz1UFDFbSBThDO87mjuOmejUA6CVkQJoV4Q3Eigfhw8hYqTtyJ2YptmArnlBtPRGdQ4UbMnTAeV5Q+1OW3GR99Yr+62cExLpNma0XGijNlhxVJ6urtDlKonQ3O26sFLp7SbBZfXaHMVaSpiuawvRJkTKMg7npXoVfgN+rg67704USiSjY6Y21ny2grXUcwkZ73BDYlj2BRhCV3Efyr1Xw+XUjWwkU3tgm7LFKB0jSe1o4E1NwurNgJ0akTiOJsG5u6WRC1pg8eNCrdcW9iKrl9lGkWTE5UPAoacWqxB2uh88nZzUVpjzEfBLvvoLQ4amlcd7ET6IFTBHJFB0mzPvkqCXWWkvTUIqz5nBV6AZkMRVHoNZPcy2XYOlp9hjobApr/yduRTWyn5Mctd2cMJWRIBcy8hnDOnB2aE80IBSDR0YpBj9IJYhVq51qgSESQPugpJtdwjs=
+    file_glob: true
+    file: deploy/*
+    skip_cleanup: true
+    on:
+      repo: adferrand/pebble
+      tags: true
