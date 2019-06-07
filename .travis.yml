@@ -74,6 +74,7 @@ deploy:
     file_glob: true
     file: deploy/*
     skip_cleanup: true
+    draft: true
     on:
       repo: adferrand/pebble
       tags: true
