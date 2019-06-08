@@ -141,7 +141,7 @@ func newRootIssuer(ca *CAImpl) (*issuer, error) {
 
 func newIntermediateIssuer(root *issuer, ca *CAImpl, ik crypto.Signer) (*issuer, error) {
 	if root == nil {
-		return nil, fmt.Errorf("newIntermediateIssuer() called before newRootIssuer()")
+		return nil, fmt.Errorf("Internal error: root must not be nil")
 	}
 
 	// Make an intermediate certificate with the root issuer
