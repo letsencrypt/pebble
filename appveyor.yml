@@ -31,8 +31,8 @@ build_script:
 after_build:
   - ps: $PebbleProcess = Start-Process pebble -PassThru
   - mkdir deploy
-  - xcopy %USERPROFILE%\go\bin\pebble.exe deploy\pebble_windows-amd64.exe
-  - xcopy %USERPROFILE%\go\bin\challtestsrv.exe deploy\challtestsrv_windows-amd64.exe
+  - copy %USERPROFILE%\go\bin\pebble.exe deploy\pebble_windows-amd64.exe
+  - copy %USERPROFILE%\go\bin\challtestsrv.exe deploy\challtestsrv_windows-amd64.exe
 
 test_script:
   - go mod download
