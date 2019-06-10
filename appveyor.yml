@@ -8,6 +8,12 @@ environment:
   GO111MODULE: on
   PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
 
+artifacts:
+  - path: deploy\pebble_windows-amd64.exe
+    name: Pebble
+  - path: deploy\challtestsrv_windows-amd64.exe
+    name: Challtestsrv
+
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
@@ -24,6 +30,9 @@ build_script:
 
 after_build:
   - ps: $PebbleProcess = Start-Process pebble -PassThru
+  - mkdir deploy
+  - xcopy %USERPROFILE%\go\bin\pebble.exe deploy\pebble_windows-amd64.exe
+  - xcopy %USERPROFILE%\go\bin\challtestsrv.exe deploy\challtestsrv_windows-amd64.exe
 
 test_script:
   - go mod download
@@ -41,4 +50,8 @@ deploy:
   description: 'Test'
   provider: GitHub
   auth_token:
-    secure: TEST
+    secure: s0BhufH5XitjZy+UVa2r2OGdox1XTb4pzZ150kpmdNsnDAMHL12PhiIOGnsBJRHF
+  artifact: Pebble,Challtestsrv
+  draft: true
+  on:
+    APPVEYOR_REPO_TAG: true
