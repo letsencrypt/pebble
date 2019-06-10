@@ -34,5 +34,11 @@ test_script:
   # Perform a test issuance with chisel2.py
   - cmd /c "set REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem && python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org"
 
-deploy_script:
+before_deploy:
   - ps: .ci\publish_windows.ps1
+
+deploy:
+  description: 'Test'
+  provider: GitHub
+  auth_token:
+    secure: TEST
