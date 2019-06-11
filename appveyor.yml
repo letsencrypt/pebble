@@ -47,10 +47,10 @@ test_script:
 #  - ps: .ci\publish_windows.ps1
 
 deploy:
-  description: 'Test'
-  provider: GitHub
-  auth_token: $(GITHUB_AUTH_TOKEN)
-  artifact: Pebble,Challtestsrv
-  draft: true
-  on:
-    APPVEYOR_REPO_TAG: true
+  - provider: GitHub
+    description: Pebble $(APPVEYOR_REPO_TAG_NAME )
+    auth_token: $(GITHUB_AUTH_TOKEN)
+    artifact: Pebble,Challtestsrv
+    draft: true
+    on:
+      APPVEYOR_REPO_TAG: true

@@ -69,6 +69,7 @@ deploy:
       repo: letsencrypt/pebble
       tags: true
   - provider: releases
+    name: Pebble $TRAVIS_TAG
     api_key: $GITHUB_AUTH_TOKEN
     file_glob: true
     file: deploy/*
