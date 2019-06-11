@@ -65,14 +65,17 @@ func (srv *managementServer) delHTTP01(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// addHTTPRedirect handles an HTTP POST request to add a new 301 redirect to be
-// served for the given path to the given target URL.
+// addHTTPRedirect handles an HTTP POST request to add a new redirect to be
+// served for the given path to the given target URL with the given HTTP status
+// code.
 //
 // The POST body is expected to have two non-empty parameters:
 // "path" - the path that when matched in an HTTP request will return the
 //          redirect.
 // "targetURL" - the URL that the client will be redirected to when making HTTP
 //          requests for the redirected path.
+// "code" - an optional integer HTTP status code for the redirect. If 0, or not
+//          provided then HTTP Status Found (302) is used.
 //
 // A successful POST will write http.StatusOK to the client.
 func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +83,7 @@ func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Requ
 	var request struct {
 		Path      string
 		TargetURL string
+		Code      int
 	}
 	if err := mustParsePOST(&request, r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -92,7 +96,7 @@ func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	// Add the HTTP redirect to the challenge server
-	srv.challSrv.AddHTTPRedirect(request.Path, request.TargetURL)
+	srv.challSrv.AddHTTPRedirect(request.Path, request.TargetURL, request.Code)
 	srv.log.Printf("Added HTTP redirect for path %q to %q\n",
 		request.Path, request.TargetURL)
 	w.WriteHeader(http.StatusOK)

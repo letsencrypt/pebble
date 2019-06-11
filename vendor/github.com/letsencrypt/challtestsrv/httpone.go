@@ -89,10 +89,16 @@ func (s *ChallSrv) GetHTTPOneChallenge(token string) (string, bool) {
 }
 
 // AddHTTPRedirect adds a redirect for the given path to the given URL.
-func (s *ChallSrv) AddHTTPRedirect(path, targetURL string) {
+func (s *ChallSrv) AddHTTPRedirect(path, targetURL string, code int) {
 	s.challMu.Lock()
 	defer s.challMu.Unlock()
-	s.redirects[path] = targetURL
+	if code == 0 {
+		code = http.StatusFound
+	}
+	s.redirects[path] = redirect{
+		targetURL: targetURL,
+		code:      code,
+	}
 }
 
 // DeleteHTTPRedirect deletes a redirect for the given path.
@@ -105,11 +111,11 @@ func (s *ChallSrv) DeleteHTTPRedirect(path string) {
 // GetHTTPRedirect returns the redirect target for the given path
 // (if it exists) and a true bool. If the path does not have a redirect target
 // then an empty string and a false bool are returned.
-func (s *ChallSrv) GetHTTPRedirect(path string) (string, bool) {
+func (s *ChallSrv) GetHTTPRedirect(path string) (string, int, bool) {
 	s.challMu.RLock()
 	defer s.challMu.RUnlock()
-	targetURL, present := s.redirects[path]
-	return targetURL, present
+	redirect, present := s.redirects[path]
+	return redirect.targetURL, redirect.code, present
 }
 
 // ServeHTTP handles an HTTP request. If the request path has the ACME HTTP-01
@@ -133,8 +139,8 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// If the request was not over HTTPS and we have a redirect, serve it.
 	// Redirects are ignored over HTTPS so we can easily do an HTTP->HTTPS
 	// redirect for a token path without creating a loop.
-	if redirectTarget, found := s.GetHTTPRedirect(requestPath); found && r.TLS == nil {
-		http.Redirect(w, r, redirectTarget, http.StatusFound)
+	if target, code, found := s.GetHTTPRedirect(requestPath); found && r.TLS == nil {
+		http.Redirect(w, r, target, code)
 		return
 	}
 

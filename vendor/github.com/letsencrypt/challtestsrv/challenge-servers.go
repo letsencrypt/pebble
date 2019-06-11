@@ -56,8 +56,13 @@ type ChallSrv struct {
 	tlsALPNOne map[string]string
 
 	// redirects is a map of paths to URLs. HTTP challenge servers respond to
-	// requests for these paths with a 301 to the corresponding URL.
-	redirects map[string]string
+	// requests for these paths with a redirect to the corresponding URL using the given HTTP status code (default 301).
+	redirects map[string]redirect
+}
+
+type redirect struct {
+	targetURL string
+	code      int
 }
 
 // mockDNSData holds mock responses for DNS A, AAAA, and CAA lookups.
@@ -131,7 +136,7 @@ func New(config Config) (*ChallSrv, error) {
 		httpOne:        make(map[string]string),
 		dnsOne:         make(map[string][]string),
 		tlsALPNOne:     make(map[string]string),
-		redirects:      make(map[string]string),
+		redirects:      make(map[string]redirect),
 		dnsMocks: mockDNSData{
 			defaultIPv4:  defaultIPv4,
 			defaultIPv6:  defaultIPv6,
