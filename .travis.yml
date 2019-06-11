@@ -58,8 +58,8 @@ script:
 
 before_deploy:
   - mkdir deploy
-  - cp $(go env GOPATH)/bin/pebble deploy/pebble_linux_amd64
-  - cp $(go env GOPATH)/bin/pebble-challtestsrv deploy/challtestsrv_linux_amd64
+  - cp $(go env GOPATH)/bin/pebble deploy/pebble_linux-amd64
+  - cp $(go env GOPATH)/bin/pebble-challtestsrv deploy/challtestsrv_linux-amd64
 
 deploy:
   - provider: script
