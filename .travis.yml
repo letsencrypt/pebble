@@ -76,5 +76,5 @@ deploy:
     skip_cleanup: true
     draft: true
     on:
-      repo: adferrand/pebble
+      repo: letsencrypt/pebble
       tags: true
