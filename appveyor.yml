@@ -50,7 +50,6 @@ before_deploy:
 
 deploy:
   - provider: GitHub
-    description: Pebble $(APPVEYOR_REPO_TAG_NAME )
     auth_token: $(GITHUB_AUTH_TOKEN)
     # References here correspond to artifacts name fields in artifacts section
     artifact: Pebble,Challtestsrv
