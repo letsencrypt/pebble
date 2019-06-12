@@ -57,7 +57,7 @@ script:
   - load-generator -config ./test/config/load-generator-config.json > /dev/null
 
 before_deploy:
-  - mkdir deploy
+  - mkdir -p deploy
   - cp $(go env GOPATH)/bin/pebble deploy/pebble_linux-amd64
   - cp $(go env GOPATH)/bin/pebble-challtestsrv deploy/challtestsrv_linux-amd64
 
