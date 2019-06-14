@@ -26,7 +26,7 @@ const (
 
 type CAImpl struct {
 	log *log.Logger
-	db  *db.MemoryStore
+	db  db.IMemoryStore
 
 	root         *issuer
 	intermediate *issuer
@@ -106,6 +106,7 @@ func (ca *CAImpl) makeRootCert(
 	if signer != nil && signer.cert != nil {
 		newCert.Issuer = signer.cert
 	}
+
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
 		return nil, err
@@ -212,7 +213,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
+func New(log *log.Logger, db db.IMemoryStore) *CAImpl {
 	ca := &CAImpl{
 		log: log,
 		db:  db,

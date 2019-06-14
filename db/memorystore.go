@@ -25,9 +25,28 @@ func (e ExistingAccountError) Error() string {
 	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
 }
 
+// IMemoryStore defines the methods required for an in-memory database.
+type IMemoryStore interface {
+	GetAccountByID(id string) *core.Account
+	GetAccountByKey(key crypto.PublicKey) (*core.Account, error)
+	UpdateAccountByID(id string, acct *core.Account) error
+	AddAccount(acct *core.Account) (int, error)
+	ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebKey) error
+	AddOrder(order *core.Order) (int, error)
+	GetOrderByID(id string) *core.Order
+	AddAuthorization(authz *core.Authorization) (int, error)
+	GetAuthorizationByID(id string) *core.Authorization
+	AddChallenge(chal *core.Challenge) (int, error)
+	GetChallengeByID(id string) *core.Challenge
+	AddCertificate(cert *core.Certificate) (int, error)
+	GetCertificateByID(id string) *core.Certificate
+	GetCertificateByDER(der []byte) *core.Certificate
+	GetRevokedCertificateByDER(der []byte) *core.Certificate
+	RevokeCertificate(cert *core.Certificate)
+}
+
 // Pebble keeps all of its various objects (accounts, orders, etc)
-// in-memory, not persisted anywhere. MemoryStore implements this in-memory
-// "database"
+// in-memory, not persisted anywhere. MemoryStore implements IMemoryStore
 type MemoryStore struct {
 	sync.RWMutex
 
@@ -49,7 +68,7 @@ type MemoryStore struct {
 	revokedCertificatesByID map[string]*core.Certificate
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore() IMemoryStore {
 	return &MemoryStore{
 		accountIDCounter:        1,
 		accountsByID:            make(map[string]*core.Account),
