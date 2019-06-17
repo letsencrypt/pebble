@@ -12,8 +12,8 @@ environment:
 artifacts:
   - path: deploy\pebble_windows-amd64.exe
     name: Pebble
-  - path: deploy\challtestsrv_windows-amd64.exe
-    name: Challtestsrv
+  - path: deploy\pebble-challtestsrv_windows-amd64.exe
+    name: Pebble-Challtestsrv
 
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
@@ -34,7 +34,7 @@ after_build:
   - mkdir deploy
   # Two following lines are copying built executable to the proper artifacts folder
   - copy %USERPROFILE%\go\bin\pebble.exe deploy\pebble_windows-amd64.exe
-  - copy %USERPROFILE%\go\bin\pebble-challtestsrv.exe deploy\challtestsrv_windows-amd64.exe
+  - copy %USERPROFILE%\go\bin\pebble-challtestsrv.exe deploy\pebble-challtestsrv_windows-amd64.exe
 
 test_script:
   - go mod download
@@ -52,7 +52,7 @@ deploy:
   - provider: GitHub
     auth_token: $(GITHUB_AUTH_TOKEN)
     # References here correspond to artifacts name fields in artifacts section
-    artifact: Pebble,Challtestsrv
+    artifact: Pebble,Pebble-Challtestsrv
     draft: true
     on:
       APPVEYOR_REPO_TAG: true
