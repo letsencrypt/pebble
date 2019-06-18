@@ -304,9 +304,8 @@ func (ca *CAImpl) GetNumberOfRootCerts() int {
 func (ca *CAImpl) getChain(no int) *chain {
 	if 0 <= no && no < len(ca.chains) {
 		return ca.chains[no]
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (ca *CAImpl) GetRootCert(no int) *core.Certificate {
