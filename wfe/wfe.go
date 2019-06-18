@@ -238,41 +238,27 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 // Parse the URL to extract alternate number (if available, default 0). Returns the
 // remaining URL, the number (0 or larger), and an error (or nil for success).
 //
-// If the URL contains "/alternate/" or begins with "alternate/", everything following
-// that will be interpreted as the number. If it cannot be parsed as an integer, or
-// the number is negative, an error will be returned. The remaining URL is everything
-// before "/alternate/", respectively the empty string if the URL begins with
-// "alternate/".
+// If the URL contains "/alternate/", everything following that will be interpreted as
+// the number. If it cannot be parsed as an integer, or the number is negative, an error
+// will be returned. The remaining URL is everything before "/alternate/".
 func getAlternateNo(url string) (string, int, error) {
 	urlSplit := strings.SplitN(url, "/alternate/", 2)
 	if len(urlSplit) == 0 {
 		// URL is the empty string: return
 		return url, 0, nil
 	}
-	var urlTrunc string // the remaining URL
-	var noStr string    // the string which will be parsed as a non-negative integer
 	if len(urlSplit) == 1 {
-		// URL does not contain "/alternate/". Check if it begins with
-		// "alternate/".
-		if strings.HasPrefix(url, "alternate/") {
-			urlTrunc = ""
-			noStr = url[len("alternate/"):]
-		} else {
-			// It does not: return
-			return url, 0, nil
-		}
-	} else {
-		urlTrunc = urlSplit[0]
-		noStr = urlSplit[1]
+		// URL does not contain "/alternate/".
+		return url, 0, nil
 	}
-	no, err := strconv.Atoi(noStr)
+	no, err := strconv.Atoi(urlSplit[1])
 	if err != nil {
 		return url, 0, err
 	}
 	if no < 0 {
 		return url, 0, fmt.Errorf("number is negative")
 	}
-	return urlTrunc, no + 1, nil
+	return urlSplit[0], no + 1, nil
 }
 
 // Adds HTTP Link headers for alternate versions of the resource. To the given
@@ -303,7 +289,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, err := getAlternateNo(request.URL.Path)
+		_, no, err := getAlternateNo("/" + request.URL.Path)
 		if err != nil || no >= numberOfRootCerts {
 			response.WriteHeader(http.StatusNotFound)
 			return
@@ -336,7 +322,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, err := getAlternateNo(request.URL.Path)
+		_, no, err := getAlternateNo("/" + request.URL.Path)
 		if err != nil || no >= numberOfRootCerts {
 			response.WriteHeader(http.StatusNotFound)
 			return
