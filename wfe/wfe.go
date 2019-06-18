@@ -235,17 +235,15 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	_, _ = response.Write(problemDoc)
 }
 
+// Parse the URL to extract alternate number (if available, default 0). Returns the
+// remaining URL, the number (0 or larger), and a HTTP error code (or 0 for success).
+//
+// If the URL contains "/alternate/" or begins with "alternate/", everything following
+// that will be interpreted as the number. If it cannot be parsed as an integer, or
+// the number is negative, a HTTP error (404 Not Found) will be returned. The remaining
+// URL is everything before "/alternate/", respectively the empty string if the URL
+// begins with "alternate/".
 func getAlternateNo(url string) (string, int, int) {
-	// Parse the URL to extract alternate number (if available, default 0).
-	// Returns the remaining URL, the number (0 or larger), and a HTTP
-	// error code (or 0 for success).
-	//
-	// If the URL contains "/alternate/" or begins with "alternate/", everything
-	// following that will be interpreted as the number. If it cannot be
-	// parsed as an integer, or the number is negative, a HTTP error
-	// (404 Not Found) will be returned. The remaining URL is everything
-	// before "/alternate/", respectively the empty string if the URL begins
-	// with "alternate/".
 	urlSplit := strings.SplitN(url, "/alternate/", 2)
 	if len(urlSplit) == 0 {
 		// URL is the empty string: return
@@ -276,11 +274,10 @@ func getAlternateNo(url string) (string, int, int) {
 	return urlTrunc, no + 1, 0
 }
 
+// Adds HTTP Link headers for alternate versions of the resource. To the given
+// URL, "/alternate/<no>" will be added as the address of the alternative. Will
+// add links to all alternatives from 0 up to number-1 except for no.
 func addAlternateLinks(response http.ResponseWriter, url string, no int, number int) {
-	// Adds HTTP Link headers for alternate versions of the resource.
-	// To the given URL, "/alternate/<no>" will be added as the address
-	// of the alternative. Will add links to all alternatives from 0
-	// up to number-1 except for no.
 	if no != 0 {
 		response.Header().Add("Link", link(url, "alternate"))
 	}
