@@ -236,18 +236,18 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 }
 
 // Parse the URL to extract alternate number (if available, default 0). Returns the
-// remaining URL, the number (0 or larger), and a HTTP error code (or 0 for success).
+// remaining URL, the number (0 or larger), and an error (or nil for success).
 //
 // If the URL contains "/alternate/" or begins with "alternate/", everything following
 // that will be interpreted as the number. If it cannot be parsed as an integer, or
-// the number is negative, a HTTP error (404 Not Found) will be returned. The remaining
-// URL is everything before "/alternate/", respectively the empty string if the URL
-// begins with "alternate/".
-func getAlternateNo(url string) (string, int, int) {
+// the number is negative, an error will be returned. The remaining URL is everything
+// before "/alternate/", respectively the empty string if the URL begins with
+// "alternate/".
+func getAlternateNo(url string) (string, int, error) {
 	urlSplit := strings.SplitN(url, "/alternate/", 2)
 	if len(urlSplit) == 0 {
 		// URL is the empty string: return
-		return url, 0, 0
+		return url, 0, nil
 	}
 	var urlTrunc string // the remaining URL
 	var noStr string    // the string which will be parsed as a non-negative integer
@@ -259,19 +259,20 @@ func getAlternateNo(url string) (string, int, int) {
 			noStr = url[len("alternate/"):]
 		} else {
 			// It does not: return
-			return url, 0, 0
+			return url, 0, nil
 		}
 	} else {
 		urlTrunc = urlSplit[0]
 		noStr = urlSplit[1]
 	}
 	no, err := strconv.Atoi(noStr)
-	if err != nil || no < 0 {
-		// Cannot parse the string, or the parsed number is negative:
-		// return 404 Not Found
-		return url, 0, http.StatusNotFound
+	if err != nil {
+		return url, 0, err
 	}
-	return urlTrunc, no + 1, 0
+	if no < 0 {
+		return url, 0, fmt.Errorf("number is negative")
+	}
+	return urlTrunc, no + 1, nil
 }
 
 // Adds HTTP Link headers for alternate versions of the resource. To the given
@@ -302,9 +303,9 @@ func (wfe *WebFrontEndImpl) handleCert(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, status := getAlternateNo(request.URL.Path)
-		if status != 0 || no >= numberOfRootCerts {
-			response.WriteHeader(status)
+		_, no, err := getAlternateNo(request.URL.Path)
+		if err != nil || no >= numberOfRootCerts {
+			response.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -335,9 +336,9 @@ func (wfe *WebFrontEndImpl) handleKey(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, status := getAlternateNo(request.URL.Path)
-		if status != 0 || no >= numberOfRootCerts {
-			response.WriteHeader(status)
+		_, no, err := getAlternateNo(request.URL.Path)
+		if err != nil || no >= numberOfRootCerts {
+			response.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -355,7 +356,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 		// Write main response
 		var buf bytes.Buffer
 
-		err := pem.Encode(&buf, &pem.Block{
+		err = pem.Encode(&buf, &pem.Block{
 			Type:  "RSA PRIVATE KEY",
 			Bytes: x509.MarshalPKCS1PrivateKey(key),
 		})
@@ -2076,9 +2077,9 @@ func (wfe *WebFrontEndImpl) Certificate(
 	}
 
 	serialAlt := strings.TrimPrefix(request.URL.Path, certPath)
-	serial, no, status := getAlternateNo(serialAlt)
-	if status != 0 {
-		response.WriteHeader(status)
+	serial, no, err := getAlternateNo(serialAlt)
+	if err != nil {
+		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 	cert := wfe.db.GetCertificateByID(serial)
