@@ -56,10 +56,25 @@ script:
   # step is performed just to shake out data races with concurrent requests.
   - load-generator -config ./test/config/load-generator-config.json > /dev/null
 
+before_deploy:
+  - mkdir -p deploy
+  - cp $(go env GOPATH)/bin/pebble deploy/pebble_linux-amd64
+  - cp $(go env GOPATH)/bin/pebble-challtestsrv deploy/pebble-challtestsrv_linux-amd64
+
 deploy:
   - provider: script
     script: bash .ci/publish_linux.sh
     skip_cleanup: true
+    on:
+      repo: letsencrypt/pebble
+      tags: true
+  - provider: releases
+    name: Pebble $TRAVIS_TAG
+    api_key: $GITHUB_AUTH_TOKEN
+    file_glob: true
+    file: deploy/*
+    skip_cleanup: true
+    draft: true
     on:
       repo: letsencrypt/pebble
       tags: true

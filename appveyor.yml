@@ -8,6 +8,13 @@ environment:
   GO111MODULE: on
   PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
 
+# Declare artifacts that can become release assets on GitHub
+artifacts:
+  - path: deploy\pebble_windows-amd64.exe
+    name: Pebble
+  - path: deploy\pebble-challtestsrv_windows-amd64.exe
+    name: Pebble-Challtestsrv
+
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
@@ -24,6 +31,10 @@ build_script:
 
 after_build:
   - ps: $PebbleProcess = Start-Process pebble -PassThru
+  - mkdir deploy
+  # Two following lines are copying built executable to the proper artifacts folder
+  - copy %USERPROFILE%\go\bin\pebble.exe deploy\pebble_windows-amd64.exe
+  - copy %USERPROFILE%\go\bin\pebble-challtestsrv.exe deploy\pebble-challtestsrv_windows-amd64.exe
 
 test_script:
   - go mod download
@@ -34,5 +45,14 @@ test_script:
   # Perform a test issuance with chisel2.py
   - cmd /c "set REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem && python .\test\chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org"
 
-deploy_script:
+before_deploy:
   - ps: .ci\publish_windows.ps1
+
+deploy:
+  - provider: GitHub
+    auth_token: $(GITHUB_AUTH_TOKEN)
+    # References here correspond to artifacts name fields in artifacts section
+    artifact: Pebble,Pebble-Challtestsrv
+    draft: true
+    on:
+      APPVEYOR_REPO_TAG: true
