@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"os"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -22,6 +23,12 @@ import (
 const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
+
+	// ocspResponderURL defines the URL to set in the 1.3.6.1.5.5.7.48.1 field
+	// of an issued certificate and so gives to a client the URL to contact to
+	// get the OCSP status of this certificate, e.g:
+	//	PEBBLE_CA_OCSP_RESPONDER_URL=http://127.0.0.1:4002 pebble
+	ocspResponderURL = "PEBBLE_CA_OCSP_RESPONDER_URL"
 )
 
 type CAImpl struct {
@@ -218,12 +225,18 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspRespURL string) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 	ca := &CAImpl{
-		log:         log,
-		db:          db,
-		ocspRespURL: ocspRespURL,
+		log: log,
+		db:  db,
 	}
+
+	oscpRespURL := os.Getenv(ocspResponderURL)
+	if oscpRespURL != "" {
+		ca.ocspRespURL = oscpRespURL
+		ca.log.Printf("Setting OCSP responder URL for issued certificates to %s", ca.ocspRespURL)
+	}
+
 	err := ca.newRootIssuer()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))

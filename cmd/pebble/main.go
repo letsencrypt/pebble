@@ -38,10 +38,6 @@ func main() {
 		"dnsserver",
 		"",
 		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53).")
-	ocspResponder := flag.String(
-		"ocspresponder",
-		"",
-		"Define an OCSP responder URL to put in the 1.3.6.1.5.5.7.48.1 field of an issued certificate.")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -61,7 +57,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, *ocspResponder)
+	ca := ca.New(logger, db)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
