@@ -25,8 +25,9 @@ const (
 )
 
 type CAImpl struct {
-	log *log.Logger
-	db  *db.MemoryStore
+	log         *log.Logger
+	db          *db.MemoryStore
+	ocspRespURL string
 
 	root         *issuer
 	intermediate *issuer
@@ -188,6 +189,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
+
+	if ca.ocspRespURL != "" {
+		template.OCSPServer = []string{ca.ocspRespURL}
+	}
+
 	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
 	if err != nil {
 		return nil, err
@@ -212,10 +218,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspRespURL string) *CAImpl {
 	ca := &CAImpl{
-		log: log,
-		db:  db,
+		log:         log,
+		db:          db,
+		ocspRespURL: ocspRespURL,
 	}
 	err := ca.newRootIssuer()
 	if err != nil {
