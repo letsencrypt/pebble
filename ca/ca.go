@@ -62,8 +62,7 @@ func makeKey() (*rsa.PrivateKey, error) {
 	return key, nil
 }
 
-func makeRootCert(
-	ca *CAImpl,
+func (ca *CAImpl) makeRootCert(
 	subjectKey crypto.Signer,
 	subjCNPrefix string,
 	signer *issuer) (*core.Certificate, error) {
@@ -120,14 +119,14 @@ func makeRootCert(
 	return newCert, nil
 }
 
-func newRootIssuer(ca *CAImpl) (*issuer, error) {
+func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 	// Make a root private key
 	rk, err := makeKey()
 	if err != nil {
 		return nil, err
 	}
 	// Make a self-signed root certificate
-	rc, err := makeRootCert(ca, rk, rootCAPrefix, nil)
+	rc, err := ca.makeRootCert(rk, rootCAPrefix, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -139,13 +138,13 @@ func newRootIssuer(ca *CAImpl) (*issuer, error) {
 	}, nil
 }
 
-func newIntermediateIssuer(root *issuer, ca *CAImpl, ik crypto.Signer) (*issuer, error) {
+func (ca *CAImpl) newIntermediateIssuer(root *issuer, ik crypto.Signer) (*issuer, error) {
 	if root == nil {
 		return nil, fmt.Errorf("Internal error: root must not be nil")
 	}
 
 	// Make an intermediate certificate with the root issuer
-	ic, err := makeRootCert(ca, ik, intermediateCAPrefix, root)
+	ic, err := ca.makeRootCert(ik, intermediateCAPrefix, root)
 	if err != nil {
 		return nil, err
 	}
@@ -156,12 +155,12 @@ func newIntermediateIssuer(root *issuer, ca *CAImpl, ik crypto.Signer) (*issuer,
 	}, nil
 }
 
-func newChain(ca *CAImpl, ik crypto.Signer) *chain {
-	root, err := newRootIssuer(ca)
+func (ca *CAImpl) newChain(ik crypto.Signer) *chain {
+	root, err := ca.newRootIssuer()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
-	intermediate, err := newIntermediateIssuer(root, ca, ik)
+	intermediate, err := ca.newIntermediateIssuer(root, ik)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
@@ -253,7 +252,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = newChain(ca, ik)
+		ca.chains[i] = ca.newChain(ik)
 	}
 	return ca
 }
