@@ -5,6 +5,6 @@
     "privateKey": "test/certs/localhost/key.pem",
     "httpPort": 5002,
     "tlsPort": 5001,
-    "ocspResponderURL": "test"
+    "ocspResponderURL": ""
   }
 }
