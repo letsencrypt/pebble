@@ -291,7 +291,7 @@ This is possible by setting the environment variable `PEBBLE_CA_OCSP_RESPONDER_U
 if this variable is set to a non-empty string, its value will be used in the
 appropriate field of all issued certificates.
 
-For instance, to instruct a client to check the URL `http://127.0.0.1:4002` and
+For instance, to have Pebble issue certificates that instruct a client to check the URL `http://127.0.0.1:4002` to
 retrieve the OCSP status of a certificate, run:
 
 `PEBBLE_CA_OCSP_RESPONDER_URL=http://127.0.0.1:4002 pebble`
