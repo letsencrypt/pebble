@@ -363,26 +363,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, false, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, false, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(
-		func(no int) *core.Certificate {
-			return wfe.ca.GetRootCert(no)
-		},
-		wfe.ca.GetNumberOfRootCerts(), RootCertPath), true, "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(
-		func(no int) *rsa.PrivateKey {
-			return wfe.ca.GetRootKey(no)
-		},
-		wfe.ca.GetNumberOfRootCerts(), rootKeyPath), true, "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(
-		func(no int) *core.Certificate {
-			return wfe.ca.GetIntermediateCert(no)
-		},
-		wfe.ca.GetNumberOfRootCerts(), intermediateCertPath), true, "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(
-		func(no int) *rsa.PrivateKey {
-			return wfe.ca.GetIntermediateKey(no)
-		},
-		wfe.ca.GetNumberOfRootCerts(), intermediateKeyPath), true, "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, wfe.ca.GetNumberOfRootCerts(), RootCertPath), true, "GET")
+	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, wfe.ca.GetNumberOfRootCerts(), rootKeyPath), true, "GET")
+	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, wfe.ca.GetNumberOfRootCerts(), intermediateCertPath), true, "GET")
+	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, wfe.ca.GetNumberOfRootCerts(), intermediateKeyPath), true, "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, false, "POST")
