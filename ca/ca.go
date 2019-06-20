@@ -24,7 +24,7 @@ const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
 
-	// ocspResponderURL defines the URL to set in the 1.3.6.1.5.5.7.48.1 field
+	// ocspResponderURL defines the URL to set in the OCSPServer field
 	// of an issued certificate and so gives to a client the URL to contact to
 	// get the OCSP status of this certificate, e.g:
 	//	PEBBLE_CA_OCSP_RESPONDER_URL=http://127.0.0.1:4002 pebble
