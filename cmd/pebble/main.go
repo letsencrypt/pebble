@@ -74,7 +74,7 @@ func main() {
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
-	logger.Printf("Root CA certificate available at: https://%s%s",
+	logger.Printf("Root CA certificate(s) available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.RootCertPath)
 	err = http.ListenAndServeTLS(
 		c.Pebble.ListenAddress,
