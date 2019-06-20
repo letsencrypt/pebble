@@ -287,11 +287,13 @@ terminates: so they are not safe to use for anything other than testing.**
 Pebble does not support the OCSP protocol as a responder and so does not set
 the OCSP Responder URL in the issued certificates. However, if you setup a
 proper OCSP Responder run side by side with Pebble, you may want to set this URL.
-This is possible by setting the environment variable `PEBBLE_CA_OCSP_RESPONDER_URL`:
-if this variable is set to a non-empty string, its value will be used in the
-appropriate field of all issued certificates.
+This is possible by setting the field `ocspResponderURL` of the `pebble-config.json`
+consummed by Pebble to a non empty string: in this case, this string will be use
+in the appropriate field of all issued certificates.
 
-For instance, to have Pebble issue certificates that instruct a client to check the URL `http://127.0.0.1:4002` to
-retrieve the OCSP status of a certificate, run:
+For instance, to have Pebble issue certificates that instruct a client to check the URL `http://127.0.0.1:4002`
+to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.json` that includes:
 
-`PEBBLE_CA_OCSP_RESPONDER_URL=http://127.0.0.1:4002 pebble`
+```
+  "ocspResponderURL": "http://127.0.0.1:4002",
+```

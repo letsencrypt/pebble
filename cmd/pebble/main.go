@@ -17,11 +17,12 @@ import (
 
 type config struct {
 	Pebble struct {
-		ListenAddress string
-		HTTPPort      int
-		TLSPort       int
-		Certificate   string
-		PrivateKey    string
+		ListenAddress    string
+		HTTPPort         int
+		TLSPort          int
+		Certificate      string
+		PrivateKey       string
+		OCSPResponderURL string
 	}
 }
 
@@ -57,7 +58,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)

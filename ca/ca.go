@@ -12,7 +12,6 @@ import (
 	"math"
 	"math/big"
 	"net"
-	"os"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -23,18 +22,12 @@ import (
 const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
-
-	// ocspResponderURL defines the URL to set in the OCSPServer field
-	// of an issued certificate and so gives to a client the URL to contact to
-	// get the OCSP status of this certificate, e.g:
-	//	PEBBLE_CA_OCSP_RESPONDER_URL=http://127.0.0.1:4002 pebble
-	ocspResponderURL = "PEBBLE_CA_OCSP_RESPONDER_URL"
 )
 
 type CAImpl struct {
-	log         *log.Logger
-	db          *db.MemoryStore
-	ocspRespURL string
+	log              *log.Logger
+	db               *db.MemoryStore
+	ocspResponderURL string
 
 	root         *issuer
 	intermediate *issuer
@@ -197,8 +190,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		IsCA:                  false,
 	}
 
-	if ca.ocspRespURL != "" {
-		template.OCSPServer = []string{ca.ocspRespURL}
+	if ca.ocspResponderURL != "" {
+		template.OCSPServer = []string{ca.ocspResponderURL}
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
@@ -225,16 +218,15 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string) *CAImpl {
 	ca := &CAImpl{
 		log: log,
 		db:  db,
 	}
 
-	oscpRespURL := os.Getenv(ocspResponderURL)
-	if oscpRespURL != "" {
-		ca.ocspRespURL = oscpRespURL
-		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspRespURL)
+	if ocspResponderURL != "" {
+		ca.ocspResponderURL = ocspResponderURL
+		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspResponderURL)
 	}
 
 	err := ca.newRootIssuer()
