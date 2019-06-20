@@ -54,10 +54,10 @@ const (
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool. We export
 	// RootCertPath so that the pebble binary can reference it.
-	RootCertPath         = "/root"
-	rootKeyPath          = "/root-key"
-	intermediateCertPath = "/intermediate"
-	intermediateKeyPath  = "/intermediate-key"
+	RootCertPath         = "/roots/"
+	rootKeyPath          = "/root-keys/"
+	intermediateCertPath = "/intermediates/"
+	intermediateKeyPath  = "/intermediate-keys/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -169,7 +169,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux *http.ServeMux,
 	pattern string,
 	handler wfeHandlerFunc,
-	includeTrailingSlash bool,
 	methods ...string) {
 
 	methodsMap := make(map[string]bool)
@@ -184,44 +183,42 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	}
 
 	methodsStr := strings.Join(methods, ", ")
-	tHandler := &topHandler{
-		wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
-			// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
-			// requests to the dedicated newNonce endpoint, or in replies to POST
-			// requests that consumed a nonce.
-			if request.Method == "POST" || pattern == noncePath {
-				response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
-			}
+	defaultHandler := http.StripPrefix(pattern,
+		&topHandler{
+			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
+				// requests to the dedicated newNonce endpoint, or in replies to POST
+				// requests that consumed a nonce.
+				if request.Method == "POST" || pattern == noncePath {
+					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
+				}
 
-			// Per section 7.1 "Resources":
-			//   The "index" link relation is present on all resources other than the
-			//   directory and indicates the URL of the directory.
-			if pattern != DirectoryPath {
-				directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
-				response.Header().Add("Link", link(directoryURL, "index"))
-			}
+				// Per section 7.1 "Resources":
+				//   The "index" link relation is present on all resources other than the
+				//   directory and indicates the URL of the directory.
+				if pattern != DirectoryPath {
+					directoryURL := wfe.relativeEndpoint(request, DirectoryPath)
+					response.Header().Add("Link", link(directoryURL, "index"))
+				}
 
-			addNoCacheHeader(response)
+				addNoCacheHeader(response)
 
-			if !methodsMap[request.Method] {
-				response.Header().Set("Allow", methodsStr)
-				wfe.sendError(acme.MethodNotAllowed(), response)
-				return
-			}
+				if !methodsMap[request.Method] {
+					response.Header().Set("Allow", methodsStr)
+					wfe.sendError(acme.MethodNotAllowed(), response)
+					return
+				}
 
-			wfe.log.Printf("%s %s -> calling handler()\n", request.Method, pattern)
+				wfe.log.Printf("%s %s -> calling handler()\n", request.Method, pattern)
 
-			// TODO(@cpu): Configurable request timeout
-			timeout := 1 * time.Minute
-			ctx, cancel := context.WithTimeout(ctx, timeout)
-			handler(ctx, response, request)
-			cancel()
-		},
-		)}
-	mux.Handle(pattern, http.StripPrefix(pattern, tHandler))
-	if includeTrailingSlash {
-		mux.Handle(pattern+"/", http.StripPrefix(pattern+"/", tHandler))
-	}
+				// TODO(@cpu): Configurable request timeout
+				timeout := 1 * time.Minute
+				ctx, cancel := context.WithTimeout(ctx, timeout)
+				handler(ctx, response, request)
+				cancel()
+			},
+			)})
+	mux.Handle(pattern, defaultHandler)
 }
 
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
@@ -288,7 +285,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, err := getAlternateNo("/" + request.URL.Path)
+		_, no, err := getAlternateNo(request.URL.Path)
 		if err != nil {
 			response.WriteHeader(http.StatusNotFound)
 			return
@@ -320,7 +317,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 	request *http.Request) {
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
-		_, no, err := getAlternateNo("/" + request.URL.Path)
+		_, no, err := getAlternateNo(request.URL.Path)
 		if err != nil {
 			response.WriteHeader(http.StatusNotFound)
 			return
@@ -358,25 +355,25 @@ func (wfe *WebFrontEndImpl) handleKey(
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
-	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, false, "GET")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
-	wfe.HandleFunc(m, noncePath, wfe.Nonce, false, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), true, "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), true, "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), true, "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), true, "GET")
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
+	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
+	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
+	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
 
 	// POST only handlers
-	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, false, "POST")
-	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, false, "POST")
-	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, false, "POST")
-	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, false, "POST")
-	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, false, "POST")
-	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, false, "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, false, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, false, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, false, "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, false, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
+	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
+	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
+	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
+	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
+	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
+	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
+	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
 
 	return m
 }

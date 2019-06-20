@@ -265,14 +265,14 @@ repo](test/certs/pebble.minica.key.pem).**
 ### CA Root and Intermediate Certificates
 
 Note that the CA's root and intermediate certificates are regenerated on every
-launch. It can be retrieved by a `GET` request to `https://localhost:14000/root`
-and `https://localhost:14000/intermediate` respectively.
+launch. It can be retrieved by a `GET` request to `https://localhost:14000/roots/`
+and `https://localhost:14000/intermediates/` respectively.
 
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
 The private keys of these certificates can also be retrieved by a `GET` request
-to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
+to `https://localhost:14000/root-keys/` and `https://localhost:14000/intermediate-keys/`
 respectively.
 
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
