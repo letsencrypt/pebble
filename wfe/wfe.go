@@ -282,7 +282,6 @@ type keyGetter func(no int) *rsa.PrivateKey
 
 func (wfe *WebFrontEndImpl) handleCert(
 	certGet certGetter,
-	numberOfRootCerts int,
 	relPath string) func(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -290,7 +289,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		_, no, err := getAlternateNo("/" + request.URL.Path)
-		if err != nil || no >= numberOfRootCerts {
+		if err != nil {
 			response.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -298,13 +297,13 @@ func (wfe *WebFrontEndImpl) handleCert(
 		// Get hold of root certificate
 		cert := certGet(no)
 		if cert == nil {
-			response.WriteHeader(http.StatusServiceUnavailable)
+			response.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		// Add links to alternate roots
 		basePath := wfe.relativeEndpoint(request, relPath)
-		addAlternateLinks(response, basePath, no, numberOfRootCerts)
+		addAlternateLinks(response, basePath, no, wfe.ca.GetNumberOfRootCerts())
 
 		// Write main response
 		response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
@@ -315,7 +314,6 @@ func (wfe *WebFrontEndImpl) handleCert(
 
 func (wfe *WebFrontEndImpl) handleKey(
 	keyGet keyGetter,
-	numberOfRootCerts int,
 	relPath string) func(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -323,7 +321,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		_, no, err := getAlternateNo("/" + request.URL.Path)
-		if err != nil || no >= numberOfRootCerts {
+		if err != nil {
 			response.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -331,13 +329,13 @@ func (wfe *WebFrontEndImpl) handleKey(
 		// Get hold of root certificate's key
 		key := keyGet(no)
 		if key == nil {
-			response.WriteHeader(http.StatusServiceUnavailable)
+			response.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		// Add links to alternate root keys
 		basePath := wfe.relativeEndpoint(request, relPath)
-		addAlternateLinks(response, basePath, no, numberOfRootCerts)
+		addAlternateLinks(response, basePath, no, wfe.ca.GetNumberOfRootCerts())
 
 		// Write main response
 		var buf bytes.Buffer
@@ -363,10 +361,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, false, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, false, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, wfe.ca.GetNumberOfRootCerts(), RootCertPath), true, "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, wfe.ca.GetNumberOfRootCerts(), rootKeyPath), true, "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, wfe.ca.GetNumberOfRootCerts(), intermediateCertPath), true, "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, wfe.ca.GetNumberOfRootCerts(), intermediateKeyPath), true, "GET")
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), true, "GET")
+	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), true, "GET")
+	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), true, "GET")
+	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), true, "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, false, "POST")
