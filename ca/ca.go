@@ -234,7 +234,7 @@ func New(log *log.Logger, db *db.MemoryStore) *CAImpl {
 	oscpRespURL := os.Getenv(ocspResponderURL)
 	if oscpRespURL != "" {
 		ca.ocspRespURL = oscpRespURL
-		ca.log.Printf("Setting OCSP responder URL for issued certificates to %s", ca.ocspRespURL)
+		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspRespURL)
 	}
 
 	err := ca.newRootIssuer()
