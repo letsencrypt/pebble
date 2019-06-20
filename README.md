@@ -281,3 +281,19 @@ purposes, since Pebble and its generated keys are not audited or held to the
 same standards as the Let's Encrypt production CA and their keys. Moreover
 these keys are exposed by Pebble and will be lost as soon as the process
 terminates: so they are not safe to use for anything other than testing.**
+
+### OCSP Responder URL
+
+Pebble does not support the OCSP protocol as a responder and so does not set
+the OCSP Responder URL in the issued certificates. However, if you setup a
+proper OCSP Responder run side by side with Pebble, you may want to set this URL.
+This is possible by setting the field `ocspResponderURL` of the `pebble-config.json`
+consummed by Pebble to a non empty string: in this case, this string will be use
+in the appropriate field of all issued certificates.
+
+For instance, to have Pebble issue certificates that instruct a client to check the URL `http://127.0.0.1:4002`
+to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.json` that includes:
+
+```
+  "ocspResponderURL": "http://127.0.0.1:4002",
+```
