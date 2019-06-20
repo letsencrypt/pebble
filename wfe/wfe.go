@@ -352,6 +352,18 @@ func (wfe *WebFrontEndImpl) handleKey(
 	}
 }
 
+func (wfe *WebFrontEndImpl) handleRedirect(
+	relPath string) func(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Location", wfe.relativeEndpoint(request, relPath))
+		response.WriteHeader(http.StatusMovedPermanently)
+		_, _ = response.Write([]byte("Please update your URLs!\n"))
+	}
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
@@ -362,6 +374,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
+	wfe.HandleFunc(m, "/root", wfe.handleRedirect(RootCertPath), "GET")
+	wfe.HandleFunc(m, "/root-key", wfe.handleRedirect(rootKeyPath), "GET")
+	wfe.HandleFunc(m, "/intermediate", wfe.handleRedirect(intermediateCertPath), "GET")
+	wfe.HandleFunc(m, "/intermediate-key", wfe.handleRedirect(intermediateKeyPath), "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
