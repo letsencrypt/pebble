@@ -663,6 +663,22 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 			expectedURL.String(), headerURL))
 	}
 
+	// In -strict mode, verify that any JWS body that is valid JSON doesn't
+	// include a non-empty "resource" field. This is a legacy artifiact from ACME
+	// v1. This won't catch an empty "resource" field but that would have been
+	// broken in ACMEv1 anyway and is hopefully less likely to occur in code that
+	// is updated for ACMEv2.
+	if wfe.strict {
+		var bodyObj struct {
+			Resource string
+		}
+		if err := json.Unmarshal(payload, &bodyObj); err == nil && bodyObj.Resource != "" {
+			return nil, acme.MalformedProblem(fmt.Sprintf(
+				`JWS body included JSON with a deprecated ACME v1 "resource" field (%q)`,
+				bodyObj.Resource))
+		}
+	}
+
 	return &authenticatedPOST{
 		postAsGet: string(payload) == "",
 		body:      payload,
