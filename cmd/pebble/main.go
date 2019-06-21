@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/cmd"
@@ -57,8 +58,14 @@ func main() {
 		setupCustomDNSResolver(*resolverAddress)
 	}
 
+	alternateRoots := 0
+	alternateRootsVal := os.Getenv("PEBBLE_ALTERNATE_ROOTS")
+	if val, err := strconv.ParseInt(alternateRootsVal, 10, 0); err == nil && val >= 0 {
+		alternateRoots = int(val)
+	}
+
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
@@ -67,7 +74,7 @@ func main() {
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
-	logger.Printf("Root CA certificate available at: https://%s%s",
+	logger.Printf("Root CA certificate(s) available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.RootCertPath)
 	err = http.ListenAndServeTLS(
 		c.Pebble.ListenAddress,

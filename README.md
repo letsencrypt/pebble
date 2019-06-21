@@ -282,6 +282,13 @@ same standards as the Let's Encrypt production CA and their keys. Moreover
 these keys are exposed by Pebble and will be lost as soon as the process
 terminates: so they are not safe to use for anything other than testing.**
 
+In case alternative root chains are enabled by setting `PEBBLE_ALTERNATE_ROOTS` to a
+positive integer, the root certificates for these can be retrieved by doing a `GET`
+request to `https://localhost:14000/roots/0`, `https://localhost:14000/root-keys/1`
+`https://localhost:14000/intermediates/2`, `https://localhost:14000/intermediate-keys/3`
+etc. These endpoints also send `Link` HTTP headers for all alternative root and
+intermediate certificates and keys.
+
 ### OCSP Responder URL
 
 Pebble does not support the OCSP protocol as a responder and so does not set
