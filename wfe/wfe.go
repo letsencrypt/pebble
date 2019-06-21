@@ -1869,7 +1869,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	// In strict mode we reject any challenge POST with a body other than `{}`.
-	// This matches RFC 8555 Section 7.5.1.
+	// This matches RFC 8555 Section 7.5.1 and the ACME challenge types that
+	// Pebble has implemented. Per ACME errata 5729[0] it may not be true for
+	// extensions to ACME that add new challenge types.
+	//
+	// [0]: https://www.rfc-editor.org/errata/eid5729
 	if wfe.strict && !bytes.Equal(postData.body, []byte("{}")) {
 		wfe.sendError(
 			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
