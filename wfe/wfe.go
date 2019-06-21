@@ -255,7 +255,7 @@ func getAlternateNo(url string) (string, int, error) {
 	if no < 0 {
 		return url, 0, fmt.Errorf("number is negative")
 	}
-	return urlSplit[0], no + 1, nil
+	return urlSplit[0], no, nil
 }
 
 // Adds HTTP Link headers for alternate versions of the resource. To the given
