@@ -1852,27 +1852,37 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	var chalResp struct {
-		KeyAuthorization *string
-	}
-	err := json.Unmarshal(postData.body, &chalResp)
-	if err != nil {
+	// In strict mode we reject any challenge POST with a body other than `{}`.
+	// This matches RFC 8555 Section 7.5.1.
+	if wfe.strict && bytes.Compare(postData.body, []byte("{}")) != 0 {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
 		return
-	}
+	} else {
+		// When not in strict mode we still want to be strict about the legacy key
+		// authorization field not being present in the POST JSON.
+		var chalResp struct {
+			KeyAuthorization *string
+		}
+		err := json.Unmarshal(postData.body, &chalResp)
+		if err != nil {
+			wfe.sendError(
+				acme.MalformedProblem("Error unmarshaling body JSON"), response)
+			return
+		}
 
-	// Historically challenges were updated by POSTing a KeyAuthorization. This is
-	// unnecessary, the server can calculate this itself. We could ignore this if
-	// sent (and that's what Boulder will do) but for Pebble we'd like to offer
-	// a way to be more aggressive about pushing clients implementations in the
-	// right direction, so we treat this as a malformed request.
-	if chalResp.KeyAuthorization != nil {
-		wfe.sendError(
-			acme.MalformedProblem(
-				"Challenge response body contained legacy KeyAuthorization field, "+
-					"POST body should be `{}`"), response)
-		return
+		// Historically challenges were updated by POSTing a KeyAuthorization. This is
+		// unnecessary, the server can calculate this itself. We could ignore this if
+		// sent (and that's what Boulder will do) but for Pebble we'd like to offer
+		// a way to be more aggressive about pushing clients implementations in the
+		// right direction, so we treat this as a malformed request.
+		if chalResp.KeyAuthorization != nil {
+			wfe.sendError(
+				acme.MalformedProblem(
+					"Challenge response body contained legacy KeyAuthorization field, "+
+						"POST body should be `{}`"), response)
+			return
+		}
 	}
 
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
@@ -1944,7 +1954,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	existingChal.RLock()
 	defer existingChal.RUnlock()
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
-	err = wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
+	err := wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
 		return
