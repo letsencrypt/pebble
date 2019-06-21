@@ -265,14 +265,14 @@ repo](test/certs/pebble.minica.key.pem).**
 ### CA Root and Intermediate Certificates
 
 Note that the CA's root and intermediate certificates are regenerated on every
-launch. It can be retrieved by a `GET` request to `https://localhost:14000/roots/`
-and `https://localhost:14000/intermediates/` respectively.
+launch. It can be retrieved by a `GET` request to `https://localhost:14000/root`
+and `https://localhost:14000/intermediate` respectively.
 
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
 The private keys of these certificates can also be retrieved by a `GET` request
-to `https://localhost:14000/root-keys/` and `https://localhost:14000/intermediate-keys/`
+to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
 respectively.
 
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
@@ -284,9 +284,10 @@ terminates: so they are not safe to use for anything other than testing.**
 
 In case alternative root chains are enabled by setting `PEBBLE_ALTERNATE_ROOTS` to a
 positive integer, the root certificates for these can be retrieved by doing a `GET`
-request to `https://localhost:14000/roots/0`,
-`https://localhost:14000/intermediate-keys/1` etc. These endpoints also
-send `Link` HTTP headers for all alternative root and intermediate certificates and keys.
+request to `https://localhost:14000/roots/0`, `https://localhost:14000/root-keys/1`
+`https://localhost:14000/intermediates/2`, `https://localhost:14000/intermediate-keys/3`
+etc. These endpoints also send `Link` HTTP headers for all alternative root and
+intermediate certificates and keys.
 
 ### OCSP Responder URL
 
