@@ -284,8 +284,8 @@ terminates: so they are not safe to use for anything other than testing.**
 
 In case alternative root chains are enabled by setting `PEBBLE_ALTERNATE_ROOTS` to a
 positive integer, the root certificates for these can be retrieved by doing a `GET`
-request to `https://localhost:14000/roots/alternate/1`,
-`https://localhost:14000/intermediate-keys/alternate/2` etc. These endpoints also
+request to `https://localhost:14000/roots/0`,
+`https://localhost:14000/intermediate-keys/1` etc. These endpoints also
 send `Link` HTTP headers for all alternative root and intermediate certificates and keys.
 
 ### OCSP Responder URL
