@@ -1870,7 +1870,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// In strict mode we reject any challenge POST with a body other than `{}`.
 	// This matches RFC 8555 Section 7.5.1.
-	if wfe.strict && bytes.Compare(postData.body, []byte("{}")) != 0 {
+	if wfe.strict && !bytes.Equal(postData.body, []byte("{}")) {
 		wfe.sendError(
 			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
 		return
