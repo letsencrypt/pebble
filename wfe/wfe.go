@@ -322,32 +322,12 @@ func (wfe *WebFrontEndImpl) handleKey(
 	}
 }
 
-func (wfe *WebFrontEndImpl) handleRedirect(
-	relPath string) func(
-	ctx context.Context,
-	response http.ResponseWriter,
-	request *http.Request) {
-	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Location", wfe.relativeEndpoint(request, relPath))
-		response.WriteHeader(http.StatusMovedPermanently)
-		_, _ = response.Write([]byte("Please update your URLs!\n"))
-	}
-}
-
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
-	wfe.HandleFunc(m, "/root", wfe.handleRedirect(RootCertPath+"0"), "GET")
-	wfe.HandleFunc(m, "/root-key", wfe.handleRedirect(rootKeyPath+"0"), "GET")
-	wfe.HandleFunc(m, "/intermediate", wfe.handleRedirect(intermediateCertPath+"0"), "GET")
-	wfe.HandleFunc(m, "/intermediate-key", wfe.handleRedirect(intermediateKeyPath+"0"), "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
@@ -360,6 +340,17 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
+
+	return m
+}
+
+func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
+	m := http.NewServeMux()
+	// GET only handlers
+	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
+	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
+	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
+	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
 
 	return m
 }
