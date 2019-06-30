@@ -266,7 +266,7 @@ repo](test/certs/pebble.minica.key.pem).**
 
 ### Management interface
 
-In order to ease the interaction of Pebble with test systems, a specific HTTP
+In order to ease the interaction of Pebble with testing systems, a specific HTTP
 management interface is exposed on a different port than the ACME protocol,
 and exposes several useful endpoints.
 
