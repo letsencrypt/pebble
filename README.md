@@ -97,7 +97,7 @@ docker-compose up
 ```
 
 Afterwards you can access the ACME API from your host machine at
-`https://localhost:14000/dir`, the ̀`pebble`'s management interface
+`https://localhost:14000/dir`, `pebble`'s management interface
 at `https://localhost:15000` and the `pebble-challtestsrv`'s management
 interface at `http://localhost:8055`.
 
