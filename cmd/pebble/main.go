@@ -86,7 +86,7 @@ func main() {
 		logger.Printf("Root CA certificate(s) available at: https://%s%s",
 			c.Pebble.ManagementListenAddress, wfe.RootCertPath)
 	} else {
-		logger.Printf("Management interface is disabled")
+		logger.Print("Management interface is disabled")
 	}
 
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
