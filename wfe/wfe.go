@@ -351,7 +351,6 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
 	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
 	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
-
 	return m
 }
 
