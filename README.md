@@ -268,7 +268,7 @@ repo](test/certs/pebble.minica.key.pem).**
 
 In order to ease the interaction of Pebble with testing systems, a specific HTTP
 management interface is exposed on a different port than the ACME protocol,
-and exposes several useful endpoints.
+and offers several useful testing endpoints.
 
 This interface is configured by the `managementListenAddress` field in
 `pebble-config.json` that defines the address and the port on which the management
