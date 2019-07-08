@@ -270,7 +270,10 @@ In order to ease the interaction of Pebble with testing systems, a specific HTTP
 management interface is exposed on a different port than the ACME protocol,
 and offers several useful testing endpoints.
 
-This interface is configured by the `managementListenAddress` field in
+These endpoints are specific to Pebble and its internal behavior, but are not part
+of the RFC 8555 that defines the ACME protocol.
+
+The management interface is configured by the `managementListenAddress` field in
 `pebble-config.json` that defines the address and the port on which the management
 interface will listen on. Set `managementListenAddress` to an empty string or `null`
 to disable it.
