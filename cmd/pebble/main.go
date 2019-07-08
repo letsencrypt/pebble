@@ -72,7 +72,7 @@ func main() {
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
 	muxHandler := wfeImpl.Handler()
 
-	if len(c.Pebble.ManagementListenAddress) > 0 {
+	if c.Pebble.ManagementListenAddress == "" {
 		go func() {
 			adminHandler := wfeImpl.ManagementHandler()
 			err = http.ListenAndServeTLS(
