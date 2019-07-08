@@ -285,7 +285,7 @@ The proposed configuration for this management interface as defined in
 #### CA Root and Intermediate Certificates
 
 Note that the CA's root and intermediate certificates are regenerated on every
-launch. It can be retrieved by a `GET` request to `https://localhost:15000/roots/0`
+launch. They can be retrieved by a `GET` request to `https://localhost:15000/roots/0`
 and `https://localhost:15000/intermediates/0` respectively.
 
 You might need the root certificate to verify the complete trust chain of
