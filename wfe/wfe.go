@@ -344,6 +344,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	return m
 }
 
+// ManagementHandler handles the endpoints exposed on the management interface that is configured
+// by the `managementListenAddress` parameter in Pebble JSON config file.
 func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
