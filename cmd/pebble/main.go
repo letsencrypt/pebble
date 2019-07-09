@@ -72,7 +72,7 @@ func main() {
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
 	muxHandler := wfeImpl.Handler()
 
-	if c.Pebble.ManagementListenAddress == "" {
+	if c.Pebble.ManagementListenAddress != "" {
 		go func() {
 			adminHandler := wfeImpl.ManagementHandler()
 			err = http.ListenAndServeTLS(
@@ -83,8 +83,12 @@ func main() {
 			cmd.FailOnError(err, "Calling ListenAndServeTLS() for admin interface")
 		}()
 		logger.Printf("Management interface listening on: %s\n", c.Pebble.ManagementListenAddress)
-		logger.Printf("Root CA certificate(s) available at: https://%s%s",
+		logger.Printf("Root CA certificate available at: https://%s%s0",
 			c.Pebble.ManagementListenAddress, wfe.RootCertPath)
+		for i := 0; i < alternateRoots; i++ {
+			logger.Printf("Alternate (%d) root CA certificate available at: https://%s%s%d",
+				i+1, c.Pebble.ManagementListenAddress, wfe.RootCertPath, i+1)
+		}
 	} else {
 		logger.Print("Management interface is disabled")
 	}
