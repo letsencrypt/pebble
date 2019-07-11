@@ -1356,6 +1356,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+			return
 		}
 	}
 	orderDNSs = uniqueLowerNames(orderDNSs)
@@ -1609,6 +1610,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+			return
 		}
 	}
 	// looks like saving order to db doesn't preserve order of Identifiers, so sort them again.
