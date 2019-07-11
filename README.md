@@ -97,7 +97,8 @@ docker-compose up
 ```
 
 Afterwards you can access the ACME API from your host machine at
-`https://localhost:14000/dir` and the `pebble-challtestsrv`'s management
+`https://localhost:14000/dir`, `pebble`'s management interface
+at `https://localhost:15000` and the `pebble-challtestsrv`'s management
 interface at `http://localhost:8055`.
 
 To get started you may want to update the `pebble-challtestsrv` mock DNS data
@@ -127,7 +128,8 @@ services:
   image: letsencrypt/pebble
   command: pebble -config /test/my-pebble-config.json
   ports:
-    - 14000:14000
+    - 14000:14000  # ACME port
+    - 15000:15000  # Management port
   environment:
     - PEBBLE_VA_NOSLEEP=1
   volumes:
@@ -262,17 +264,38 @@ store or to any production systems/codebases. The private key for this CA is
 intentionally made [publicly available in this
 repo](test/certs/pebble.minica.key.pem).**
 
-### CA Root and Intermediate Certificates
+### Management interface
+
+In order to ease the interaction of Pebble with testing systems, a specific HTTP
+management interface is exposed on a different port than the ACME protocol,
+and offers several useful testing endpoints.
+
+These endpoints are specific to Pebble and its internal behavior, and are not part
+of the RFC 8555 that defines the ACME protocol.
+
+The management interface is configured by the `managementListenAddress` field in
+`pebble-config.json` that defines the address and the port on which the management
+interface will listen on. Set `managementListenAddress` to an empty string or `null`
+to disable it.
+
+The default configuration for this management interface as defined in
+`test/config/pebble-config.yml` is to listen on any address on port 15000:
+
+```
+  "managementListenAddress": "0.0.0.0:15000",
+```
+
+#### CA Root and Intermediate Certificates
 
 Note that the CA's root and intermediate certificates are regenerated on every
-launch. It can be retrieved by a `GET` request to `https://localhost:14000/root`
-and `https://localhost:14000/intermediate` respectively.
+launch. They can be retrieved by a `GET` request to `https://localhost:15000/roots/0`
+and `https://localhost:15000/intermediates/0` respectively.
 
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
 The private keys of these certificates can also be retrieved by a `GET` request
-to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
+to `https://localhost:15000/root-keys/0` and `https://localhost:15000/intermediate-keys/0`
 respectively.
 
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
@@ -284,8 +307,8 @@ terminates: so they are not safe to use for anything other than testing.**
 
 In case alternative root chains are enabled by setting `PEBBLE_ALTERNATE_ROOTS` to a
 positive integer, the root certificates for these can be retrieved by doing a `GET`
-request to `https://localhost:14000/roots/0`, `https://localhost:14000/root-keys/1`
-`https://localhost:14000/intermediates/2`, `https://localhost:14000/intermediate-keys/3`
+request to `https://localhost:15000/roots/0`, `https://localhost:15000/root-keys/1`
+`https://localhost:15000/intermediates/2`, `https://localhost:15000/intermediate-keys/3`
 etc. These endpoints also send `Link` HTTP headers for all alternative root and
 intermediate certificates and keys.
 

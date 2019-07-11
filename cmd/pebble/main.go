@@ -18,12 +18,13 @@ import (
 
 type config struct {
 	Pebble struct {
-		ListenAddress    string
-		HTTPPort         int
-		TLSPort          int
-		Certificate      string
-		PrivateKey       string
-		OCSPResponderURL string
+		ListenAddress           string
+		ManagementListenAddress string
+		HTTPPort                int
+		TLSPort                 int
+		Certificate             string
+		PrivateKey              string
+		OCSPResponderURL        string
 	}
 }
 
@@ -71,11 +72,30 @@ func main() {
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
 	muxHandler := wfeImpl.Handler()
 
+	if c.Pebble.ManagementListenAddress != "" {
+		go func() {
+			adminHandler := wfeImpl.ManagementHandler()
+			err = http.ListenAndServeTLS(
+				c.Pebble.ManagementListenAddress,
+				c.Pebble.Certificate,
+				c.Pebble.PrivateKey,
+				adminHandler)
+			cmd.FailOnError(err, "Calling ListenAndServeTLS() for admin interface")
+		}()
+		logger.Printf("Management interface listening on: %s\n", c.Pebble.ManagementListenAddress)
+		logger.Printf("Root CA certificate available at: https://%s%s0",
+			c.Pebble.ManagementListenAddress, wfe.RootCertPath)
+		for i := 0; i < alternateRoots; i++ {
+			logger.Printf("Alternate (%d) root CA certificate available at: https://%s%s%d",
+				i+1, c.Pebble.ManagementListenAddress, wfe.RootCertPath, i+1)
+		}
+	} else {
+		logger.Print("Management interface is disabled")
+	}
+
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
-	logger.Printf("Root CA certificate(s) available at: https://%s%s",
-		c.Pebble.ListenAddress, wfe.RootCertPath)
 	err = http.ListenAndServeTLS(
 		c.Pebble.ListenAddress,
 		c.Pebble.Certificate,
