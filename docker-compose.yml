@@ -1,7 +1,7 @@
 version: '3'
 services:
   pebble:
-    image: letsencrypt/pebble:v2.0.0
+    image: letsencrypt/pebble:v2.1.0
     command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
     ports:
       - 14000:14000  # HTTPS ACME API
@@ -10,7 +10,7 @@ services:
       acmenet:
         ipv4_address: 10.30.50.2
   challtestsrv:
-    image: letsencrypt/pebble-challtestsrv:v2.0.0
+    image: letsencrypt/pebble-challtestsrv:v2.1.0
     command: pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
       - 8055:8055  # HTTP Management API
