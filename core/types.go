@@ -192,6 +192,12 @@ func (c Certificate) Chain(no int) []byte {
 	return bytes.Join(chain, nil)
 }
 
+type RevokedCertificate struct {
+	Certificate *Certificate
+	RevokedAt   time.Time
+	Reason      *uint
+}
+
 type ValidationRecord struct {
 	URL         string
 	Error       *acme.ProblemDetails

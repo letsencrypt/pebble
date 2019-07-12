@@ -345,10 +345,13 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 
 	var status string
 	var cert *core.Certificate
+	var rcert *core.RevokedCertificate
 	if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
 		status = "Valid"
-	} else if cert = wfe.db.GetRevokedCertificateBySerial(serial); cert != nil {
+	}
+	if rcert = wfe.db.GetRevokedCertificateBySerial(serial); rcert != nil {
 		status = "Revoked"
+		cert = rcert.Certificate
 	}
 
 	if status == "" {
@@ -359,6 +362,12 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	result["Status"] = status
 	result["Serial"] = serial.Text(16)
 	result["Certificate"] = string(cert.PEM())
+	if rcert != nil {
+		if rcert.Reason != nil {
+			result["Reason"] = rcert.Reason
+		}
+		result["RevokedAt"] = rcert.RevokedAt
+	}
 
 	resultJSON, err := marshalIndent(result)
 	if err != nil {
@@ -2414,6 +2423,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return prob
 	}
 
-	wfe.db.RevokeCertificate(cert)
+	wfe.db.RevokeCertificate(&core.RevokedCertificate{
+		Certificate: cert,
+		RevokedAt:   time.Now(),
+		Reason:      revokeCertReq.Reason,
+	})
 	return nil
 }
