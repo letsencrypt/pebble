@@ -366,7 +366,7 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 		if rcert.Reason != nil {
 			result["Reason"] = rcert.Reason
 		}
-		result["RevokedAt"] = rcert.RevokedAt
+		result["RevokedAt"] = rcert.RevokedAt.UTC()
 	}
 
 	resultJSON, err := marshalIndent(result)
