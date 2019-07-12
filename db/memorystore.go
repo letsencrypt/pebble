@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"reflect"
 	"strconv"
 	"sync"
@@ -321,4 +322,33 @@ func keyToID(key crypto.PublicKey) (string, error) {
 		spkiDigest := sha256.Sum256(keyDER)
 		return hex.EncodeToString(spkiDigest[:]), nil
 	}
+}
+
+// GetCertificateBySerial loops over all certificates to find the one that matches the provided
+// serial number. This method is linear and it's not optimized to give you a quick response.
+func (m *MemoryStore) GetCertificateBySerial(serialNumber *big.Int) *core.Certificate {
+	m.RLock()
+	defer m.RUnlock()
+	for _, c := range m.certificatesByID {
+		if serialNumber.Cmp(c.Cert.SerialNumber) == 0 {
+			return c
+		}
+	}
+
+	return nil
+}
+
+// GetCertificateBySerial loops over all revoked certificates to find the one that matches the
+// provided serial number. This method is linear and it's not optimized to give you a quick
+// response.
+func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core.Certificate {
+	m.RLock()
+	defer m.RUnlock()
+	for _, c := range m.revokedCertificatesByID {
+		if serialNumber.Cmp(c.Cert.SerialNumber) == 0 {
+			return c
+		}
+	}
+
+	return nil
 }

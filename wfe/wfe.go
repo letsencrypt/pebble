@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
@@ -58,6 +59,7 @@ const (
 	rootKeyPath          = "/root-keys/"
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
+	certStatusBySerial   = "/cert-status-by-serial/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -329,6 +331,45 @@ func (wfe *WebFrontEndImpl) handleKey(
 	}
 }
 
+func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	serialStr := strings.TrimPrefix(request.URL.Path, certStatusBySerial)
+	serial := big.NewInt(0)
+	if _, ok := serial.SetString(serialStr, 16); !ok {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	var status string
+	var cert *core.Certificate
+	if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
+		status = "Valid"
+	} else if cert = wfe.db.GetRevokedCertificateBySerial(serial); cert != nil {
+		status = "Revoked"
+	}
+
+	if status == "" {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	result := make(map[string]interface{})
+	result["Status"] = status
+	result["Serial"] = serial.Text(16)
+	result["Certificate"] = string(cert.PEM())
+
+	resultJSON, err := marshalIndent(result)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response.WriteHeader(http.StatusOK)
+	_, _ = response.Write(resultJSON)
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
@@ -360,6 +401,7 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath))
 	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
 	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
+	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
 	return m
 }
 
