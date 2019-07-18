@@ -224,42 +224,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
 	mux *http.ServeMux,
 	pattern string,
-	handler wfeHandlerFunc,
-	methods ...string) {
-
-	methodsMap := make(map[string]bool)
-	for _, m := range methods {
-		methodsMap[m] = true
-	}
-
-	if methodsMap["GET"] && !methodsMap["HEAD"] {
-		// Allow HEAD for any resource that allows GET
-		methods = append(methods, "HEAD")
-		methodsMap["HEAD"] = true
-	}
-
-	methodsStr := strings.Join(methods, ", ")
-	defaultHandler := http.StripPrefix(pattern,
-		&topHandler{
-			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
-				addNoCacheHeader(response)
-
-				if !methodsMap[request.Method] {
-					response.Header().Set("Allow", methodsStr)
-					wfe.sendError(acme.MethodNotAllowed(), response)
-					return
-				}
-
-				wfe.log.Printf("%s %s (management) -> calling handler()\n", request.Method, pattern)
-
-				// TODO(@cpu): Configurable request timeout
-				timeout := 1 * time.Minute
-				ctx, cancel := context.WithTimeout(ctx, timeout)
-				handler(ctx, response, request)
-				cancel()
-			},
-			)})
-	mux.Handle(pattern, defaultHandler)
+	handler wfeHandlerFunc) {
+	mux.Handle(pattern, http.StripPrefix(pattern, handler))
 }
 
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
@@ -390,10 +356,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
-	wfe.HandleManagementFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
-	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
-	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
-	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
+	wfe.HandleManagementFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath))
+	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath))
+	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
+	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
 	return m
 }
 
