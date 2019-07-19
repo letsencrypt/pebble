@@ -224,7 +224,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
 	mux *http.ServeMux,
 	pattern string,
-	handler wfeHandlerFunc) {
+	handler wfeHandlerFunc) { // nolint:interfacer
 	mux.Handle(pattern, http.StripPrefix(pattern, handler))
 }
 
