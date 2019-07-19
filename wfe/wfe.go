@@ -221,6 +221,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux.Handle(pattern, defaultHandler)
 }
 
+func (wfe *WebFrontEndImpl) HandleManagementFunc(
+	mux *http.ServeMux,
+	pattern string,
+	handler wfeHandlerFunc) { // nolint:interfacer
+	mux.Handle(pattern, http.StripPrefix(pattern, handler))
+}
+
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
@@ -349,10 +356,10 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
+	wfe.HandleManagementFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath))
+	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath))
+	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
+	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
 	return m
 }
 
