@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/miekg/dns"
+
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
@@ -93,29 +95,39 @@ type vaTask struct {
 }
 
 type VAImpl struct {
-	log         *log.Logger
-	httpPort    int
-	tlsPort     int
-	tasks       chan *vaTask
-	sleep       bool
-	sleepTime   int
-	alwaysValid bool
-	strict      bool
+	log                *log.Logger
+	httpPort           int
+	tlsPort            int
+	tasks              chan *vaTask
+	sleep              bool
+	sleepTime          int
+	alwaysValid        bool
+	strict             bool
+	customResolverAddr string
 }
 
 func New(
 	log *log.Logger,
 	httpPort, tlsPort int,
-	strict bool) *VAImpl {
+	strict bool, customResolverAddr string) *VAImpl {
 	va := &VAImpl{
-		log:       log,
-		httpPort:  httpPort,
-		tlsPort:   tlsPort,
-		tasks:     make(chan *vaTask, taskQueueSize),
-		sleep:     true,
-		sleepTime: defaultSleepTime,
-		strict:    strict,
+		log:                log,
+		httpPort:           httpPort,
+		tlsPort:            tlsPort,
+		tasks:              make(chan *vaTask, taskQueueSize),
+		sleep:              true,
+		sleepTime:          defaultSleepTime,
+		strict:             strict,
+		customResolverAddr: customResolverAddr,
 	}
+
+	if customResolverAddr != "" {
+		va.log.Printf("Using custom DNS resolver for ACME challenges: %s", customResolverAddr)
+	} else {
+		va.log.Print("Using system DNS resolver for ACME challenges")
+	}
+
+	va.log.Print(va.resolveIP("8.8.8.8"))
 
 	// Read the PEBBLE_VA_NOSLEEP environment variable string
 	noSleep := os.Getenv(noSleepEnvVar)
@@ -299,10 +311,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 
-	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
-	defer cancelfunc()
-
-	txts, err := net.DefaultResolver.LookupTXT(ctx, challengeSubdomain)
+	txts, err := va.getTXTEntry(challengeSubdomain)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS challenge (%q)", err))
 		return result
@@ -490,6 +499,13 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	httpRequest.Header.Set("User-Agent", userAgent())
 	httpRequest.Header.Set("Accept", "*/*")
 
+	addrs, err := va.resolveIP(identifier)
+
+	if err != nil || len(addrs) == 0 {
+		return nil, url.String(), acme.MalformedProblem(
+			fmt.Sprintf("Could not resolve URL %q", url.String()))
+	}
+
 	transport := &http.Transport{
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
@@ -500,6 +516,12 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 		// to an HTTPS host.
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
+		},
+
+		// Control specifically which IP will be used for this request
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(addrs[0], portString))
 		},
 	}
 
@@ -532,6 +554,80 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	return body, url.String(), nil
+}
+
+func (va VAImpl) getTXTEntry(name string) ([]string, error) {
+	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
+	defer cancelfunc()
+
+	if va.customResolverAddr == "" {
+		return net.DefaultResolver.LookupTXT(ctx, name)
+	}
+
+	txts := []string{}
+	client := new(dns.Client)
+	message := new(dns.Msg)
+	message.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
+	in, _, err := client.ExchangeContext(ctx, message, va.customResolverAddr)
+
+	if err != nil || in.Rcode != dns.RcodeSuccess {
+		return txts, err
+	}
+
+	for _, record := range in.Answer {
+		if t, ok := record.(*dns.TXT); ok {
+			txts = append(txts, t.Txt...)
+		}
+	}
+
+	return txts, nil
+}
+
+func (va VAImpl) resolveIP(name string) ([]string, error) {
+	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
+	defer cancelfunc()
+
+	if va.customResolverAddr == "" {
+		return net.DefaultResolver.LookupHost(ctx, name)
+	}
+
+	addrs := []string{}
+	parsed := net.ParseIP(name)
+
+	if parsed != nil {
+		addrs = append(addrs, name)
+		return addrs, nil
+	}
+
+	client := new(dns.Client)
+	messageA := new(dns.Msg)
+	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
+	inA, _, errA := client.ExchangeContext(ctx, messageA, va.customResolverAddr)
+	messageAAAA := new(dns.Msg)
+	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
+	inAAAA, _, errAAAA := client.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
+
+	if errA != nil {
+		return addrs, errA
+	}
+
+	if errAAAA != nil {
+		return addrs, errAAAA
+	}
+
+	for _, record := range inA.Answer {
+		if t, ok := record.(*dns.A); ok {
+			addrs = append(addrs, t.A.String())
+		}
+	}
+
+	for _, record := range inAAAA.Answer {
+		if t, ok := record.(*dns.AAAA); ok {
+			addrs = append(addrs, t.AAAA.String())
+		}
+	}
+
+	return addrs, nil
 }
 
 // reverseaddr function is borrowed from net/dnsclient.go[0] and the Go std library.
