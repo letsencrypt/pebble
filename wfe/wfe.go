@@ -346,12 +346,11 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	var status string
 	var cert *core.Certificate
 	var rcert *core.RevokedCertificate
-	if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
-		status = "Valid"
-	}
 	if rcert = wfe.db.GetRevokedCertificateBySerial(serial); rcert != nil {
 		status = "Revoked"
 		cert = rcert.Certificate
+	} else if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
+		status = "Valid"
 	}
 
 	if status == "" {
