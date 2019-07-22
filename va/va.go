@@ -104,7 +104,7 @@ type VAImpl struct {
 	alwaysValid        bool
 	strict             bool
 	customResolverAddr string
-	dnsClient 		   *dns.Client
+	dnsClient          *dns.Client
 }
 
 func New(
