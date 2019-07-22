@@ -357,15 +357,22 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
-	result := make(map[string]interface{})
-	result["Status"] = status
-	result["Serial"] = serial.Text(16)
-	result["Certificate"] = string(cert.PEM())
+	result := struct {
+		Status      string
+		Serial      string
+		Certificate string
+		Reason      *uint  `json:",omitempty"`
+		RevokedAt   string `json:",omitempty"`
+	}{
+		Status:      status,
+		Serial:      serial.Text(16),
+		Certificate: string(cert.PEM()),
+	}
 	if rcert != nil {
 		if rcert.Reason != nil {
-			result["Reason"] = rcert.Reason
+			result.Reason = rcert.Reason
 		}
-		result["RevokedAt"] = rcert.RevokedAt.UTC()
+		result.RevokedAt = rcert.RevokedAt.UTC().String()
 	}
 
 	resultJSON, err := marshalIndent(result)
