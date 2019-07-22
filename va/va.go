@@ -104,6 +104,7 @@ type VAImpl struct {
 	alwaysValid        bool
 	strict             bool
 	customResolverAddr string
+	dnsClient 		   *dns.Client
 }
 
 func New(
@@ -123,6 +124,7 @@ func New(
 
 	if customResolverAddr != "" {
 		va.log.Printf("Using custom DNS resolver for ACME challenges: %s", customResolverAddr)
+		va.dnsClient = new(dns.Client)
 	} else {
 		va.log.Print("Using system DNS resolver for ACME challenges")
 	}
@@ -554,6 +556,8 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	return body, url.String(), nil
 }
 
+// getTXTEntry fetches TXT entries for the given domain name using the recursive resolver located at
+// `va.customResolverAddr`, or the default system resolver if no custom resolver addr is specified
 func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
 	defer cancelfunc()
@@ -563,10 +567,9 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	}
 
 	txts := []string{}
-	client := new(dns.Client)
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
-	in, _, err := client.ExchangeContext(ctx, message, va.customResolverAddr)
+	in, _, err := va.dnsClient.ExchangeContext(ctx, message, va.customResolverAddr)
 
 	if err != nil || in.Rcode != dns.RcodeSuccess {
 		return txts, err
@@ -581,6 +584,8 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	return txts, nil
 }
 
+// resolveIP find all associated IPs to the given domain name using the recursive resolver located at
+// `va.customResolverAddr`, or the default system resolver if no custom resolver addr is specified
 func (va VAImpl) resolveIP(name string) ([]string, error) {
 	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
 	defer cancelfunc()
@@ -589,21 +594,20 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 		return net.DefaultResolver.LookupHost(ctx, name)
 	}
 
+	// Check if the given name is not already an IP. If it is the case, just return it untouched.
 	addrs := []string{}
 	parsed := net.ParseIP(name)
-
 	if parsed != nil {
 		addrs = append(addrs, name)
 		return addrs, nil
 	}
 
-	client := new(dns.Client)
 	messageA := new(dns.Msg)
 	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
-	inA, _, errA := client.ExchangeContext(ctx, messageA, va.customResolverAddr)
+	inA, _, errA := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
 	messageAAAA := new(dns.Msg)
 	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
-	inAAAA, _, errAAAA := client.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
+	inAAAA, _, errAAAA := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
 
 	if errA != nil {
 		return addrs, errA
