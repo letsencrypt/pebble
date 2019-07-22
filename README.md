@@ -319,9 +319,26 @@ a `GET` request to `https://localhost:15000/cert-status-by-serial/<serial>`, whe
 `<serial>` is the hexadecimal representation of the certificate's serial number.
 It can be obtained via:
 
-    openssl x509 -in cert.pem -noout -text | sed -En 's/.*Serial Number.*\(0x([0-9a-f]+)\)/\1/p'
+    openssl x509 -in cert.pem -noout -serial | cut -d= -f2
 
-The endpoint returns the information as a JSON.
+The endpoint returns the information as a JSON:
+
+    $ curl -ki https://127.0.0.1:15000/cert-status-by-serial/66317d2e02f5d3d6
+    HTTP/2 200
+    cache-control: public, max-age=0, no-cache
+    content-type: application/json; charset=utf-8
+    link: <https://127.0.0.1:15000/dir>;rel="index"
+    content-length: 1740
+    date: Fri, 12 Jul 2019 22:14:21 GMT
+
+    {
+       "Certificate": "-----BEGIN CERTIFICATE-----\nMIIEVz...tcw=\n-----END CERTIFICATE-----\n",
+       "Reason": 4,
+       "RevokedAt": "2019-07-13T00:13:20.418489956+02:00",
+       "Serial": "66317d2e02f5d3d6",
+       "Status": "Revoked"
+    }
+
 
 ### OCSP Responder URL
 
