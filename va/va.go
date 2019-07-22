@@ -127,8 +127,6 @@ func New(
 		va.log.Print("Using system DNS resolver for ACME challenges")
 	}
 
-	va.log.Print(va.resolveIP("8.8.8.8"))
-
 	// Read the PEBBLE_VA_NOSLEEP environment variable string
 	noSleep := os.Getenv(noSleepEnvVar)
 	// If it is set to something true-like, then the VA shouldn't sleep
