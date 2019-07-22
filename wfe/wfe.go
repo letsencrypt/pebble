@@ -353,7 +353,7 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 		status = "Valid"
 	}
 
-	if status == "" {
+	if status == "" || cert == nil {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
