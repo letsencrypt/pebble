@@ -339,7 +339,7 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	serialStr := strings.TrimPrefix(request.URL.Path, certStatusBySerial)
 	serial := big.NewInt(0)
 	if _, ok := serial.SetString(serialStr, 16); !ok {
-		response.WriteHeader(http.StatusNotFound)
+		response.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
