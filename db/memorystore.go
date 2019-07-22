@@ -338,7 +338,7 @@ func (m *MemoryStore) GetCertificateBySerial(serialNumber *big.Int) *core.Certif
 	return nil
 }
 
-// GetCertificateBySerial loops over all revoked certificates to find the one that matches the
+// GetRevokedCertificateBySerial loops over all revoked certificates to find the one that matches the
 // provided serial number. This method is linear and it's not optimized to give you a quick
 // response.
 func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core.RevokedCertificate {

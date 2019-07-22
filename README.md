@@ -316,7 +316,7 @@ intermediate certificates and keys.
 
 The certificate (in PEM format) and its revocation status can be queried by doing
 a `GET` request to `https://localhost:15000/cert-status-by-serial/<serial>`, where
-`<serial>` is the hexadecimal representation of the certificate's serial number.
+`<serial>` is the hexadecimal representation of the certificate's serial number (no `0x` prefix).
 It can be obtained via:
 
     openssl x509 -in cert.pem -noout -serial | cut -d= -f2
