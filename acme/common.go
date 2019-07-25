@@ -31,7 +31,7 @@ type Identifier struct {
 
 type Account struct {
 	Status  string   `json:"status"`
-	Contact []string `json:"contact"`
+	Contact []string `json:"contact,omitempty"`
 	Orders  string   `json:"orders,omitempty"`
 }
 
