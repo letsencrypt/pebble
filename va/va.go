@@ -602,30 +602,30 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 		return addrs, nil
 	}
 
-	messageA := new(dns.Msg)
-	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
-	inA, _, errA := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
 	messageAAAA := new(dns.Msg)
 	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
 	inAAAA, _, errAAAA := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
-
-	if errA != nil {
-		return addrs, errA
-	}
+	messageA := new(dns.Msg)
+	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
+	inA, _, errA := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
 
 	if errAAAA != nil {
 		return addrs, errAAAA
 	}
 
-	for _, record := range inA.Answer {
-		if t, ok := record.(*dns.A); ok {
-			addrs = append(addrs, t.A.String())
-		}
+	if errA != nil {
+		return addrs, errA
 	}
 
 	for _, record := range inAAAA.Answer {
 		if t, ok := record.(*dns.AAAA); ok {
 			addrs = append(addrs, t.AAAA.String())
+		}
+	}
+
+	for _, record := range inA.Answer {
+		if t, ok := record.(*dns.A); ok {
+			addrs = append(addrs, t.A.String())
 		}
 	}
 
