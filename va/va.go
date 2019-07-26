@@ -503,7 +503,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 	if err != nil {
 		return nil, url.String(), acme.MalformedProblem(
-			fmt.Sprintf("Error occured while resolving URL %q: %q", url.String(), err))
+			fmt.Sprintf("Error occurred while resolving URL %q: %q", url.String(), err))
 	}
 
 	if len(addrs) == 0 {
