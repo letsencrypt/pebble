@@ -312,6 +312,34 @@ request to `https://localhost:15000/roots/0`, `https://localhost:15000/root-keys
 etc. These endpoints also send `Link` HTTP headers for all alternative root and
 intermediate certificates and keys.
 
+#### Certificate Status
+
+The certificate (in PEM format) and its revocation status can be queried by sending
+a `GET` request to `https://localhost:15000/cert-status-by-serial/<serial>`, where
+`<serial>` is the hexadecimal representation of the certificate's serial number (no `0x` prefix).
+It can be obtained via:
+
+    openssl x509 -in cert.pem -noout -serial | cut -d= -f2
+
+The endpoint returns the information as a JSON object:
+
+    $ curl -ki https://127.0.0.1:15000/cert-status-by-serial/66317d2e02f5d3d6
+    HTTP/2 200
+    cache-control: public, max-age=0, no-cache
+    content-type: application/json; charset=utf-8
+    link: <https://127.0.0.1:15000/dir>;rel="index"
+    content-length: 1740
+    date: Fri, 12 Jul 2019 22:14:21 GMT
+
+    {
+       "Certificate": "-----BEGIN CERTIFICATE-----\nMIIEVz...tcw=\n-----END CERTIFICATE-----\n",
+       "Reason": 4,
+       "RevokedAt": "2019-07-13T00:13:20.418489956+02:00",
+       "Serial": "66317d2e02f5d3d6",
+       "Status": "Revoked"
+    }
+
+
 ### OCSP Responder URL
 
 Pebble does not support the OCSP protocol as a responder and so does not set
