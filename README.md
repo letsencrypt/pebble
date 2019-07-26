@@ -321,7 +321,7 @@ It can be obtained via:
 
     openssl x509 -in cert.pem -noout -serial | cut -d= -f2
 
-The endpoint returns the information as a JSON:
+The endpoint returns the information as a JSON object:
 
     $ curl -ki https://127.0.0.1:15000/cert-status-by-serial/66317d2e02f5d3d6
     HTTP/2 200
