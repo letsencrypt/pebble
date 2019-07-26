@@ -92,6 +92,16 @@ const (
 	// http://www.itu.int/rec/T-REC-X.509-201210-I/en
 	unusedRevocationReason       = 7
 	aACompromiseRevocationReason = 10
+
+	// authzReuseEnvVar defines an environment variable name used to provide a
+	// percentage value for how often Pebble should try to reuse valid authorizations
+	// for each identifier in an order. The percentage is independent of whether a
+	// valid authorization exists or not for each identifier in an order.
+	authzReuseEnvVar = "PEBBLE_WFE_AUTHZREUSE"
+
+	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
+	// and reuse valid authorizations?
+	defaultAuthzReuse = 50
 )
 
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
@@ -114,13 +124,14 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	log             *log.Logger
-	db              *db.MemoryStore
-	nonce           *nonceMap
-	nonceErrPercent int
-	va              *va.VAImpl
-	ca              *ca.CAImpl
-	strict          bool
+	log               *log.Logger
+	db                *db.MemoryStore
+	nonce             *nonceMap
+	nonceErrPercent   int
+	authzReusePercent int
+	va                *va.VAImpl
+	ca                *ca.CAImpl
+	strict            bool
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -154,14 +165,24 @@ func New(
 	}
 	log.Printf("Configured to reject %d%% of good nonces", nonceErrPercent)
 
+	// Get authz reuse percent from the environment
+	authzReusePercent := defaultAuthzReuse
+	if val, err := strconv.ParseInt(os.Getenv(authzReuseEnvVar), 10, 0); err == nil &&
+		val >= 0 && val <= 100 {
+		authzReusePercent = int(val)
+	}
+	log.Printf("Configured to attempt authz reuse for each identifiers %d%% of the time",
+		authzReusePercent)
+
 	return WebFrontEndImpl{
-		log:             log,
-		db:              db,
-		nonce:           newNonceMap(),
-		nonceErrPercent: nonceErrPercent,
-		va:              va,
-		ca:              ca,
-		strict:          strict,
+		log:               log,
+		db:                db,
+		nonce:             newNonceMap(),
+		nonceErrPercent:   nonceErrPercent,
+		authzReusePercent: authzReusePercent,
+		va:                va,
+		ca:                ca,
+		strict:            strict,
 	}
 }
 
@@ -1209,7 +1230,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 
 	// Lock the order for reading
 	order.RLock()
-	// Create one authz for each name in the order's parsed CSR
+	// Add one authz for each name in the order's parsed CSR
 	for _, name := range order.Identifiers {
 		now := time.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
@@ -1217,28 +1238,34 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Type:  name.Type,
 			Value: name.Value,
 		}
-		authz := &core.Authorization{
-			ID:          newToken(),
-			ExpiresDate: expires,
-			Order:       order,
-			Authorization: acme.Authorization{
-				Status:     acme.StatusPending,
-				Identifier: ident,
-				Expires:    expires.UTC().Format(time.RFC3339),
-			},
+		// If there is an existing valid authz for this identifier, we can reuse it
+		authz := wfe.db.FindValidAuthorization(order.AccountID, ident)
+		// Otherwise create a new pending authz (and randomly not)
+		if authz == nil || rand.Intn(100) > wfe.authzReusePercent {
+			authz = &core.Authorization{
+				ID:          newToken(),
+				ExpiresDate: expires,
+				Order:       order,
+				Authorization: acme.Authorization{
+					Status:     acme.StatusPending,
+					Identifier: ident,
+					Expires:    expires.UTC().Format(time.RFC3339),
+				},
+			}
+			authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+			// Create the challenges for this authz
+			err := wfe.makeChallenges(authz, request)
+			if err != nil {
+				return err
+			}
+			// Save the authorization in memory
+			count, err := wfe.db.AddAuthorization(authz)
+			if err != nil {
+				return err
+			}
+			wfe.log.Printf("There are now %d authorizations in the db\n", count)
 		}
-		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
-		// Create the challenges for this authz
-		err := wfe.makeChallenges(authz, request)
-		if err != nil {
-			return err
-		}
-		// Save the authorization in memory
-		count, err := wfe.db.AddAuthorization(authz)
-		if err != nil {
-			return err
-		}
-		wfe.log.Printf("There are now %d authorizations in the db\n", count)
+
 		authzURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
 		auths = append(auths, authzURL)
 		authObs = append(authObs, authz)

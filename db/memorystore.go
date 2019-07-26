@@ -9,9 +9,11 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -211,6 +213,19 @@ func (m *MemoryStore) GetAuthorizationByID(id string) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
 	return m.authorizationsByID[id]
+}
+
+func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.Identifier) *core.Authorization {
+	m.RLock()
+	defer m.RUnlock()
+	for _, authz := range m.authorizationsByID {
+		if authz.Identifier.Type == identifier.Type && authz.Identifier.Value == identifier.Value &&
+			authz.Order.AccountID == accountID && authz.ExpiresDate.After(time.Now()) &&
+			authz.Status == acme.StatusValid {
+			return authz
+		}
+	}
+	return nil
 }
 
 func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
