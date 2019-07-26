@@ -314,7 +314,7 @@ intermediate certificates and keys.
 
 #### Certificate Status
 
-The certificate (in PEM format) and its revocation status can be queried by doing
+The certificate (in PEM format) and its revocation status can be queried by sending
 a `GET` request to `https://localhost:15000/cert-status-by-serial/<serial>`, where
 `<serial>` is the hexadecimal representation of the certificate's serial number (no `0x` prefix).
 It can be obtained via:
