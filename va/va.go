@@ -501,7 +501,12 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 
 	addrs, err := va.resolveIP(identifier)
 
-	if err != nil || len(addrs) == 0 {
+	if err != nil {
+		return nil, url.String(), acme.MalformedProblem(
+			fmt.Sprintf("Error occured while resolving URL %q: %q", url.String(), err))
+	}
+
+	if len(addrs) == 0 {
 		return nil, url.String(), acme.MalformedProblem(
 			fmt.Sprintf("Could not resolve URL %q", url.String()))
 	}
@@ -566,13 +571,17 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 		return net.DefaultResolver.LookupTXT(ctx, name)
 	}
 
-	txts := []string{}
+	var txts []string
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
 	in, _, err := va.dnsClient.ExchangeContext(ctx, message, va.customResolverAddr)
 
-	if err != nil || in.Rcode != dns.RcodeSuccess {
-		return txts, err
+	if err != nil {
+		return nil, err
+	}
+
+	if in.Rcode != dns.RcodeSuccess {
+		return nil, fmt.Errorf("DNS lookup for %q returned an unsuccessful response: %q", name, in.Rcode)
 	}
 
 	for _, record := range in.Answer {
@@ -604,23 +613,24 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 
 	messageAAAA := new(dns.Msg)
 	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
-	inAAAA, _, errAAAA := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
-	messageA := new(dns.Msg)
-	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
-	inA, _, errA := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
+	inAAAA, _, err := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
 
-	if errAAAA != nil {
-		return addrs, errAAAA
-	}
-
-	if errA != nil {
-		return addrs, errA
+	if err != nil {
+		return nil, err
 	}
 
 	for _, record := range inAAAA.Answer {
 		if t, ok := record.(*dns.AAAA); ok {
 			addrs = append(addrs, t.AAAA.String())
 		}
+	}
+
+	messageA := new(dns.Msg)
+	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
+	inA, _, err := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
+
+	if err != nil {
+		return nil, err
 	}
 
 	for _, record := range inA.Answer {
