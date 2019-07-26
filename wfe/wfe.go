@@ -375,14 +375,11 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 		result.RevokedAt = rcert.RevokedAt.UTC().String()
 	}
 
-	resultJSON, err := marshalIndent(result)
+	err := wfe.writeJSONResponse(response, http.StatusOK, result)
 	if err != nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	response.Header().Set("Content-Type", "application/json; charset=utf-8")
-	response.WriteHeader(http.StatusOK)
-	_, _ = response.Write(resultJSON)
 }
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
