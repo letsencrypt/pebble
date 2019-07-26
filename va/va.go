@@ -593,7 +593,7 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	return txts, nil
 }
 
-// resolveIP find all associated IPs to the given domain name using the recursive resolver located at
+// resolveIP find all IPs for the given domain name using the recursive resolver located at
 // `va.customResolverAddr`, or the default system resolver if no custom resolver addr is specified
 func (va VAImpl) resolveIP(name string) ([]string, error) {
 	ctx, cancelfunc := context.WithTimeout(context.Background(), validationTimeout)
