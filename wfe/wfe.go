@@ -1690,7 +1690,7 @@ func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 
 	// Build a list of plain acme.Challenges to display using the core.Challenge
 	// objects from the authorization.
-	var chals []acme.Challenge
+	chals := make([]acme.Challenge, 0)
 	for _, c := range authz.Challenges {
 		c.RLock()
 		// If the authz isn't pending then we need to filter the challenges displayed
