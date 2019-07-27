@@ -51,6 +51,7 @@ const (
 	certPath          = "/certZ/"
 	revokeCertPath    = "/revoke-cert"
 	keyRolloverPath   = "/rollover-account-key"
+	ordersPath        = "/list-orderz/"
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool. We export
@@ -104,6 +105,15 @@ const (
 	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
 	// and reuse valid authorizations.
 	defaultAuthzReuse = 50
+
+	// ordersPerPageEnvVar defines the environment variable name used to provide
+	// the number of orders to show per page. To have the WFE show 15 orders per
+	// page, run Pebble like:
+	//   PEBBLE_WFE_ORDERS_PER_PAGE=15 pebble
+	ordersPerPageEnvVar = "PEBBLE_WFE_ORDERS_PER_PAGE"
+
+	// The default number of orders enumerated per page
+	defaultOrdersPerPage = 3
 )
 
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
@@ -131,6 +141,7 @@ type WebFrontEndImpl struct {
 	nonce             *nonceMap
 	nonceErrPercent   int
 	authzReusePercent int
+	ordersPerPage     int
 	va                *va.VAImpl
 	ca                *ca.CAImpl
 	strict            bool
@@ -176,12 +187,27 @@ func New(
 	log.Printf("Configured to attempt authz reuse for each identifier %d%% of the time",
 		authzReusePercent)
 
+	// Read the number of orders per page that should be returned.
+	ordersPerPageVal := os.Getenv(ordersPerPageEnvVar)
+	var ordersPerPage int
+
+	// Parse the env var value as a base 10 int - if there isn't an error, use it
+	// as the wfe nonceErrPercent
+	if val, err := strconv.ParseInt(ordersPerPageVal, 10, 0); err == nil && val > 0 {
+		ordersPerPage = int(val)
+	} else {
+		// Otherwise just use the default
+		ordersPerPage = defaultOrdersPerPage
+	}
+	log.Printf("Configured to show %d orders per page", ordersPerPage)
+
 	return WebFrontEndImpl{
 		log:               log,
 		db:                db,
 		nonce:             newNonceMap(),
 		nonceErrPercent:   nonceErrPercent,
 		authzReusePercent: authzReusePercent,
+		ordersPerPage:     ordersPerPage,
 		va:                va,
 		ca:                ca,
 		strict:            strict,
@@ -421,6 +447,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
+	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, "POST")
 
 	return m
 }
@@ -971,6 +998,76 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	}
 }
 
+func (wfe *WebFrontEndImpl) ListOrders(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	existingAcct, prob := wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	var page int
+	accountPageStr := strings.TrimPrefix(request.URL.Path, ordersPath)
+	accountPageSplit := strings.SplitN(accountPageStr, "/page/", 2)
+	if len(accountPageSplit) == 0 || accountPageSplit[0] != existingAcct.ID {
+		wfe.sendError(acme.NotFoundProblem("Wrong account ID"), response)
+		return
+	}
+	if len(accountPageSplit) == 2 {
+		no, err := strconv.Atoi(accountPageSplit[1])
+		if err != nil || no < 2 {
+			wfe.sendError(acme.NotFoundProblem("Invalid page number"), response)
+			return
+		}
+		page = no - 1
+	}
+	orders := wfe.db.GetOrdersByAccountID(existingAcct.ID)
+	filteredOrders := make([]*core.Order, 0, len(orders))
+	for _, order := range orders {
+		if order.Status == acme.StatusInvalid {
+			continue
+		}
+		filteredOrders = append(filteredOrders, order)
+	}
+	start := page * wfe.ordersPerPage
+	end := (page + 1) * wfe.ordersPerPage
+	if end > len(filteredOrders) {
+		end = len(filteredOrders)
+	}
+	if start > end {
+		start = end
+	}
+
+	result := struct {
+		Orders []string `json:"orders"`
+	}{
+		Orders: make([]string, 0, end-start),
+	}
+	for _, order := range filteredOrders[start:end] {
+		orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
+		result.Orders = append(result.Orders, orderURL)
+	}
+
+	if end < len(filteredOrders) {
+		nextPageURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/page/%d", ordersPath, existingAcct.ID, page+2))
+		response.Header().Add("Link", link(nextPageURL, "next"))
+	}
+
+	err := wfe.writeJSONResponse(response, http.StatusOK, result)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshalling orders list"), response)
+		return
+	}
+}
+
 func (wfe *WebFrontEndImpl) verifyKeyRollover(
 	innerPayload []byte,
 	existingAcct *core.Account,
@@ -1164,6 +1261,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		wfe.sendError(acme.InternalErrorProblem("Error saving account"), response)
 		return
 	}
+	newAcct.Orders = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", ordersPath, newAcct.ID))
 	wfe.log.Printf("There are now %d accounts in memory\n", count)
 
 	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, newAcct.ID))

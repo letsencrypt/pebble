@@ -42,7 +42,8 @@ type MemoryStore struct {
 	// key bytes.
 	accountsByKeyID map[string]*core.Account
 
-	ordersByID map[string]*core.Order
+	ordersByID        map[string]*core.Order
+	ordersByAccountID map[string][]*core.Order
 
 	authorizationsByID map[string]*core.Authorization
 
@@ -58,6 +59,7 @@ func NewMemoryStore() *MemoryStore {
 		accountsByID:            make(map[string]*core.Account),
 		accountsByKeyID:         make(map[string]*core.Account),
 		ordersByID:              make(map[string]*core.Order),
+		ordersByAccountID:       make(map[string][]*core.Order),
 		authorizationsByID:      make(map[string]*core.Authorization),
 		challengesByID:          make(map[string]*core.Challenge),
 		certificatesByID:        make(map[string]*core.Certificate),
@@ -170,6 +172,13 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 		return 0, fmt.Errorf("order %q already exists", orderID)
 	}
 
+	var ordersByAccountID []*core.Order
+	var present bool
+	if ordersByAccountID, present = m.ordersByAccountID[order.AccountID]; !present {
+		ordersByAccountID = make([]*core.Order, 0)
+	}
+	m.ordersByAccountID[order.AccountID] = append(ordersByAccountID, order)
+
 	m.ordersByID[orderID] = order
 	return len(m.ordersByID), nil
 }
@@ -189,6 +198,25 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 		return order
 	}
 	return nil
+}
+
+func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
+	m.RLock()
+	defer m.RUnlock()
+
+	if orders, ok := m.ordersByAccountID[accountID]; ok {
+		for _, order := range orders {
+			orderStatus, err := order.GetStatus()
+			if err != nil {
+				panic(err)
+			}
+			order.Lock()
+			defer order.Unlock()
+			order.Status = orderStatus
+		}
+		return orders
+	}
+	return make([]*core.Order, 0)
 }
 
 func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
