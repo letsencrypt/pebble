@@ -215,13 +215,15 @@ func (m *MemoryStore) GetAuthorizationByID(id string) *core.Authorization {
 	return m.authorizationsByID[id]
 }
 
+// FindValidAuthorization locates an existing valid authorization for an identifier
+// from the ACME account matching accountID.
 func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.Identifier) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
 	for _, authz := range m.authorizationsByID {
-		if authz.Identifier.Type == identifier.Type && authz.Identifier.Value == identifier.Value &&
-			authz.Order.AccountID == accountID && authz.ExpiresDate.After(time.Now()) &&
-			authz.Status == acme.StatusValid {
+		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
+			authz.Order != nil && authz.Order.AccountID == accountID &&
+			authz.ExpiresDate.After(time.Now()) {
 			return authz
 		}
 	}

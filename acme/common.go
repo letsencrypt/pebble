@@ -29,6 +29,10 @@ type Identifier struct {
 	Value string `json:"value"`
 }
 
+func (ident Identifier) Equals(other Identifier) bool {
+	return ident.Type == other.Type && ident.Value == other.Value
+}
+
 type Account struct {
 	Status  string   `json:"status"`
 	Contact []string `json:"contact"`
