@@ -100,7 +100,7 @@ const (
 	authzReuseEnvVar = "PEBBLE_WFE_AUTHZREUSE"
 
 	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
-	// and reuse valid authorizations?
+	// and reuse valid authorizations.
 	defaultAuthzReuse = 50
 )
 
@@ -171,7 +171,7 @@ func New(
 		val >= 0 && val <= 100 {
 		authzReusePercent = int(val)
 	}
-	log.Printf("Configured to attempt authz reuse for each identifiers %d%% of the time",
+	log.Printf("Configured to attempt authz reuse for each identifier %d%% of the time",
 		authzReusePercent)
 
 	return WebFrontEndImpl{
