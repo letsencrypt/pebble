@@ -215,8 +215,8 @@ func (m *MemoryStore) GetAuthorizationByID(id string) *core.Authorization {
 	return m.authorizationsByID[id]
 }
 
-// FindValidAuthorization locates an existing valid authorization for an identifier
-// from the ACME account matching accountID.
+// FindValidAuthorization fetches the first, if any, valid and unexpired authorization for the
+// provided identifier, from the ACME account matching accountID.
 func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.Identifier) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
