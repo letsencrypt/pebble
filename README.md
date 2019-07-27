@@ -253,9 +253,9 @@ ACME servers may choose to reuse valid authorizations from previous orders in ne
 
 **Pebble will reuse valid authorizations in new orders, if they exist, 50% of the time**.
 
-The percentage may be controlled with the environment variable `PEBBLE_WFE_AUTHZREUSE`, e.g. to always reuse authorizations:
+The percentage may be controlled with the environment variable `PEBBLE_AUTHZREUSE`, e.g. to always reuse authorizations:
 
-`PEBBLE_WFE_AUTHZREUSE=100 pebble`
+`PEBBLE_AUTHZREUSE=100 pebble`
 
 ### Avoiding Client HTTPS Errors
 

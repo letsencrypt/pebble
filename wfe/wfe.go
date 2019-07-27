@@ -97,7 +97,7 @@ const (
 	// percentage value for how often Pebble should try to reuse valid authorizations
 	// for each identifier in an order. The percentage is independent of whether a
 	// valid authorization exists or not for each identifier in an order.
-	authzReuseEnvVar = "PEBBLE_WFE_AUTHZREUSE"
+	authzReuseEnvVar = "PEBBLE_AUTHZREUSE"
 
 	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
 	// and reuse valid authorizations.
