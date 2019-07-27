@@ -247,6 +247,16 @@ To **never** reject a valid nonce as invalid run:
 
 `PEBBLE_WFE_NONCEREJECT=0 pebble`
 
+### Authorization Reuse
+
+ACME servers may choose to reuse valid authorizations from previous orders in new orders. ACME clients [should always check](https://tools.ietf.org/html/rfc8555#section-7.1.3) the status of a new order and its authorizations to confirm whether they need to respond to any challenges.
+
+**Pebble will reuse valid authorizations in new orders, if they exist, 50% of the time**.
+
+The percentage may be controlled with the environment variable `PEBBLE_WFE_AUTHZREUSE`, e.g. to always reuse authorizations:
+
+`PEBBLE_WFE_AUTHZREUSE=100 pebble`
+
 ### Avoiding Client HTTPS Errors
 
 By default Pebble is accessible over HTTPS-only and uses a [test
