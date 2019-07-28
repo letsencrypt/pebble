@@ -233,7 +233,7 @@ func (wfe *WebFrontEndImpl) HandleManagementFunc(
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
-		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
+		problemDoc = []byte("{\"detail\": \"Problem marshaling error message.\"}")
 	}
 
 	response.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
@@ -901,7 +901,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		}
 		err := wfe.writeJSONResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
-			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+			wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
 			return
 		}
 		return
@@ -945,7 +945,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 
 	err = wfe.writeJSONResponse(response, http.StatusOK, newAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
 		return
 	}
 }
@@ -1150,7 +1150,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	response.Header().Add("Location", acctURL)
 	err = wfe.writeJSONResponse(response, http.StatusCreated, newAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
 		return
 	}
 }
@@ -1471,7 +1471,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	orderResp := wfe.orderForDisplay(storedOrder, request)
 	err = wfe.writeJSONResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1559,7 +1559,7 @@ func (wfe *WebFrontEndImpl) Order(
 	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1722,7 +1722,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	response.Header().Add("Location", orderURL)
 	err = wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1849,7 +1849,7 @@ func (wfe *WebFrontEndImpl) Authz(
 		http.StatusOK,
 		prepAuthorizationForDisplay(authz))
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling authz"), response)
 		return
 	}
 }
@@ -1901,7 +1901,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	err := wfe.writeJSONResponse(response, http.StatusOK, chal.Challenge)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling challenge"), response)
 		return
 	}
 }
@@ -2092,7 +2092,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
 	err := wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling challenge"), response)
 		return
 	}
 }
