@@ -1063,7 +1063,7 @@ func (wfe *WebFrontEndImpl) ListOrders(
 
 	err := wfe.writeJSONResponse(response, http.StatusOK, result)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling orders list"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling orders list"), response)
 		return
 	}
 }
