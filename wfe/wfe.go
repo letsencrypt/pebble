@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
@@ -58,6 +59,7 @@ const (
 	rootKeyPath          = "/root-keys/"
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
+	certStatusBySerial   = "/cert-status-by-serial/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -329,6 +331,57 @@ func (wfe *WebFrontEndImpl) handleKey(
 	}
 }
 
+func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	serialStr := strings.TrimPrefix(request.URL.Path, certStatusBySerial)
+	serial := big.NewInt(0)
+	if _, ok := serial.SetString(serialStr, 16); !ok {
+		response.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var status string
+	var cert *core.Certificate
+	var rcert *core.RevokedCertificate
+	if rcert = wfe.db.GetRevokedCertificateBySerial(serial); rcert != nil {
+		status = "Revoked"
+		cert = rcert.Certificate
+	} else if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
+		status = "Valid"
+	}
+
+	if status == "" || cert == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	result := struct {
+		Status      string
+		Serial      string
+		Certificate string
+		Reason      *uint  `json:",omitempty"`
+		RevokedAt   string `json:",omitempty"`
+	}{
+		Status:      status,
+		Serial:      serial.Text(16),
+		Certificate: string(cert.PEM()),
+	}
+	if rcert != nil {
+		if rcert.Reason != nil {
+			result.Reason = rcert.Reason
+		}
+		result.RevokedAt = rcert.RevokedAt.UTC().String()
+	}
+
+	err := wfe.writeJSONResponse(response, http.StatusOK, result)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET only handlers
@@ -360,6 +413,7 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath))
 	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
 	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
+	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
 	return m
 }
 
@@ -1690,7 +1744,7 @@ func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 
 	// Build a list of plain acme.Challenges to display using the core.Challenge
 	// objects from the authorization.
-	var chals []acme.Challenge
+	chals := make([]acme.Challenge, 0)
 	for _, c := range authz.Challenges {
 		c.RLock()
 		// If the authz isn't pending then we need to filter the challenges displayed
@@ -2372,6 +2426,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return prob
 	}
 
-	wfe.db.RevokeCertificate(cert)
+	wfe.db.RevokeCertificate(&core.RevokedCertificate{
+		Certificate: cert,
+		RevokedAt:   time.Now(),
+		Reason:      revokeCertReq.Reason,
+	})
 	return nil
 }

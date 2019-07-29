@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"reflect"
 	"strconv"
 	"sync"
@@ -46,7 +47,7 @@ type MemoryStore struct {
 	challengesByID map[string]*core.Challenge
 
 	certificatesByID        map[string]*core.Certificate
-	revokedCertificatesByID map[string]*core.Certificate
+	revokedCertificatesByID map[string]*core.RevokedCertificate
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -58,7 +59,7 @@ func NewMemoryStore() *MemoryStore {
 		authorizationsByID:      make(map[string]*core.Authorization),
 		challengesByID:          make(map[string]*core.Challenge),
 		certificatesByID:        make(map[string]*core.Certificate),
-		revokedCertificatesByID: make(map[string]*core.Certificate),
+		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 	}
 }
 
@@ -280,11 +281,11 @@ func (m *MemoryStore) GetCertificateByDER(der []byte) *core.Certificate {
 
 // GetCertificateByDER loops over all revoked certificates to find the one that matches the provided
 // DER bytes. This method is linear and it's not optimized to give you a quick response.
-func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.Certificate {
+func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.RevokedCertificate {
 	m.RLock()
 	defer m.RUnlock()
 	for _, c := range m.revokedCertificatesByID {
-		if reflect.DeepEqual(c.DER, der) {
+		if reflect.DeepEqual(c.Certificate.DER, der) {
 			return c
 		}
 	}
@@ -292,11 +293,11 @@ func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.Certificate {
 	return nil
 }
 
-func (m *MemoryStore) RevokeCertificate(cert *core.Certificate) {
+func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) {
 	m.Lock()
 	defer m.Unlock()
-	m.revokedCertificatesByID[cert.ID] = cert
-	delete(m.certificatesByID, cert.ID)
+	m.revokedCertificatesByID[cert.Certificate.ID] = cert
+	delete(m.certificatesByID, cert.Certificate.ID)
 }
 
 /*
@@ -321,4 +322,33 @@ func keyToID(key crypto.PublicKey) (string, error) {
 		spkiDigest := sha256.Sum256(keyDER)
 		return hex.EncodeToString(spkiDigest[:]), nil
 	}
+}
+
+// GetCertificateBySerial loops over all certificates to find the one that matches the provided
+// serial number. This method is linear and it's not optimized to give you a quick response.
+func (m *MemoryStore) GetCertificateBySerial(serialNumber *big.Int) *core.Certificate {
+	m.RLock()
+	defer m.RUnlock()
+	for _, c := range m.certificatesByID {
+		if serialNumber.Cmp(c.Cert.SerialNumber) == 0 {
+			return c
+		}
+	}
+
+	return nil
+}
+
+// GetRevokedCertificateBySerial loops over all revoked certificates to find the one that matches the
+// provided serial number. This method is linear and it's not optimized to give you a quick
+// response.
+func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core.RevokedCertificate {
+	m.RLock()
+	defer m.RUnlock()
+	for _, c := range m.revokedCertificatesByID {
+		if serialNumber.Cmp(c.Certificate.Cert.SerialNumber) == 0 {
+			return c
+		}
+	}
+
+	return nil
 }

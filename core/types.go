@@ -192,6 +192,13 @@ func (c Certificate) Chain(no int) []byte {
 	return bytes.Join(chain, nil)
 }
 
+// RevokedCertificate is a certificate together with information about its revocation.
+type RevokedCertificate struct {
+	Certificate *Certificate
+	RevokedAt   time.Time
+	Reason      *uint
+}
+
 type ValidationRecord struct {
 	URL         string
 	Error       *acme.ProblemDetails
