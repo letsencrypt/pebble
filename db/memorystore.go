@@ -10,9 +10,11 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"gopkg.in/square/go-jose.v2"
 
+	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 )
 
@@ -212,6 +214,21 @@ func (m *MemoryStore) GetAuthorizationByID(id string) *core.Authorization {
 	m.RLock()
 	defer m.RUnlock()
 	return m.authorizationsByID[id]
+}
+
+// FindValidAuthorization fetches the first, if any, valid and unexpired authorization for the
+// provided identifier, from the ACME account matching accountID.
+func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.Identifier) *core.Authorization {
+	m.RLock()
+	defer m.RUnlock()
+	for _, authz := range m.authorizationsByID {
+		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
+			authz.Order != nil && authz.Order.AccountID == accountID &&
+			authz.ExpiresDate.After(time.Now()) {
+			return authz
+		}
+	}
+	return nil
 }
 
 func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
