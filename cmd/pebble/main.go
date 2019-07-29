@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -55,10 +53,6 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	if len(*resolverAddress) > 0 {
-		setupCustomDNSResolver(*resolverAddress)
-	}
-
 	alternateRoots := 0
 	alternateRootsVal := os.Getenv("PEBBLE_ALTERNATE_ROOTS")
 	if val, err := strconv.ParseInt(alternateRootsVal, 10, 0); err == nil && val >= 0 {
@@ -67,7 +61,7 @@ func main() {
 
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode)
+	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
 	muxHandler := wfeImpl.Handler()
@@ -102,14 +96,4 @@ func main() {
 		c.Pebble.PrivateKey,
 		muxHandler)
 	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
-}
-
-func setupCustomDNSResolver(dnsResolverAddress string) {
-	net.DefaultResolver = &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			d := net.Dialer{}
-			return d.DialContext(ctx, "udp", dnsResolverAddress)
-		},
-	}
 }
