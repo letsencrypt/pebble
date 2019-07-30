@@ -54,10 +54,9 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features (PRs are welcome!). It does not presently
-support the "orders" field of account objects, subproblems, pre-authorization or
-external account binding. Pebble does not support revoking a certificate issued
-by a different ACME account by proving authorization of all of the certificate's
-domains.
+support subproblems, pre-authorization or external account binding. Pebble does
+not support revoking a certificate issued by a different ACME account by proving
+authorization of all of the certificate's domains.
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
