@@ -367,8 +367,7 @@ to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.j
 
 ### Listing orders
 
-[As opposed to Boulder](https://github.com/letsencrypt/boulder/issues/3335), Pebble has support
-for enumerating all orders for an ACME account object according to
+Pebble has support for enumerating all orders for an ACME account object according to
 [RFC 8555, Section 7.1.2](https://tools.ietf.org/html/rfc8555#section-7.1.2.1). By default, three
 orders are returned per page, to make it easy to test pagination. This number can be modified by
 setting the `PEBBLE_WFE_ORDERS_PER_PAGE` environment variable to a positive integer. For example,
