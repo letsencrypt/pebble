@@ -164,10 +164,10 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 	order.RLock()
 	orderID := order.ID
 	accountID := order.AccountID
+	order.RUnlock()
 	if len(orderID) == 0 {
 		return 0, fmt.Errorf("order must have a non-empty ID to add to MemoryStore")
 	}
-	order.RUnlock()
 
 	if _, present := m.ordersByID[orderID]; present {
 		return 0, fmt.Errorf("order %q already exists", orderID)
