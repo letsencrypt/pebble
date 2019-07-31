@@ -163,6 +163,7 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 
 	order.RLock()
 	orderID := order.ID
+	accountID := order.AccountID
 	if len(orderID) == 0 {
 		return 0, fmt.Errorf("order must have a non-empty ID to add to MemoryStore")
 	}
@@ -174,10 +175,10 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 
 	var ordersByAccountID []*core.Order
 	var present bool
-	if ordersByAccountID, present = m.ordersByAccountID[order.AccountID]; !present {
+	if ordersByAccountID, present = m.ordersByAccountID[accountID]; !present {
 		ordersByAccountID = make([]*core.Order, 0)
 	}
-	m.ordersByAccountID[order.AccountID] = append(ordersByAccountID, order)
+	m.ordersByAccountID[accountID] = append(ordersByAccountID, order)
 
 	m.ordersByID[orderID] = order
 	return len(m.ordersByID), nil
