@@ -411,7 +411,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
 				"first certificate had names %q",
-			acme.ChallengeTLSALPN01, task.Identifier, hostPort, len(certs), names)
+			acme.ChallengeTLSALPN01, task.Identifier, net.JoinHostPort(task.Identifier.Value, portString), len(certs), names)
 		result.Error = acme.UnauthorizedProblem(errText)
 		return result
 	}
