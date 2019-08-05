@@ -887,44 +887,30 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		return
 	}
 
+	if postData.postAsGet {
+		wfe.sendError(
+			acme.MalformedProblem("Use the newAccount endpoint with onlyReturnExisting to retrieve an existing account."), response)
+		return
+	}
+
+	// Attempt to fetch existing account
+	// If the account is already deactivated, this will return a problem
+	existingAcct, prob := wfe.getAcctByKey(postData.jwk)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	// updateAcctReq is the ACME account information submitted by the client
 	var updateAcctReq struct {
 		Contact []string `json:"contact"`
-		Status  string   `json:"status,omitempty"`
-	}
-	var existingAcct *core.Account
-	if postData.postAsGet {
-		existingAcct, prob = wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-	} else {
-		err := json.Unmarshal(postData.body, &updateAcctReq)
-		if err != nil {
-			wfe.sendError(
-				acme.MalformedProblem("Error unmarshaling account update JSON body"), response)
-			return
-		}
-		existingAcct, prob = wfe.getAcctByKey(postData.jwk)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
+		Status  string   `json:"status"`
 	}
 
-	// if this update contains no contacts or deactivated status,
-	// simply return the existing account and return early.
-	if updateAcctReq.Contact == nil && updateAcctReq.Status != acme.StatusDeactivated {
-		if !postData.postAsGet {
-			wfe.sendError(acme.MalformedProblem("Use POST-as-GET to retrieve account data instead of doing an empty update"), response)
-			return
-		}
-		err := wfe.writeJSONResponse(response, http.StatusOK, existingAcct)
-		if err != nil {
-			wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
-			return
-		}
+	err := json.Unmarshal(postData.body, &updateAcctReq)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling account update JSON body"), response)
 		return
 	}
 
@@ -939,25 +925,30 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		ID:  existingAcct.ID,
 	}
 
-	switch {
-	case updateAcctReq.Status == acme.StatusDeactivated:
-		newAcct.Status = updateAcctReq.Status
-	case updateAcctReq.Status != "" && updateAcctReq.Status != newAcct.Status:
-		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf(
-				"Invalid account status: %q", updateAcctReq.Status)), response)
-		return
-	case updateAcctReq.Contact != nil:
-		newAcct.Contact = updateAcctReq.Contact
-		// Verify that the contact information provided is supported & valid
-		prob = wfe.verifyContacts(newAcct.Account)
-		if prob != nil {
-			wfe.sendError(prob, response)
+	// Only check the status if it's set and different to the existing status
+	if updateAcctReq.Status != "" && updateAcctReq.Status != newAcct.Status {
+		// Only valid setting for clients to set is deactivated
+		if updateAcctReq.Status != acme.StatusDeactivated {
+			wfe.sendError(
+				acme.MalformedProblem(fmt.Sprintf(
+					"Invalid account status: %q", updateAcctReq.Status)), response)
 			return
 		}
+		// Set the deactivated status directly
+		newAcct.Status = acme.StatusDeactivated
 	}
 
-	err := wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
+	// Set the contact emails for the new account from the request
+	newAcct.Contact = updateAcctReq.Contact
+
+	// Verify that the new contact information provided is supported & valid
+	prob = wfe.verifyContacts(newAcct.Account)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	err = wfe.db.UpdateAccountByID(existingAcct.ID, newAcct)
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error storing updated account"), response)
