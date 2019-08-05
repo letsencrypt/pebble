@@ -342,7 +342,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	portString := strconv.Itoa(va.tlsPort)
-	hostPort := net.JoinHostPort(task.Identifier.Value, portString)
+
 	var serverNameIdentifier string
 	switch task.Identifier.Type {
 	case acme.IdentifierDNS:
@@ -351,11 +351,25 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 		serverNameIdentifier = reverseaddr(task.Identifier.Value)
 	}
 	result := &core.ValidationRecord{
-		URL:         hostPort,
+		URL:         net.JoinHostPort(task.Identifier.Value, portString),
 		ValidatedAt: time.Now(),
 	}
 
-	cs, problem := va.fetchConnectionState(hostPort, &tls.Config{
+	addrs, err := va.resolveIP(task.Identifier.Value)
+
+	if err != nil {
+		result.Error = acme.MalformedProblem(
+			fmt.Sprintf("Error occurred while resolving URL %q: %q", task.Identifier.Value, err))
+		return result
+	}
+
+	if len(addrs) == 0 {
+		result.Error = acme.MalformedProblem(
+			fmt.Sprintf("Could not resolve URL %q", task.Identifier.Value))
+		return result
+	}
+
+	cs, problem := va.fetchConnectionState(net.JoinHostPort(addrs[0], portString), &tls.Config{
 		ServerName:         serverNameIdentifier,
 		NextProtos:         []string{acme.ACMETLS1Protocol},
 		InsecureSkipVerify: true,
@@ -397,7 +411,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
 				"first certificate had names %q",
-			acme.ChallengeTLSALPN01, task.Identifier, hostPort, len(certs), names)
+			acme.ChallengeTLSALPN01, task.Identifier, net.JoinHostPort(task.Identifier.Value, portString), len(certs), names)
 		result.Error = acme.UnauthorizedProblem(errText)
 		return result
 	}
