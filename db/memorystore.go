@@ -222,11 +222,14 @@ func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.I
 	m.RLock()
 	defer m.RUnlock()
 	for _, authz := range m.authorizationsByID {
+		authz.RLock()
 		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
 			authz.Order != nil && authz.Order.AccountID == accountID &&
 			authz.ExpiresDate.After(time.Now()) {
+			authz.RUnlock()
 			return authz
 		}
+		authz.RUnlock()
 	}
 	return nil
 }
