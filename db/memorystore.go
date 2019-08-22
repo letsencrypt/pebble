@@ -217,7 +217,7 @@ func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
 		}
 		return orders
 	}
-	return make([]*core.Order, 0)
+	return nil
 }
 
 func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
