@@ -54,10 +54,9 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features (PRs are welcome!). It does not presently
-support the "orders" field of account objects, subproblems, pre-authorization or
-external account binding. Pebble does not support revoking a certificate issued
-by a different ACME account by proving authorization of all of the certificate's
-domains.
+support subproblems, pre-authorization or external account binding. Pebble does
+not support revoking a certificate issued by a different ACME account by proving
+authorization of all of the certificate's domains.
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
@@ -365,3 +364,13 @@ to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.j
 ```
   "ocspResponderURL": "http://127.0.0.1:4002",
 ```
+
+### Listing orders
+
+Pebble has support for enumerating all orders for an ACME account object according to
+[RFC 8555, Section 7.1.2](https://tools.ietf.org/html/rfc8555#section-7.1.2.1). By default, three
+orders are returned per page, to make it easy to test pagination. This number can be modified by
+setting the `PEBBLE_WFE_ORDERS_PER_PAGE` environment variable to a positive integer. For example,
+to have 15 orders per page, run
+
+`PEBBLE_WFE_ORDERS_PER_PAGE=15 pebble`
