@@ -290,7 +290,7 @@ func (srv *managementServer) delDNSCNAMERecord(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	srv.challSrv.DeleteDNSCAARecord(request.Host)
+	srv.challSrv.DeleteDNSCNAMERecord(request.Host)
 	srv.log.Printf("Removed response for DNS CNAME queries to %q", request.Host)
 	w.WriteHeader(http.StatusOK)
 }
