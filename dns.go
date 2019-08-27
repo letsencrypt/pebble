@@ -170,6 +170,13 @@ func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			Question: q,
 		})
 
+		// If there is a ServFail mock set then ignore the question and set the
+		// SERVFAIL rcode and continue.
+		if s.GetDNSServFailRecord(q.Name) {
+			m.SetRcode(r, dns.RcodeServerFailure)
+			continue
+		}
+
 		// If a CNAME exists for the question include the CNAME record and modify
 		// the question to instead lookup based on that CNAME's target
 		if cname := s.GetDNSCNAMERecord(q.Name); cname != "" {
