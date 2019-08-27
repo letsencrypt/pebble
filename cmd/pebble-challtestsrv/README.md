@@ -103,6 +103,18 @@ To remove a mocked CNAME record for `_acme-challenge.test-host.letsencrypt.org` 
 
     curl -X POST -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "target": "challenges.letsencrypt.org"}' http://localhost:8055/clear-cname
 
+##### Mocked SERVFAIL Responses
+
+To configure the DNS server to return SERVFAIL for all queries for `test-host.letsencrypt.org` run:
+
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/set-servfail
+
+Subsequently any query types (A, AAAA, TXT) for the name will return a SERVFAIL response, overriding any A/AAAA/TXT/CNAME mocks that may also be configured.
+
+To remove the SERVFAIL configuration for `test-host.letsencrypt.org` run:
+
+    curl -X POST -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-servfail
+
 #### HTTP-01
 
 To add an HTTP-01 challenge response for the token `"aaaa"` with the content `"bbbb"` run:

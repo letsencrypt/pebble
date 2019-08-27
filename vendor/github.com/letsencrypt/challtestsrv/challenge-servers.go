@@ -76,6 +76,8 @@ type mockDNSData struct {
 	caaRecords map[string][]MockCAAPolicy
 	// A map of host to CNAME records.
 	cnameRecords map[string]string
+	// A map of hostnames that should receive a SERVFAIL response for all queries.
+	servFailRecords map[string]bool
 }
 
 // MockCAAPolicy holds a tag and a value for a CAA record. See
@@ -133,12 +135,13 @@ func New(config Config) (*ChallSrv, error) {
 		tlsALPNOne:     make(map[string]string),
 		redirects:      make(map[string]string),
 		dnsMocks: mockDNSData{
-			defaultIPv4:  defaultIPv4,
-			defaultIPv6:  defaultIPv6,
-			aRecords:     make(map[string][]string),
-			aaaaRecords:  make(map[string][]string),
-			caaRecords:   make(map[string][]MockCAAPolicy),
-			cnameRecords: make(map[string]string),
+			defaultIPv4:     defaultIPv4,
+			defaultIPv6:     defaultIPv6,
+			aRecords:        make(map[string][]string),
+			aaaaRecords:     make(map[string][]string),
+			caaRecords:      make(map[string][]MockCAAPolicy),
+			cnameRecords:    make(map[string]string),
+			servFailRecords: make(map[string]bool),
 		},
 	}
 

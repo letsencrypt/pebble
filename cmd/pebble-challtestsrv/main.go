@@ -108,6 +108,9 @@ func main() {
 	if *dnsOneBind != "" {
 		http.HandleFunc("/set-default-ipv4", oobSrv.setDefaultDNSIPv4)
 		http.HandleFunc("/set-default-ipv6", oobSrv.setDefaultDNSIPv6)
+		// TODO(@cpu): It might make sense to revisit this API in the future to have
+		// one endpoint that accepts the mock type required (A, AAAA, CNAME, etc)
+		// instead of having separate endpoints per type.
 		http.HandleFunc("/set-txt", oobSrv.addDNS01)
 		http.HandleFunc("/clear-txt", oobSrv.delDNS01)
 		http.HandleFunc("/add-a", oobSrv.addDNSARecord)
@@ -118,6 +121,8 @@ func main() {
 		http.HandleFunc("/clear-caa", oobSrv.delDNSCAARecord)
 		http.HandleFunc("/set-cname", oobSrv.addDNSCNAMERecord)
 		http.HandleFunc("/clear-cname", oobSrv.delDNSCNAMERecord)
+		http.HandleFunc("/set-servfail", oobSrv.addDNSServFailRecord)
+		http.HandleFunc("/clear-servfail", oobSrv.delDNSServFailRecord)
 
 		srv.SetDefaultDNSIPv4(*defaultIPv4)
 		srv.SetDefaultDNSIPv6(*defaultIPv6)
