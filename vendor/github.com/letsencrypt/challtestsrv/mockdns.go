@@ -145,3 +145,30 @@ func (s *ChallSrv) GetDNSCAARecord(host string) []MockCAAPolicy {
 	host = dns.Fqdn(host)
 	return s.dnsMocks.caaRecords[host]
 }
+
+// AddDNSServFailRecord configures the chall srv to return SERVFAIL responses
+// for all queries for the given host.
+func (s *ChallSrv) AddDNSServFailRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	s.dnsMocks.servFailRecords[host] = true
+}
+
+// DeleteDNSServFailRecord configures the chall srv to no longer return SERVFAIL
+// responses for all queries for the given host.
+func (s *ChallSrv) DeleteDNSServFailRecord(host string) {
+	s.challMu.Lock()
+	defer s.challMu.Unlock()
+	host = dns.Fqdn(host)
+	delete(s.dnsMocks.servFailRecords, host)
+}
+
+// GetDNSServFailRecord returns true when the chall srv has been configured with
+// AddDNSServFailRecord to return SERVFAIL for all queries to the given host.
+func (s *ChallSrv) GetDNSServFailRecord(host string) bool {
+	s.challMu.RLock()
+	defer s.challMu.RUnlock()
+	host = dns.Fqdn(host)
+	return s.dnsMocks.servFailRecords[host]
+}

@@ -28,8 +28,12 @@ github.com/letsencrypt/challtestsrv v1.0.2 h1:nBAQjKvVMLhpj4cg2Px6jMyvMbQNdJrCEd
 github.com/letsencrypt/challtestsrv v1.0.2/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
 github.com/letsencrypt/challtestsrv v1.1.0 h1:2r5Wa7LvOqUsM8skGSaRnf3CV6WYPQ/OgLF1U6bCt4I=
 github.com/letsencrypt/challtestsrv v1.1.0/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
+github.com/letsencrypt/challtestsrv v1.2.0 h1:Z/hu1JPFR+cCuI92Hb+LFNxSHG4ARjRYGUipW1S71Vo=
+github.com/letsencrypt/challtestsrv v1.2.0/go.mod h1:/gzSMb+5FjprRIa1TtW6ngjhUOr8JbEFM2XESzK2zPg=
 github.com/miekg/dns v1.1.1 h1:DVkblRdiScEnEr0LR9nTnEQqHYycjkXW9bOjd+2EL2o=
 github.com/miekg/dns v1.1.1/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
+github.com/miekg/dns v1.1.15 h1:CSSIDtllwGLMoA6zjdKnaE6Tx6eVUxQ29LUgGetiDCI=
+github.com/miekg/dns v1.1.15/go.mod h1:W1PPwlIAgtquWBMBEV9nkV9Cazfe8ScdGz/Lj7v3Nrg=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9 h1:mKdxBk7AujPs8kU4m80U72y/zjbZ3UcXC7dClwKbUI0=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/net v0.0.0-20181201002055-351d144fa1fc h1:a3CU5tJYVj92DY2LaA1kUkrsqD5/3mLDhx2NcNqyW+0=
