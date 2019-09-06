@@ -20,3 +20,4 @@ linters:
     - gocritic
     - gochecknoinits
     - gochecknoglobals
+    - typecheck # Go 1.13 incompatible pending new golangci-lint binary release
