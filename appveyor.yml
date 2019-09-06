@@ -24,7 +24,7 @@ install:
 
 before_build:
   # Install `golangci-lint` using go get (installer not available for Windows)
-  - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.15.0
+  - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.17.1
 
 build_script:
   - go install -v -mod=vendor ./...
@@ -37,7 +37,6 @@ after_build:
   - copy %USERPROFILE%\go\bin\pebble-challtestsrv.exe deploy\pebble-challtestsrv_windows-amd64.exe
 
 test_script:
-  - go mod download
   # Vet Go source code using the linter config (see .golang-ci.yml)
   - golangci-lint run
   # Run project unit tests (with the race detector enabled)
