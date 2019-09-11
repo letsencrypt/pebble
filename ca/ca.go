@@ -4,8 +4,10 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -50,21 +52,49 @@ func makeSerial() *big.Int {
 	return serial
 }
 
-// makeKey and makeRootCert are adapted from MiniCA:
-// https://github.com/jsha/minica/blob/3a621c05b61fa1c24bcb42fbde4b261db504a74f/main.go
-
-// makeKey creates a new 2048 bit RSA private key
-func makeKey() (*rsa.PrivateKey, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+// Taken from https://github.com/cloudflare/cfssl/blob/b94e044bb51ec8f5a7232c71b1ed05dbe4da96ce/signer/signer.go#L221-L244
+func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
+	// Marshal the public key as ASN.1
+	pubAsDER, err := x509.MarshalPKIXPublicKey(key)
 	if err != nil {
 		return nil, err
 	}
-	return key, nil
+
+	// Unmarshal it again so we can extract the key bitstring bytes
+	var pubInfo struct {
+		Algorithm        pkix.AlgorithmIdentifier
+		SubjectPublicKey asn1.BitString
+	}
+	_, err = asn1.Unmarshal(pubAsDER, &pubInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	// Hash it according to https://tools.ietf.org/html/rfc5280#section-4.2.1.2 Method #1:
+	ski := sha1.Sum(pubInfo.SubjectPublicKey.Bytes)
+	return ski[:], nil
+}
+
+// makeKey and makeRootCert are adapted from MiniCA:
+// https://github.com/jsha/minica/blob/3a621c05b61fa1c24bcb42fbde4b261db504a74f/main.go
+
+// makeKey creates a new 2048 bit RSA private key and a Subject Key Identifier
+func makeKey() (*rsa.PrivateKey, []byte, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	ski, err := makeSubjectKeyID(key.Public())
+	if err != nil {
+		return nil, nil, err
+	}
+	return key, ski, nil
 }
 
 func (ca *CAImpl) makeRootCert(
 	subjectKey crypto.Signer,
 	subject pkix.Name,
+	subjectKeyID []byte,
 	signer *issuer) (*core.Certificate, error) {
 
 	serial := makeSerial()
@@ -76,6 +106,7 @@ func (ca *CAImpl) makeRootCert(
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
@@ -119,7 +150,7 @@ func (ca *CAImpl) makeRootCert(
 
 func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 	// Make a root private key
-	rk, err := makeKey()
+	rk, subjectKeyID, err := makeKey()
 	if err != nil {
 		return nil, err
 	}
@@ -127,40 +158,40 @@ func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 	subject := pkix.Name{
 		CommonName: rootCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
 	}
-	rc, err := ca.makeRootCert(rk, subject, nil)
+	rc, err := ca.makeRootCert(rk, subject, subjectKeyID, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ca.log.Printf("Generated new root issuer with serial %s\n", rc.ID)
+	ca.log.Printf("Generated new root issuer with serial %s and SKI %x\n", rc.ID, subjectKeyID)
 	return &issuer{
 		key:  rk,
 		cert: rc,
 	}, nil
 }
 
-func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Signer, subject pkix.Name) (*issuer, error) {
+func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Signer, subject pkix.Name, subjectKeyID []byte) (*issuer, error) {
 	if root == nil {
 		return nil, fmt.Errorf("Internal error: root must not be nil")
 	}
 	// Make an intermediate certificate with the root issuer
-	ic, err := ca.makeRootCert(intermediateKey, subject, root)
+	ic, err := ca.makeRootCert(intermediateKey, subject, subjectKeyID, root)
 	if err != nil {
 		return nil, err
 	}
-	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
+	ca.log.Printf("Generated new intermediate issuer with serial %s and SKI %x\n", ic.ID, subjectKeyID)
 	return &issuer{
 		key:  intermediateKey,
 		cert: ic,
 	}, nil
 }
 
-func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name) *chain {
+func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte) *chain {
 	root, err := ca.newRootIssuer()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
-	intermediate, err := ca.newIntermediateIssuer(root, intermediateKey, intermediateSubject)
+	intermediate, err := ca.newIntermediateIssuer(root, intermediateKey, intermediateSubject, subjectKeyID)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
@@ -185,6 +216,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
 	}
 
+	subjectKeyID, err := makeSubjectKeyID(key)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create subject key ID: %s", err.Error())
+	}
+
 	serial := makeSerial()
 	template := &x509.Certificate{
 		DNSNames:    domains,
@@ -198,6 +234,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
@@ -249,13 +286,13 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	intermediateSubject := pkix.Name{
 		CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
 	}
-	intermediateKey, err := makeKey()
+	intermediateKey, subjectKeyID, err := makeKey()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject)
+		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID)
 	}
 	return ca
 }
