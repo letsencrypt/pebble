@@ -1,6 +1,6 @@
-# github.com/letsencrypt/challtestsrv v1.1.0
+# github.com/letsencrypt/challtestsrv v1.2.0
 github.com/letsencrypt/challtestsrv
-# github.com/miekg/dns v1.1.1
+# github.com/miekg/dns v1.1.15
 github.com/miekg/dns
 # golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
 golang.org/x/crypto/ed25519

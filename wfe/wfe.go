@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
@@ -50,6 +51,7 @@ const (
 	certPath          = "/certZ/"
 	revokeCertPath    = "/revoke-cert"
 	keyRolloverPath   = "/rollover-account-key"
+	ordersPath        = "/list-orderz/"
 
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool. We export
@@ -58,6 +60,7 @@ const (
 	rootKeyPath          = "/root-keys/"
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
+	certStatusBySerial   = "/cert-status-by-serial/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -92,6 +95,25 @@ const (
 	// http://www.itu.int/rec/T-REC-X.509-201210-I/en
 	unusedRevocationReason       = 7
 	aACompromiseRevocationReason = 10
+
+	// authzReuseEnvVar defines an environment variable name used to provide a
+	// percentage value for how often Pebble should try to reuse valid authorizations
+	// for each identifier in an order. The percentage is independent of whether a
+	// valid authorization exists or not for each identifier in an order.
+	authzReuseEnvVar = "PEBBLE_AUTHZREUSE"
+
+	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
+	// and reuse valid authorizations.
+	defaultAuthzReuse = 50
+
+	// ordersPerPageEnvVar defines the environment variable name used to provide
+	// the number of orders to show per page. To have the WFE show 15 orders per
+	// page, run Pebble like:
+	//   PEBBLE_WFE_ORDERS_PER_PAGE=15 pebble
+	ordersPerPageEnvVar = "PEBBLE_WFE_ORDERS_PER_PAGE"
+
+	// The default number of orders enumerated per page
+	defaultOrdersPerPage = 3
 )
 
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
@@ -114,13 +136,15 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type WebFrontEndImpl struct {
-	log             *log.Logger
-	db              *db.MemoryStore
-	nonce           *nonceMap
-	nonceErrPercent int
-	va              *va.VAImpl
-	ca              *ca.CAImpl
-	strict          bool
+	log               *log.Logger
+	db                *db.MemoryStore
+	nonce             *nonceMap
+	nonceErrPercent   int
+	authzReusePercent int
+	ordersPerPage     int
+	va                *va.VAImpl
+	ca                *ca.CAImpl
+	strict            bool
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -154,14 +178,39 @@ func New(
 	}
 	log.Printf("Configured to reject %d%% of good nonces", nonceErrPercent)
 
+	// Get authz reuse percent from the environment
+	authzReusePercent := defaultAuthzReuse
+	if val, err := strconv.ParseInt(os.Getenv(authzReuseEnvVar), 10, 0); err == nil &&
+		val >= 0 && val <= 100 {
+		authzReusePercent = int(val)
+	}
+	log.Printf("Configured to attempt authz reuse for each identifier %d%% of the time",
+		authzReusePercent)
+
+	// Read the number of orders per page that should be returned.
+	ordersPerPageVal := os.Getenv(ordersPerPageEnvVar)
+	var ordersPerPage int
+
+	// Parse the env var value as a base 10 int - if there isn't an error, use it
+	// as the wfe nonceErrPercent
+	if val, err := strconv.ParseInt(ordersPerPageVal, 10, 0); err == nil && val > 0 {
+		ordersPerPage = int(val)
+	} else {
+		// Otherwise just use the default
+		ordersPerPage = defaultOrdersPerPage
+	}
+	log.Printf("Configured to show %d orders per page", ordersPerPage)
+
 	return WebFrontEndImpl{
-		log:             log,
-		db:              db,
-		nonce:           newNonceMap(),
-		nonceErrPercent: nonceErrPercent,
-		va:              va,
-		ca:              ca,
-		strict:          strict,
+		log:               log,
+		db:                db,
+		nonce:             newNonceMap(),
+		nonceErrPercent:   nonceErrPercent,
+		authzReusePercent: authzReusePercent,
+		ordersPerPage:     ordersPerPage,
+		va:                va,
+		ca:                ca,
+		strict:            strict,
 	}
 }
 
@@ -221,10 +270,17 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux.Handle(pattern, defaultHandler)
 }
 
+func (wfe *WebFrontEndImpl) HandleManagementFunc(
+	mux *http.ServeMux,
+	pattern string,
+	handler wfeHandlerFunc) { // nolint:interfacer
+	mux.Handle(pattern, http.StripPrefix(pattern, handler))
+}
+
 func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.ResponseWriter) {
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
-		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
+		problemDoc = []byte("{\"detail\": \"Problem marshaling error message.\"}")
 	}
 
 	response.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
@@ -322,15 +378,54 @@ func (wfe *WebFrontEndImpl) handleKey(
 	}
 }
 
-func (wfe *WebFrontEndImpl) handleRedirect(
-	relPath string) func(
+func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
-		response.Header().Set("Location", wfe.relativeEndpoint(request, relPath))
-		response.WriteHeader(http.StatusMovedPermanently)
-		_, _ = response.Write([]byte("Please update your URLs!\n"))
+
+	serialStr := strings.TrimPrefix(request.URL.Path, certStatusBySerial)
+	serial := big.NewInt(0)
+	if _, ok := serial.SetString(serialStr, 16); !ok {
+		response.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var status string
+	var cert *core.Certificate
+	var rcert *core.RevokedCertificate
+	if rcert = wfe.db.GetRevokedCertificateBySerial(serial); rcert != nil {
+		status = "Revoked"
+		cert = rcert.Certificate
+	} else if cert = wfe.db.GetCertificateBySerial(serial); cert != nil {
+		status = "Valid"
+	}
+
+	if status == "" || cert == nil {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	result := struct {
+		Status      string
+		Serial      string
+		Certificate string
+		Reason      *uint  `json:",omitempty"`
+		RevokedAt   string `json:",omitempty"`
+	}{
+		Status:      status,
+		Serial:      serial.Text(16),
+		Certificate: string(cert.PEM()),
+	}
+	if rcert != nil {
+		if rcert.Reason != nil {
+			result.Reason = rcert.Reason
+		}
+		result.RevokedAt = rcert.RevokedAt.UTC().String()
+	}
+
+	err := wfe.writeJSONResponse(response, http.StatusOK, result)
+	if err != nil {
+		response.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -340,14 +435,6 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	// Note for noncePath: "GET" also implies "HEAD"
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
-	wfe.HandleFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath), "GET")
-	wfe.HandleFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath), "GET")
-	wfe.HandleFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath), "GET")
-	wfe.HandleFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath), "GET")
-	wfe.HandleFunc(m, "/root", wfe.handleRedirect(RootCertPath+"0"), "GET")
-	wfe.HandleFunc(m, "/root-key", wfe.handleRedirect(rootKeyPath+"0"), "GET")
-	wfe.HandleFunc(m, "/intermediate", wfe.handleRedirect(intermediateCertPath+"0"), "GET")
-	wfe.HandleFunc(m, "/intermediate-key", wfe.handleRedirect(intermediateKeyPath+"0"), "GET")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
@@ -360,7 +447,21 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
+	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, "POST")
 
+	return m
+}
+
+// ManagementHandler handles the endpoints exposed on the management interface that is configured
+// by the `managementListenAddress` parameter in Pebble JSON config file.
+func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
+	m := http.NewServeMux()
+	// GET only handlers
+	wfe.HandleManagementFunc(m, RootCertPath, wfe.handleCert(wfe.ca.GetRootCert, RootCertPath))
+	wfe.HandleManagementFunc(m, rootKeyPath, wfe.handleKey(wfe.ca.GetRootKey, rootKeyPath))
+	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
+	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
+	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
 	return m
 }
 
@@ -848,7 +949,7 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 		}
 		err := wfe.writeJSONResponse(response, http.StatusOK, existingAcct)
 		if err != nil {
-			wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+			wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
 			return
 		}
 		return
@@ -892,7 +993,77 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 
 	err = wfe.writeJSONResponse(response, http.StatusOK, newAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) ListOrders(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	existingAcct, prob := wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
+	var page int
+	accountPageStr := strings.TrimPrefix(request.URL.Path, ordersPath)
+	accountPageSplit := strings.SplitN(accountPageStr, "/page/", 2)
+	if len(accountPageSplit) == 0 || accountPageSplit[0] != existingAcct.ID {
+		wfe.sendError(acme.NotFoundProblem("Wrong account ID"), response)
+		return
+	}
+	if len(accountPageSplit) == 2 {
+		no, err := strconv.Atoi(accountPageSplit[1])
+		if err != nil || no < 2 {
+			wfe.sendError(acme.NotFoundProblem("Invalid page number"), response)
+			return
+		}
+		page = no - 1
+	}
+	orders := wfe.db.GetOrdersByAccountID(existingAcct.ID)
+	filteredOrders := make([]*core.Order, 0, len(orders))
+	for _, order := range orders {
+		if order.Status == acme.StatusInvalid {
+			continue
+		}
+		filteredOrders = append(filteredOrders, order)
+	}
+	start := page * wfe.ordersPerPage
+	end := (page + 1) * wfe.ordersPerPage
+	if end > len(filteredOrders) {
+		end = len(filteredOrders)
+	}
+	if start > end {
+		start = end
+	}
+
+	result := struct {
+		Orders []string `json:"orders"`
+	}{
+		Orders: make([]string, 0, end-start),
+	}
+	for _, order := range filteredOrders[start:end] {
+		orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, order.ID))
+		result.Orders = append(result.Orders, orderURL)
+	}
+
+	if end < len(filteredOrders) {
+		nextPageURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/page/%d", ordersPath, existingAcct.ID, page+2))
+		response.Header().Add("Link", link(nextPageURL, "next"))
+	}
+
+	err := wfe.writeJSONResponse(response, http.StatusOK, result)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling orders list"), response)
 		return
 	}
 }
@@ -1090,6 +1261,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		wfe.sendError(acme.InternalErrorProblem("Error saving account"), response)
 		return
 	}
+	newAcct.Orders = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", ordersPath, newAcct.ID))
 	wfe.log.Printf("There are now %d accounts in memory\n", count)
 
 	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, newAcct.ID))
@@ -1097,7 +1269,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	response.Header().Add("Location", acctURL)
 	err = wfe.writeJSONResponse(response, http.StatusCreated, newAcct)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling account"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling account"), response)
 		return
 	}
 }
@@ -1210,7 +1382,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 
 	// Lock the order for reading
 	order.RLock()
-	// Create one authz for each name in the order's parsed CSR
+	// Add one authz for each name in the order's parsed CSR
 	for _, name := range order.Identifiers {
 		now := time.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
@@ -1218,28 +1390,34 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			Type:  name.Type,
 			Value: name.Value,
 		}
-		authz := &core.Authorization{
-			ID:          newToken(),
-			ExpiresDate: expires,
-			Order:       order,
-			Authorization: acme.Authorization{
-				Status:     acme.StatusPending,
-				Identifier: ident,
-				Expires:    expires.UTC().Format(time.RFC3339),
-			},
+		// If there is an existing valid authz for this identifier, we can reuse it
+		authz := wfe.db.FindValidAuthorization(order.AccountID, ident)
+		// Otherwise create a new pending authz (and randomly not)
+		if authz == nil || rand.Intn(100) > wfe.authzReusePercent {
+			authz = &core.Authorization{
+				ID:          newToken(),
+				ExpiresDate: expires,
+				Order:       order,
+				Authorization: acme.Authorization{
+					Status:     acme.StatusPending,
+					Identifier: ident,
+					Expires:    expires.UTC().Format(time.RFC3339),
+				},
+			}
+			authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
+			// Create the challenges for this authz
+			err := wfe.makeChallenges(authz, request)
+			if err != nil {
+				return err
+			}
+			// Save the authorization in memory
+			count, err := wfe.db.AddAuthorization(authz)
+			if err != nil {
+				return err
+			}
+			wfe.log.Printf("There are now %d authorizations in the db\n", count)
 		}
-		authz.URL = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
-		// Create the challenges for this authz
-		err := wfe.makeChallenges(authz, request)
-		if err != nil {
-			return err
-		}
-		// Save the authorization in memory
-		count, err := wfe.db.AddAuthorization(authz)
-		if err != nil {
-			return err
-		}
-		wfe.log.Printf("There are now %d authorizations in the db\n", count)
+
 		authzURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", authzPath, authz.ID))
 		auths = append(auths, authzURL)
 		authObs = append(authObs, authz)
@@ -1356,6 +1534,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+			return
 		}
 	}
 	orderDNSs = uniqueLowerNames(orderDNSs)
@@ -1417,7 +1596,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	orderResp := wfe.orderForDisplay(storedOrder, request)
 	err = wfe.writeJSONResponse(response, http.StatusCreated, orderResp)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1505,7 +1684,7 @@ func (wfe *WebFrontEndImpl) Order(
 	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1609,6 +1788,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
+			return
 		}
 	}
 	// looks like saving order to db doesn't preserve order of Identifiers, so sort them again.
@@ -1667,7 +1847,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	response.Header().Add("Location", orderURL)
 	err = wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling order"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
 		return
 	}
 }
@@ -1689,7 +1869,7 @@ func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 
 	// Build a list of plain acme.Challenges to display using the core.Challenge
 	// objects from the authorization.
-	var chals []acme.Challenge
+	chals := make([]acme.Challenge, 0)
 	for _, c := range authz.Challenges {
 		c.RLock()
 		// If the authz isn't pending then we need to filter the challenges displayed
@@ -1794,7 +1974,7 @@ func (wfe *WebFrontEndImpl) Authz(
 		http.StatusOK,
 		prepAuthorizationForDisplay(authz))
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling authz"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling authz"), response)
 		return
 	}
 }
@@ -1846,7 +2026,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	err := wfe.writeJSONResponse(response, http.StatusOK, chal.Challenge)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling challenge"), response)
 		return
 	}
 }
@@ -2037,7 +2217,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
 	err := wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem("Error marshalling challenge"), response)
+		wfe.sendError(acme.InternalErrorProblem("Error marshaling challenge"), response)
 		return
 	}
 }
@@ -2371,6 +2551,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return prob
 	}
 
-	wfe.db.RevokeCertificate(cert)
+	wfe.db.RevokeCertificate(&core.RevokedCertificate{
+		Certificate: cert,
+		RevokedAt:   time.Now(),
+		Reason:      revokeCertReq.Reason,
+	})
 	return nil
 }

@@ -290,7 +290,62 @@ func (srv *managementServer) delDNSCNAMERecord(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	srv.challSrv.DeleteDNSCAARecord(request.Host)
+	srv.challSrv.DeleteDNSCNAMERecord(request.Host)
 	srv.log.Printf("Removed response for DNS CNAME queries to %q", request.Host)
+	w.WriteHeader(http.StatusOK)
+}
+
+// addDNSServFailRecord handles an HTTP POST request to add a mock SERVFAIL
+// response record for a host. All queries for that host will subsequently
+// result in SERVFAIL responses, overriding any other mocks.
+//
+// The POST body is expected to have one non-empty parameter:
+// "host" - the hostname that should return SERVFAIL responses.
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) addDNSServFailRecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has no host it's a bad request
+	if request.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.AddDNSServFailRecord(request.Host)
+	srv.log.Printf("Added SERVFAIL response for DNS queries to %q", request.Host)
+	w.WriteHeader(http.StatusOK)
+}
+
+// delDNSServFailRecord handles an HTTP POST request to delete an existing mock
+// SERVFAIL record for a host.
+//
+// The POST body is expected to have one non-empty parameters:
+// "host" - the hostname to remove the mock SERVFAIL response from.
+//
+// A successful POST will write http.StatusOK to the client.
+func (srv *managementServer) delDNSServFailRecord(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host string
+	}
+	if err := mustParsePOST(&request, r); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// If the request has an empty host it's a bad request
+	if request.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	srv.challSrv.DeleteDNSServFailRecord(request.Host)
+	srv.log.Printf("Removed SERVFAIL response for DNS queries to %q", request.Host)
 	w.WriteHeader(http.StatusOK)
 }

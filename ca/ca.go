@@ -64,14 +64,12 @@ func makeKey() (*rsa.PrivateKey, error) {
 
 func (ca *CAImpl) makeRootCert(
 	subjectKey crypto.Signer,
-	subjCNPrefix string,
+	subject pkix.Name,
 	signer *issuer) (*core.Certificate, error) {
 
 	serial := makeSerial()
 	template := &x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: subjCNPrefix + hex.EncodeToString(serial.Bytes()[:3]),
-		},
+		Subject:      subject,
 		SerialNumber: serial,
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(30, 0, 0),
@@ -126,7 +124,10 @@ func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 		return nil, err
 	}
 	// Make a self-signed root certificate
-	rc, err := ca.makeRootCert(rk, rootCAPrefix, nil)
+	subject := pkix.Name{
+		CommonName: rootCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
+	}
+	rc, err := ca.makeRootCert(rk, subject, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -138,29 +139,28 @@ func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 	}, nil
 }
 
-func (ca *CAImpl) newIntermediateIssuer(root *issuer, ik crypto.Signer) (*issuer, error) {
+func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Signer, subject pkix.Name) (*issuer, error) {
 	if root == nil {
 		return nil, fmt.Errorf("Internal error: root must not be nil")
 	}
-
 	// Make an intermediate certificate with the root issuer
-	ic, err := ca.makeRootCert(ik, intermediateCAPrefix, root)
+	ic, err := ca.makeRootCert(intermediateKey, subject, root)
 	if err != nil {
 		return nil, err
 	}
 	ca.log.Printf("Generated new intermediate issuer with serial %s\n", ic.ID)
 	return &issuer{
-		key:  ik,
+		key:  intermediateKey,
 		cert: ic,
 	}, nil
 }
 
-func (ca *CAImpl) newChain(ik crypto.Signer) *chain {
+func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name) *chain {
 	root, err := ca.newRootIssuer()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
-	intermediate, err := ca.newIntermediateIssuer(root, ik)
+	intermediate, err := ca.newIntermediateIssuer(root, intermediateKey, intermediateSubject)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
@@ -246,13 +246,16 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspResponderURL)
 	}
 
-	ik, err := makeKey()
+	intermediateSubject := pkix.Name{
+		CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
+	}
+	intermediateKey, err := makeKey()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = ca.newChain(ik)
+		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject)
 	}
 	return ca
 }

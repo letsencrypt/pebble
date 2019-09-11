@@ -54,10 +54,9 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features (PRs are welcome!). It does not presently
-support the "orders" field of account objects, subproblems, pre-authorization or
-external account binding. Pebble does not support revoking a certificate issued
-by a different ACME account by proving authorization of all of the certificate's
-domains.
+support subproblems, pre-authorization or external account binding. Pebble does
+not support revoking a certificate issued by a different ACME account by proving
+authorization of all of the certificate's domains.
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
@@ -97,7 +96,8 @@ docker-compose up
 ```
 
 Afterwards you can access the ACME API from your host machine at
-`https://localhost:14000/dir` and the `pebble-challtestsrv`'s management
+`https://localhost:14000/dir`, `pebble`'s management interface
+at `https://localhost:15000` and the `pebble-challtestsrv`'s management
 interface at `http://localhost:8055`.
 
 To get started you may want to update the `pebble-challtestsrv` mock DNS data
@@ -127,7 +127,8 @@ services:
   image: letsencrypt/pebble
   command: pebble -config /test/my-pebble-config.json
   ports:
-    - 14000:14000
+    - 14000:14000  # ACME port
+    - 15000:15000  # Management port
   environment:
     - PEBBLE_VA_NOSLEEP=1
   volumes:
@@ -245,6 +246,16 @@ To **never** reject a valid nonce as invalid run:
 
 `PEBBLE_WFE_NONCEREJECT=0 pebble`
 
+### Authorization Reuse
+
+ACME servers may choose to reuse valid authorizations from previous orders in new orders. ACME clients [should always check](https://tools.ietf.org/html/rfc8555#section-7.1.3) the status of a new order and its authorizations to confirm whether they need to respond to any challenges.
+
+**Pebble will reuse valid authorizations in new orders, if they exist, 50% of the time**.
+
+The percentage may be controlled with the environment variable `PEBBLE_AUTHZREUSE`, e.g. to always reuse authorizations:
+
+`PEBBLE_AUTHZREUSE=100 pebble`
+
 ### Avoiding Client HTTPS Errors
 
 By default Pebble is accessible over HTTPS-only and uses a [test
@@ -262,17 +273,38 @@ store or to any production systems/codebases. The private key for this CA is
 intentionally made [publicly available in this
 repo](test/certs/pebble.minica.key.pem).**
 
-### CA Root and Intermediate Certificates
+### Management interface
+
+In order to ease the interaction of Pebble with testing systems, a specific HTTP
+management interface is exposed on a different port than the ACME protocol,
+and offers several useful testing endpoints.
+
+These endpoints are specific to Pebble and its internal behavior, and are not part
+of the RFC 8555 that defines the ACME protocol.
+
+The management interface is configured by the `managementListenAddress` field in
+`pebble-config.json` that defines the address and the port on which the management
+interface will listen on. Set `managementListenAddress` to an empty string or `null`
+to disable it.
+
+The default configuration for this management interface as defined in
+`test/config/pebble-config.yml` is to listen on any address on port 15000:
+
+```
+  "managementListenAddress": "0.0.0.0:15000",
+```
+
+#### CA Root and Intermediate Certificates
 
 Note that the CA's root and intermediate certificates are regenerated on every
-launch. It can be retrieved by a `GET` request to `https://localhost:14000/root`
-and `https://localhost:14000/intermediate` respectively.
+launch. They can be retrieved by a `GET` request to `https://localhost:15000/roots/0`
+and `https://localhost:15000/intermediates/0` respectively.
 
 You might need the root certificate to verify the complete trust chain of
 generated certificates, for example in end-to-end tests.
 
 The private keys of these certificates can also be retrieved by a `GET` request
-to `https://localhost:14000/root-key` and `https://localhost:14000/intermediate-key`
+to `https://localhost:15000/root-keys/0` and `https://localhost:15000/intermediate-keys/0`
 respectively.
 
 **IMPORTANT: Do not add Pebble's root or intermediate certificate to a trust
@@ -284,10 +316,38 @@ terminates: so they are not safe to use for anything other than testing.**
 
 In case alternative root chains are enabled by setting `PEBBLE_ALTERNATE_ROOTS` to a
 positive integer, the root certificates for these can be retrieved by doing a `GET`
-request to `https://localhost:14000/roots/0`, `https://localhost:14000/root-keys/1`
-`https://localhost:14000/intermediates/2`, `https://localhost:14000/intermediate-keys/3`
+request to `https://localhost:15000/roots/0`, `https://localhost:15000/root-keys/1`
+`https://localhost:15000/intermediates/2`, `https://localhost:15000/intermediate-keys/3`
 etc. These endpoints also send `Link` HTTP headers for all alternative root and
 intermediate certificates and keys.
+
+#### Certificate Status
+
+The certificate (in PEM format) and its revocation status can be queried by sending
+a `GET` request to `https://localhost:15000/cert-status-by-serial/<serial>`, where
+`<serial>` is the hexadecimal representation of the certificate's serial number (no `0x` prefix).
+It can be obtained via:
+
+    openssl x509 -in cert.pem -noout -serial | cut -d= -f2
+
+The endpoint returns the information as a JSON object:
+
+    $ curl -ki https://127.0.0.1:15000/cert-status-by-serial/66317d2e02f5d3d6
+    HTTP/2 200
+    cache-control: public, max-age=0, no-cache
+    content-type: application/json; charset=utf-8
+    link: <https://127.0.0.1:15000/dir>;rel="index"
+    content-length: 1740
+    date: Fri, 12 Jul 2019 22:14:21 GMT
+
+    {
+       "Certificate": "-----BEGIN CERTIFICATE-----\nMIIEVz...tcw=\n-----END CERTIFICATE-----\n",
+       "Reason": 4,
+       "RevokedAt": "2019-07-13T00:13:20.418489956+02:00",
+       "Serial": "66317d2e02f5d3d6",
+       "Status": "Revoked"
+    }
+
 
 ### OCSP Responder URL
 
@@ -304,3 +364,13 @@ to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.j
 ```
   "ocspResponderURL": "http://127.0.0.1:4002",
 ```
+
+### Listing orders
+
+Pebble has support for enumerating all orders for an ACME account object according to
+[RFC 8555, Section 7.1.2](https://tools.ietf.org/html/rfc8555#section-7.1.2.1). By default, three
+orders are returned per page, to make it easy to test pagination. This number can be modified by
+setting the `PEBBLE_WFE_ORDERS_PER_PAGE` environment variable to a positive integer. For example,
+to have 15 orders per page, run
+
+`PEBBLE_WFE_ORDERS_PER_PAGE=15 pebble`
