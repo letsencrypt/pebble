@@ -16,3 +16,6 @@ COPY --from=builder /pebble-src/test/ /test/
 RUN powershell.exe -Command $path = $env:path + ';c:\gopath\bin'; Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment\' -Name Path -Value $path
 
 CMD [ "/pebble" ]
+
+EXPOSE 14000
+EXPOSE 15000
