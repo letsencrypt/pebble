@@ -1139,7 +1139,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	innerPayload, prob := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
-	if err != nil {
+	if prob != nil {
 		prob.Detail = "inner JWS error: " + prob.Detail
 		wfe.sendError(prob, response)
 		return
