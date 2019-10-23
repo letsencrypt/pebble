@@ -588,7 +588,10 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	var txts []string
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
-	in, _, err := va.dnsClient.ExchangeContext(ctx, message, va.customResolverAddr)
+
+	va.dnsClient.Timeout = validationTimeout
+
+	in, _, err := va.dnsClient.Exchange(message, va.customResolverAddr)
 
 	if err != nil {
 		return nil, err
@@ -627,7 +630,10 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 
 	messageAAAA := new(dns.Msg)
 	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
-	inAAAA, _, err := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
+
+	va.dnsClient.Timeout = validationTimeout
+
+	inAAAA, _, err := va.dnsClient.Exchange(messageAAAA, va.customResolverAddr)
 
 	if err != nil {
 		return nil, err
@@ -639,9 +645,19 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 		}
 	}
 
+	deadline, _ := ctx.Deadline()
+	remaining := time.Until(deadline)
+
+	if remaining <= 0 {
+		return nil, ctx.Err()
+	}
+
 	messageA := new(dns.Msg)
 	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
-	inA, _, err := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
+
+	va.dnsClient.Timeout = remaining
+
+	inA, _, err := va.dnsClient.Exchange(messageA, va.customResolverAddr)
 
 	if err != nil {
 		return nil, err
