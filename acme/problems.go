@@ -10,6 +10,7 @@ const (
 	serverInternalErr      = errNS + "serverInternal"
 	malformedErr           = errNS + "malformed"
 	badNonceErr            = errNS + "badNonce"
+	badCSRErr              = errNS + "badCSR"
 	agreementReqErr        = errNS + "agreementRequired"
 	connectionErr          = errNS + "connection"
 	unauthorizedErr        = errNS + "unauthorized"
@@ -67,6 +68,14 @@ func MethodNotAllowed() *ProblemDetails {
 func BadNonceProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       badNonceErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func BadCSRProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       badCSRErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

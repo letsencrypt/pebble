@@ -1827,6 +1827,13 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		}
 	}
 
+	// No account key signing RFC8555 Section 11.1
+	existsAcctForCSRKey, _ := wfe.getAcctByKey(parsedCSR.PublicKey)
+	if existsAcctForCSRKey != nil {
+		wfe.sendError(acme.BadCSRProblem("CSR contains a public key for a known account"), response)
+		return
+	}
+
 	// Lock and update the order with the parsed CSR and the began processing
 	// state.
 	existingOrder.Lock()
