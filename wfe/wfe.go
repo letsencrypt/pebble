@@ -1474,7 +1474,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
 		var enabledChallenges []string
-		if authz.Identifier.Value == acme.IdentifierIP {
+		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
