@@ -34,9 +34,10 @@ func (ident Identifier) Equals(other Identifier) bool {
 }
 
 type Account struct {
-	Status  string   `json:"status"`
-	Contact []string `json:"contact,omitempty"`
-	Orders  string   `json:"orders,omitempty"`
+	Status                 string   `json:"status"`
+	Contact                []string `json:"contact,omitempty"`
+	Orders                 string   `json:"orders,omitempty"`
+	ExternalAccountBinding *string  `json:"externalAccountBinding,omitempty"`
 }
 
 // An Order is created to request issuance for a CSR

@@ -23,6 +23,8 @@ type config struct {
 		Certificate             string
 		PrivateKey              string
 		OCSPResponderURL        string
+		// Require External Account Binding for "newAccount" requests
+		ExternalAccountBindingRequired bool
 	}
 }
 
@@ -63,7 +65,7 @@ func main() {
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode)
+	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {

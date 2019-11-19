@@ -51,19 +51,22 @@ type MemoryStore struct {
 
 	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.RevokedCertificate
+
+	externalAccountPublicKeysByKeyID map[string]crypto.PublicKey
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		accountIDCounter:        1,
-		accountsByID:            make(map[string]*core.Account),
-		accountsByKeyID:         make(map[string]*core.Account),
-		ordersByID:              make(map[string]*core.Order),
-		ordersByAccountID:       make(map[string][]*core.Order),
-		authorizationsByID:      make(map[string]*core.Authorization),
-		challengesByID:          make(map[string]*core.Challenge),
-		certificatesByID:        make(map[string]*core.Certificate),
-		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
+		accountIDCounter:                 1,
+		accountsByID:                     make(map[string]*core.Account),
+		accountsByKeyID:                  make(map[string]*core.Account),
+		ordersByID:                       make(map[string]*core.Order),
+		ordersByAccountID:                make(map[string][]*core.Order),
+		authorizationsByID:               make(map[string]*core.Authorization),
+		challengesByID:                   make(map[string]*core.Challenge),
+		certificatesByID:                 make(map[string]*core.Certificate),
+		revokedCertificatesByID:          make(map[string]*core.RevokedCertificate),
+		externalAccountPublicKeysByKeyID: make(map[string]crypto.PublicKey),
 	}
 }
 
@@ -397,4 +400,11 @@ func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core
 	}
 
 	return nil
+}
+
+func (m *MemoryStore) GetExtenalAccountPublicKeyByKeyID(keyID string) (crypto.PublicKey, bool) {
+	m.RLock()
+	defer m.RUnlock()
+	pubKey, ok := m.externalAccountPublicKeysByKeyID[keyID]
+	return pubKey, ok
 }

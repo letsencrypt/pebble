@@ -116,6 +116,15 @@ const (
 	defaultOrdersPerPage = 3
 )
 
+// newAccountRequest is the ACME account information submitted by the client
+type newAccountRequest struct {
+	Contact            []string `json:"contact"`
+	ToSAgreed          bool     `json:"termsOfServiceAgreed"`
+	OnlyReturnExisting bool     `json:"onlyReturnExisting"`
+
+	ExternalAccountBinding string `json:"externalAccountBinding,omitempty"`
+}
+
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
 
 func (f wfeHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +154,7 @@ type WebFrontEndImpl struct {
 	va                *va.VAImpl
 	ca                *ca.CAImpl
 	strict            bool
+	requireEAB        bool
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -154,7 +164,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict bool) WebFrontEndImpl {
+	strict, requireEAB bool) WebFrontEndImpl {
 
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
@@ -211,6 +221,7 @@ func New(
 		va:                va,
 		ca:                ca,
 		strict:            strict,
+		requireEAB:        requireEAB,
 	}
 }
 
@@ -498,7 +509,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 	relativeDir["meta"] = map[string]string{
-		"termsOfService": ToSURL,
+		"termsOfService":          ToSURL,
+		"externalAccountRequired": strconv.FormatBool(wfe.requireEAB),
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -904,6 +916,93 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 	return nil
 }
 
+func (wfe *WebFrontEndImpl) verifyExternalAccountBinding(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
+	if len(newAcctReq.ExternalAccountBinding) == 0 {
+		return "", acme.ExternalAccountRequiredProblem(
+			"The request must include a value for the 'externalAccountBinding' field")
+	}
+
+	//1.  Verify that the value of the field is a well-formed JWS
+	jws, err := wfe.parseJWS(newAcctReq.ExternalAccountBinding)
+	if err != nil {
+		return "", acme.MalformedProblem(err.Error())
+	}
+
+	if len(jws.Signatures) != 0 {
+		return "", acme.MalformedProblem(
+			"expecting single signature associated with the external account binding")
+	}
+
+	//2.  Verify that the JWS protected field meets the following criteria
+	//-  The "alg" field MUST indicate a MAC-based algorithm
+	//-  The "kid" field MUST contain the key identifier provided by the CA
+	//-  The "nonce" field MUST NOT be present
+	//-  The "url" field MUST be set to the same value as the outer JWS
+	header := jws.Signatures[0].Protected
+	switch header.Nonce {
+	case "HS256", "HS384", "HS512":
+		break
+	default:
+		return "", acme.BadPublicKeyProblem(
+			"the 'alg' field is not valid for external account binding")
+	}
+	if len(header.Nonce) > 0 {
+		return "", acme.MalformedProblem(
+			"the 'nonce' field must be absent in external account binding")
+	}
+	if len(header.KeyID) == 0 {
+		return "", acme.MalformedProblem(
+			"the 'kid' field is required in external account binding")
+	}
+	url, ok := header.ExtraHeaders["url"]
+	if ok {
+		return "", acme.MalformedProblem(
+			"the 'url' field must be present in external account binding")
+	}
+	if url != outerPostData.url {
+		return "", acme.MalformedProblem(
+			"the 'url' field in external account binding differs from outer JWS")
+	}
+
+	//3.  Retrieve the MAC key corresponding to the key identifier in the
+	//    "kid" field
+	pubKey, ok := wfe.db.GetExtenalAccountPublicKeyByKeyID(header.KeyID)
+	if !ok {
+		return "", acme.BadPublicKeyProblem(
+			"the field 'kid' references a key that does not exist")
+	}
+
+	//4.  Verify that the MAC on the JWS verifies using that MAC key
+	payload, err := jws.Verify(pubKey)
+	if err != nil {
+		return "", acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWS verification error: %s", err))
+	}
+
+	//5.  Verify that the payload of the JWS represents the same key as was
+	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
+	//    JWS)
+	eAcctJWK, err := base64.RawURLEncoding.DecodeString(string(payload))
+	if err != nil {
+		return "", acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWS payload malformed: %s", err))
+	}
+
+	var jwk *jose.JSONWebKey
+	err = json.Unmarshal(eAcctJWK, &jwk)
+	if err != nil {
+		return "", acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWK payload malformed: %s", err))
+	}
+
+	if !keyDigestEquals(outerPostData.jwk, jwk) {
+		return "", acme.BadPublicKeyProblem(
+			"external account binding payload key does not match account key of request")
+	}
+
+	return header.KeyID, nil
+}
+
 func (wfe *WebFrontEndImpl) UpdateAccount(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -1193,11 +1292,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	// newAcctReq is the ACME account information submitted by the client
-	var newAcctReq struct {
-		Contact            []string `json:"contact"`
-		ToSAgreed          bool     `json:"termsOfServiceAgreed"`
-		OnlyReturnExisting bool     `json:"onlyReturnExisting"`
-	}
+	var newAcctReq newAccountRequest
 	err := json.Unmarshal(postData.body, &newAcctReq)
 	if err != nil {
 		wfe.sendError(
@@ -1239,12 +1334,26 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	var keyID *string
+	if wfe.requireEAB {
+		id, prob := wfe.verifyExternalAccountBinding(newAcctReq, postData)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+
+		keyID = &id
+	}
+
 	// Create a new account object with the provided contact
 	newAcct := core.Account{
 		Account: acme.Account{
 			Contact: newAcctReq.Contact,
 			// New accounts are valid to start.
 			Status: acme.StatusValid,
+
+			// External account binding keyID may be nil which will be checked further on.
+			ExternalAccountBinding: keyID,
 		},
 		Key: postData.jwk,
 	}

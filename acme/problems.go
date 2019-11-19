@@ -12,6 +12,7 @@ const (
 	badNonceErr            = errNS + "badNonce"
 	badCSRErr              = errNS + "badCSR"
 	agreementReqErr        = errNS + "agreementRequired"
+	externalAccountReqErr  = errNS + "externalAccountRequired"
 	connectionErr          = errNS + "connection"
 	unauthorizedErr        = errNS + "unauthorized"
 	invalidContactErr      = errNS + "invalidContact"
@@ -92,6 +93,14 @@ func Conflict(detail string) *ProblemDetails {
 func AgreementRequiredProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       agreementReqErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+func ExternalAccountRequiredProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       externalAccountReqErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}
