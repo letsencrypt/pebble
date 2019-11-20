@@ -171,7 +171,6 @@ func New(
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool) WebFrontEndImpl {
-
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
@@ -922,100 +921,6 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) verifyExternalAccountBinding(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
-	if newAcctReq.ExternalAccountBinding == nil {
-		//if len(newAcctReq.ExternalAccountBinding) == 0 {
-		return "", acme.ExternalAccountRequiredProblem(
-			"The request must include a value for the 'externalAccountBinding' field")
-	}
-
-	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
-	if err != nil {
-		return "", acme.MalformedProblem(err.Error())
-	}
-
-	//1.  Verify that the value of the field is a well-formed JWS
-	jws, err := wfe.parseJWS(string(eabBytes))
-	if err != nil {
-		return "", acme.MalformedProblem(err.Error())
-	}
-
-	if len(jws.Signatures) != 1 {
-		return "", acme.MalformedProblem(
-			"expecting single signature associated with the external account binding")
-	}
-
-	//2.  Verify that the JWS protected field meets the following criteria
-	//-  The "alg" field MUST indicate a MAC-based algorithm
-	//-  The "kid" field MUST contain the key identifier provided by the CA
-	//-  The "nonce" field MUST NOT be present
-	//-  The "url" field MUST be set to the same value as the outer JWS
-	header := jws.Signatures[0].Protected
-	switch header.Algorithm {
-	case "HS256", "HS384", "HS512":
-		break
-	default:
-		return "", acme.BadPublicKeyProblem(
-			"the 'alg' field is not valid for external account binding")
-	}
-	if len(header.Nonce) > 0 {
-		return "", acme.MalformedProblem(
-			"the 'nonce' field must be absent in external account binding")
-	}
-	if len(header.KeyID) == 0 {
-		return "", acme.MalformedProblem(
-			"the 'kid' field is required in external account binding")
-	}
-	url, ok := header.ExtraHeaders["url"]
-	if !ok {
-		return "", acme.MalformedProblem(
-			"the 'url' field must be present in external account binding")
-	}
-	if url != outerPostData.url {
-		return "", acme.MalformedProblem(
-			"the 'url' field in external account binding differs from outer JWS")
-	}
-
-	//3.  Retrieve the MAC key corresponding to the key identifier in the
-	//    "kid" field
-	key, ok := wfe.db.GetExtenalAccountKeyByKeyID(header.KeyID)
-	if !ok {
-		return "", acme.BadPublicKeyProblem(
-			"the field 'kid' references a key that does not exist")
-	}
-
-	keyBytes, err := base64.RawURLEncoding.DecodeString(key)
-	if err != nil {
-		return "", acme.MalformedProblem("failed to decode CA key")
-	}
-
-	//4.  Verify that the MAC on the JWS verifies using that MAC key
-	payload, err := jws.Verify(keyBytes)
-	if err != nil {
-		return "", acme.MalformedProblem(
-			fmt.Sprintf("external account binding JWS verification error: %s", err))
-	}
-
-	//5.  Verify that the payload of the JWS represents the same key as was
-	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
-	//    JWS)
-	var jwk *jose.JSONWebKey
-	err = json.Unmarshal(payload, &jwk)
-	if err != nil {
-		return "", acme.MalformedProblem(
-			fmt.Sprintf("external account binding JWK payload malformed: %s", err))
-	}
-
-	if !keyDigestEquals(outerPostData.jwk, jwk) {
-		return "", acme.BadPublicKeyProblem(
-			"external account binding payload key does not match account key of request")
-	}
-
-	wfe.log.Printf("External Account Binding with CA using kid %s", header.KeyID)
-
-	return header.KeyID, nil
-}
-
 func (wfe *WebFrontEndImpl) UpdateAccount(
 	ctx context.Context,
 	response http.ResponseWriter,
@@ -1349,7 +1254,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	var keyID *string
 	if wfe.requireEAB {
-		id, prob := wfe.verifyExternalAccountBinding(newAcctReq, postData)
+		id, prob := wfe.verifyEAB(newAcctReq, postData)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
@@ -2685,5 +2590,116 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		RevokedAt:   time.Now(),
 		Reason:      revokeCertReq.Reason,
 	})
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
+	if newAcctReq.ExternalAccountBinding == nil {
+		return "", acme.ExternalAccountRequiredProblem(
+			"The request must include a value for the 'externalAccountBinding' field")
+	}
+
+	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
+	if err != nil {
+		return "", acme.MalformedProblem(err.Error())
+	}
+
+	//1.  Verify that the value of the field is a well-formed JWS
+	innerJWS, err := wfe.parseJWS(string(eabBytes))
+	if err != nil {
+		return "", acme.MalformedProblem(err.Error())
+	}
+
+	//2.  Verify that the JWS protected field meets the following criteria
+	//-  The "alg" field MUST indicate a MAC-based algorithm
+	//-  The "kid" field MUST contain the key identifier provided by the CA
+	//-  The "nonce" field MUST NOT be present
+	//-  The "url" field MUST be set to the same value as the outer JWS
+	keyID, prob := wfe.verifyEABPayloadHeader(innerJWS, outerPostData)
+	if prob != nil {
+		return "", prob
+	}
+
+	//3.  Retrieve the MAC key corresponding to the key identifier in the
+	//    "kid" field
+	key, ok := wfe.db.GetExtenalAccountKeyByKeyID(keyID)
+	if !ok {
+		return "", acme.BadPublicKeyProblem(
+			"the field 'kid' references a key that does not exist")
+	}
+
+	keyBytes, err := base64.RawURLEncoding.DecodeString(key)
+	if err != nil {
+		return "", acme.MalformedProblem("failed to decode CA key")
+	}
+
+	//4.  Verify that the MAC on the JWS verifies using that MAC key
+	payload, err := innerJWS.Verify(keyBytes)
+	if err != nil {
+		return "", acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWS verification error: %s", err))
+	}
+
+	//5.  Verify that the payload of the JWS represents the same key as was
+	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
+	//    JWS)
+	prob = wfe.verifyEABMatchesKey(payload, outerPostData.jwk)
+	if prob != nil {
+		return "", prob
+	}
+
+	wfe.log.Printf("External Account Binding with CA using kid %q", keyID)
+
+	return keyID, nil
+}
+
+func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignature, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
+	if len(innerJWS.Signatures) != 1 {
+		return "", acme.MalformedProblem(
+			"expecting single signature associated with the external account binding")
+	}
+
+	header := innerJWS.Signatures[0].Protected
+	switch header.Algorithm {
+	case "HS256", "HS384", "HS512":
+		break
+	default:
+		return "", acme.BadPublicKeyProblem(
+			"the 'alg' field is not valid for external account binding")
+	}
+	if len(header.Nonce) > 0 {
+		return "", acme.MalformedProblem(
+			"the 'nonce' field must be absent in external account binding")
+	}
+	if len(header.KeyID) == 0 {
+		return "", acme.MalformedProblem(
+			"the 'kid' field is required in external account binding")
+	}
+	url, ok := header.ExtraHeaders["url"]
+	if !ok {
+		return "", acme.MalformedProblem(
+			"the 'url' field must be present in external account binding")
+	}
+	if url != outerPostData.url {
+		return "", acme.MalformedProblem(
+			"the 'url' field in external account binding differs from outer JWS")
+	}
+
+	return header.KeyID, nil
+}
+
+func (wfe *WebFrontEndImpl) verifyEABMatchesKey(payload []byte, jwk *jose.JSONWebKey) *acme.ProblemDetails {
+	var payloadJWK *jose.JSONWebKey
+	err := json.Unmarshal(payload, &payloadJWK)
+	if err != nil {
+		return acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWK payload malformed: %s", err))
+	}
+
+	if !keyDigestEquals(jwk, payloadJWK) {
+		return acme.BadPublicKeyProblem(
+			"external account binding payload key does not match account key of request")
+	}
+
 	return nil
 }
