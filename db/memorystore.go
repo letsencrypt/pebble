@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -52,21 +53,21 @@ type MemoryStore struct {
 	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.RevokedCertificate
 
-	externalAccountPublicKeysByKeyID map[string]crypto.PublicKey
+	externalAccountKeysByKeyID map[string]string
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		accountIDCounter:                 1,
-		accountsByID:                     make(map[string]*core.Account),
-		accountsByKeyID:                  make(map[string]*core.Account),
-		ordersByID:                       make(map[string]*core.Order),
-		ordersByAccountID:                make(map[string][]*core.Order),
-		authorizationsByID:               make(map[string]*core.Authorization),
-		challengesByID:                   make(map[string]*core.Challenge),
-		certificatesByID:                 make(map[string]*core.Certificate),
-		revokedCertificatesByID:          make(map[string]*core.RevokedCertificate),
-		externalAccountPublicKeysByKeyID: make(map[string]crypto.PublicKey),
+		accountIDCounter:           1,
+		accountsByID:               make(map[string]*core.Account),
+		accountsByKeyID:            make(map[string]*core.Account),
+		ordersByID:                 make(map[string]*core.Order),
+		ordersByAccountID:          make(map[string][]*core.Order),
+		authorizationsByID:         make(map[string]*core.Authorization),
+		challengesByID:             make(map[string]*core.Challenge),
+		certificatesByID:           make(map[string]*core.Certificate),
+		revokedCertificatesByID:    make(map[string]*core.RevokedCertificate),
+		externalAccountKeysByKeyID: make(map[string]string),
 	}
 }
 
@@ -401,10 +402,26 @@ func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core
 
 	return nil
 }
+func (m *MemoryStore) AddExternalAccountKeyByKeyID(keyID, key string) error {
+	if len(key) == 0 || len(keyID) == 0 {
+		return errors.New("key ID and key must not be empty")
+	}
 
-func (m *MemoryStore) GetExtenalAccountPublicKeyByKeyID(keyID string) (crypto.PublicKey, bool) {
+	m.Lock()
+	defer m.Unlock()
+
+	if _, ok := m.externalAccountKeysByKeyID[keyID]; ok {
+		return fmt.Errorf("key ID %q is already present", keyID)
+	}
+
+	m.externalAccountKeysByKeyID[keyID] = key
+
+	return nil
+}
+
+func (m *MemoryStore) GetExtenalAccountKeyByKeyID(keyID string) (string, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	pubKey, ok := m.externalAccountPublicKeysByKeyID[keyID]
-	return pubKey, ok
+	key, ok := m.externalAccountKeysByKeyID[keyID]
+	return key, ok
 }

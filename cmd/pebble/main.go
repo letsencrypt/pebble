@@ -25,6 +25,7 @@ type config struct {
 		OCSPResponderURL        string
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
+		ExternalAccountBindings        map[string]string
 	}
 }
 
@@ -64,6 +65,13 @@ func main() {
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
+
+	for keyID, key := range c.Pebble.ExternalAccountBindings {
+		err := db.AddExternalAccountKeyByKeyID(keyID, key)
+		if err != nil {
+			cmd.FailOnError(err, "Failed to add key to external account bindings")
+		}
+	}
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired)
 	muxHandler := wfeImpl.Handler()
