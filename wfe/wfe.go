@@ -1252,15 +1252,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	var keyID *string
-	if wfe.requireEAB {
-		id, prob := wfe.verifyEAB(newAcctReq, postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-
-		keyID = &id
+	keyID, prob := wfe.verifyEAB(newAcctReq, postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	// Create a new account object with the provided contact
@@ -2593,21 +2588,26 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
+// Verify the External Account Binding in the request and return the key ID if requested and found.
+func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (*string, *acme.ProblemDetails) {
 	if newAcctReq.ExternalAccountBinding == nil {
-		return "", acme.ExternalAccountRequiredProblem(
-			"The request must include a value for the 'externalAccountBinding' field")
+		if wfe.requireEAB {
+			return nil, acme.ExternalAccountRequiredProblem(
+				"The request must include a value for the 'externalAccountBinding' field")
+		}
+
+		return nil, nil
 	}
 
 	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
 	if err != nil {
-		return "", acme.MalformedProblem(err.Error())
+		return nil, acme.MalformedProblem(err.Error())
 	}
 
 	//1.  Verify that the value of the field is a well-formed JWS
 	innerJWS, err := wfe.parseJWS(string(eabBytes))
 	if err != nil {
-		return "", acme.MalformedProblem(err.Error())
+		return nil, acme.MalformedProblem(err.Error())
 	}
 
 	//2.  Verify that the JWS protected field meets the following criteria
@@ -2617,26 +2617,26 @@ func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostDat
 	//-  The "url" field MUST be set to the same value as the outer JWS
 	keyID, prob := wfe.verifyEABPayloadHeader(innerJWS, outerPostData)
 	if prob != nil {
-		return "", prob
+		return nil, prob
 	}
 
 	//3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
 	key, ok := wfe.db.GetExtenalAccountKeyByKeyID(keyID)
 	if !ok {
-		return "", acme.BadPublicKeyProblem(
+		return nil, acme.BadPublicKeyProblem(
 			"the field 'kid' references a key that does not exist")
 	}
 
 	keyBytes, err := base64.RawURLEncoding.DecodeString(key)
 	if err != nil {
-		return "", acme.MalformedProblem("failed to decode CA key")
+		return nil, acme.MalformedProblem("failed to decode CA key")
 	}
 
 	//4.  Verify that the MAC on the JWS verifies using that MAC key
 	payload, err := innerJWS.Verify(keyBytes)
 	if err != nil {
-		return "", acme.MalformedProblem(
+		return nil, acme.MalformedProblem(
 			fmt.Sprintf("external account binding JWS verification error: %s", err))
 	}
 
@@ -2645,12 +2645,12 @@ func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostDat
 	//    JWS)
 	prob = wfe.verifyEABMatchesKey(payload, outerPostData.jwk)
 	if prob != nil {
-		return "", prob
+		return nil, prob
 	}
 
 	wfe.log.Printf("External Account Binding with CA using kid %q", keyID)
 
-	return keyID, nil
+	return &keyID, nil
 }
 
 func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignature, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
