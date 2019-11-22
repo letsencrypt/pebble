@@ -122,13 +122,7 @@ type newAccountRequest struct {
 	ToSAgreed          bool     `json:"termsOfServiceAgreed"`
 	OnlyReturnExisting bool     `json:"onlyReturnExisting"`
 
-	ExternalAccountBinding *externalAccountBinding `json:"externalAccountBinding,omitempty"`
-}
-
-type externalAccountBinding struct {
-	Protected string `json:"protected,omitempty"`
-	Payload   string `json:"payload,omitempty"`
-	Signature string `json:"signature,omitempty"`
+	ExternalAccountBinding *acme.JSONSigned `json:"externalAccountBinding,omitempty"`
 }
 
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
@@ -1252,7 +1246,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	keyID, prob := wfe.verifyEAB(newAcctReq, postData)
+	// This function will return early with an empty keyID if no external account
+	// binding was given with the request. A request with an empty external
+	// account binding will error however if this is required by the server.
+	eab, prob := wfe.verifyEAB(newAcctReq, postData)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1266,7 +1263,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			Status: acme.StatusValid,
 
 			// External account binding keyID may be nil which will be checked further on.
-			ExternalAccountBinding: keyID,
+			ExternalAccountBinding: eab,
 		},
 		Key: postData.jwk,
 	}
@@ -2588,26 +2585,32 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	return nil
 }
 
-// Verify the External Account Binding in the request and return the key ID if requested and found.
-func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostData *authenticatedPOST) (*string, *acme.ProblemDetails) {
+// Verify the External Account Binding in the request and return the same JSON
+// object that was given in the request if successful. If no External Account
+// Binding was given then return nil however if it is required by the server
+// then error.
+func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest,
+	outerPostData *authenticatedPOST) (*acme.JSONSigned, *acme.ProblemDetails) {
 	if newAcctReq.ExternalAccountBinding == nil {
 		if wfe.requireEAB {
 			return nil, acme.ExternalAccountRequiredProblem(
-				"The request must include a value for the 'externalAccountBinding' field")
+				"ACME server policy requires newAccount requests must include a value for the 'externalAccountBinding' field")
 		}
 
 		return nil, nil
 	}
 
+	//1.  Verify that the value of the field is a well-formed JWS
 	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
 	if err != nil {
-		return nil, acme.MalformedProblem(err.Error())
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("failed to decode external account binding: %s", err))
 	}
 
-	//1.  Verify that the value of the field is a well-formed JWS
-	innerJWS, err := wfe.parseJWS(string(eabBytes))
+	eab, err := jose.ParseSigned(string(eabBytes))
 	if err != nil {
-		return nil, acme.MalformedProblem(err.Error())
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("failed to decode external account binding: %s", err))
 	}
 
 	//2.  Verify that the JWS protected field meets the following criteria
@@ -2615,44 +2618,41 @@ func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest, outerPostDat
 	//-  The "kid" field MUST contain the key identifier provided by the CA
 	//-  The "nonce" field MUST NOT be present
 	//-  The "url" field MUST be set to the same value as the outer JWS
-	keyID, prob := wfe.verifyEABPayloadHeader(innerJWS, outerPostData)
+	keyID, prob := wfe.verifyEABPayloadHeader(eab, outerPostData)
 	if prob != nil {
 		return nil, prob
 	}
 
 	//3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
-	key, ok := wfe.db.GetExtenalAccountKeyByKeyID(keyID)
+	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
 	if !ok {
-		return nil, acme.BadPublicKeyProblem(
-			"the field 'kid' references a key that does not exist")
-	}
-
-	keyBytes, err := base64.RawURLEncoding.DecodeString(key)
-	if err != nil {
-		return nil, acme.MalformedProblem("failed to decode CA key")
+		return nil, acme.UnauthorizedProblem(
+			"the field 'kid' references a key that is not known to the ACME server")
 	}
 
 	//4.  Verify that the MAC on the JWS verifies using that MAC key
-	payload, err := innerJWS.Verify(keyBytes)
+	payload, err := eab.Verify(key)
 	if err != nil {
-		return nil, acme.MalformedProblem(
+		return nil, acme.UnauthorizedProblem(
 			fmt.Sprintf("external account binding JWS verification error: %s", err))
 	}
 
 	//5.  Verify that the payload of the JWS represents the same key as was
 	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
 	//    JWS)
-	prob = wfe.verifyEABMatchesKey(payload, outerPostData.jwk)
-	if prob != nil {
+	if prob := wfe.verifyEABMatchesKey(payload, outerPostData.jwk); prob != nil {
 		return nil, prob
 	}
 
-	wfe.log.Printf("External Account Binding with CA using kid %q", keyID)
+	wfe.log.Printf("Successful newAccount Binding with CA using kid %q", keyID)
 
-	return &keyID, nil
+	return newAcctReq.ExternalAccountBinding, nil
 }
 
+// verifyEABPayloadHeader will verify the protected header object of the
+// External Account Binding object in a newAccount request. If successful, will
+// return the KID specified in the header.
 func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignature, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
 	if len(innerJWS.Signatures) != 1 {
 		return "", acme.MalformedProblem(
@@ -2688,6 +2688,9 @@ func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignatu
 	return header.KeyID, nil
 }
 
+// verifyEABMatchesKey will verify that the payload of a External Account
+// Binding object contains the same key that was used to sign the full
+// newAccount request JSON.
 func (wfe *WebFrontEndImpl) verifyEABMatchesKey(payload []byte, jwk *jose.JSONWebKey) *acme.ProblemDetails {
 	var payloadJWK *jose.JSONWebKey
 	err := json.Unmarshal(payload, &payloadJWK)
@@ -2698,7 +2701,7 @@ func (wfe *WebFrontEndImpl) verifyEABMatchesKey(payload []byte, jwk *jose.JSONWe
 
 	if !keyDigestEquals(jwk, payloadJWK) {
 		return acme.BadPublicKeyProblem(
-			"external account binding payload key does not match account key of request")
+			"external account binding payload key does not match account key authenticating request")
 	}
 
 	return nil

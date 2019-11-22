@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -53,21 +54,21 @@ type MemoryStore struct {
 	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.RevokedCertificate
 
-	externalAccountKeysByKeyID map[string]string
+	externalAccountKeysByID map[string][]byte
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		accountIDCounter:           1,
-		accountsByID:               make(map[string]*core.Account),
-		accountsByKeyID:            make(map[string]*core.Account),
-		ordersByID:                 make(map[string]*core.Order),
-		ordersByAccountID:          make(map[string][]*core.Order),
-		authorizationsByID:         make(map[string]*core.Authorization),
-		challengesByID:             make(map[string]*core.Challenge),
-		certificatesByID:           make(map[string]*core.Certificate),
-		revokedCertificatesByID:    make(map[string]*core.RevokedCertificate),
-		externalAccountKeysByKeyID: make(map[string]string),
+		accountIDCounter:        1,
+		accountsByID:            make(map[string]*core.Account),
+		accountsByKeyID:         make(map[string]*core.Account),
+		ordersByID:              make(map[string]*core.Order),
+		ordersByAccountID:       make(map[string][]*core.Order),
+		authorizationsByID:      make(map[string]*core.Authorization),
+		challengesByID:          make(map[string]*core.Challenge),
+		certificatesByID:        make(map[string]*core.Certificate),
+		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
+		externalAccountKeysByID: make(map[string][]byte),
 	}
 }
 
@@ -402,26 +403,37 @@ func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core
 
 	return nil
 }
-func (m *MemoryStore) AddExternalAccountKeyByKeyID(keyID, key string) error {
+
+// AddExternalAccountKeyByID will add the base64 URL encoded key to the memory
+// store with the key ID as its index. This will store the key value in its
+// unencoded, raw form.
+func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
 	if len(key) == 0 || len(keyID) == 0 {
 		return errors.New("key ID and key must not be empty")
+	}
+
+	keyDecoded, err := base64.RawURLEncoding.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 URL encoded key %q: %s", key, err)
 	}
 
 	m.Lock()
 	defer m.Unlock()
 
-	if _, ok := m.externalAccountKeysByKeyID[keyID]; ok {
+	if _, ok := m.externalAccountKeysByID[keyID]; ok {
 		return fmt.Errorf("key ID %q is already present", keyID)
 	}
 
-	m.externalAccountKeysByKeyID[keyID] = key
+	m.externalAccountKeysByID[keyID] = keyDecoded
 
 	return nil
 }
 
-func (m *MemoryStore) GetExtenalAccountKeyByKeyID(keyID string) (string, bool) {
+// GetExternalAccountKeyByID will return the raw, base64 URL unencoded key
+// value by its key ID pair.
+func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	key, ok := m.externalAccountKeysByKeyID[keyID]
+	key, ok := m.externalAccountKeysByID[keyID]
 	return key, ok
 }
