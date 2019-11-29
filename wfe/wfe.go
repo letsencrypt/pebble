@@ -431,10 +431,10 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
-	// GET only handlers
-	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
+	// GET & POST handlers
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET", "POST")
 	// Note for noncePath: "GET" also implies "HEAD"
-	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET", "POST")
 
 	// POST only handlers
 	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
@@ -476,6 +476,20 @@ func (wfe *WebFrontEndImpl) Directory(
 		"newOrder":   newOrderPath,
 		"revokeCert": revokeCertPath,
 		"keyChange":  keyRolloverPath,
+	}
+
+	// RFC 8555 §6.3 says the server's directory endpoint should support
+	// POST-as-GET as well as GET.
+	if request.Method == "POST" {
+		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+		if _, prob := wfe.validPOSTAsGET(postData); prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
 	}
 
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -543,6 +557,21 @@ func (wfe *WebFrontEndImpl) Nonce(
 	if request.Method == "HEAD" {
 		statusCode = http.StatusOK
 	}
+
+	// RFC 8555 §6.3 says the server's nonce endpoint should support
+	// POST-as-GET as well as GET.
+	if request.Method == "POST" {
+		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+		if _, prob := wfe.validPOSTAsGET(postData); prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+	}
+
 	response.WriteHeader(statusCode)
 }
 
