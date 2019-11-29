@@ -225,10 +225,10 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 		methodsMap[m] = true
 	}
 
-	if methodsMap["GET"] && !methodsMap["HEAD"] {
+	if methodsMap[http.MethodGet] && !methodsMap[http.MethodHead] {
 		// Allow HEAD for any resource that allows GET
-		methods = append(methods, "HEAD")
-		methodsMap["HEAD"] = true
+		methods = append(methods, http.MethodHead)
+		methodsMap[http.MethodHead] = true
 	}
 
 	methodsStr := strings.Join(methods, ", ")
@@ -238,7 +238,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
-				if request.Method == "POST" || pattern == noncePath {
+				if request.Method == http.MethodPost || pattern == noncePath {
 					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 				}
 
@@ -432,22 +432,22 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET & POST handlers
-	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET", "POST")
-	// Note for noncePath: "GET" also implies "HEAD"
-	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET", "POST")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, http.MethodGet, http.MethodPost)
+	// Note for noncePath: http.MethodGet also implies http.MethodHead
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, http.MethodGet, http.MethodPost)
 
 	// POST only handlers
-	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
-	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
-	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
-	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
-	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
-	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, http.MethodPost)
+	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, http.MethodPost)
+	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, http.MethodPost)
+	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, http.MethodPost)
+	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, http.MethodPost)
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, http.MethodPost)
+	wfe.HandleFunc(m, certPath, wfe.Certificate, http.MethodPost)
+	wfe.HandleFunc(m, orderPath, wfe.Order, http.MethodPost)
+	wfe.HandleFunc(m, authzPath, wfe.Authz, http.MethodPost)
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, http.MethodPost)
+	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, http.MethodPost)
 
 	return m
 }
@@ -480,7 +480,7 @@ func (wfe *WebFrontEndImpl) Directory(
 
 	// RFC 8555 §6.3 says the server's directory endpoint should support
 	// POST-as-GET as well as GET.
-	if request.Method == "POST" {
+	if request.Method == http.MethodPost {
 		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
@@ -554,13 +554,13 @@ func (wfe *WebFrontEndImpl) Nonce(
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
 	// and HEAD requests should receive http.StatusOK.
-	if request.Method == "HEAD" {
+	if request.Method == http.MethodHead {
 		statusCode = http.StatusOK
 	}
 
 	// RFC 8555 §6.3 says the server's nonce endpoint should support
 	// POST-as-GET as well as GET.
-	if request.Method == "POST" {
+	if request.Method == http.MethodPost {
 		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
