@@ -2589,7 +2589,8 @@ func (wfe *WebFrontEndImpl) processRevocation(
 // object that was given in the request if successful. If no External Account
 // Binding was given then return nil however if it is required by the server
 // then error.
-func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest,
+func (wfe *WebFrontEndImpl) verifyEAB(
+	newAcctReq newAccountRequest,
 	outerPostData *authenticatedPOST) (*acme.JSONSigned, *acme.ProblemDetails) {
 	if newAcctReq.ExternalAccountBinding == nil {
 		if wfe.requireEAB {
@@ -2603,8 +2604,8 @@ func (wfe *WebFrontEndImpl) verifyEAB(newAcctReq newAccountRequest,
 	//1.  Verify that the value of the field is a well-formed JWS
 	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
 	if err != nil {
-		return nil, acme.MalformedProblem(
-			fmt.Sprintf("failed to decode external account binding: %s", err))
+		return nil, acme.InternalErrorProblem(
+			fmt.Sprintf("failed to encode external account binding JSON structure: %s", err))
 	}
 
 	eab, err := jose.ParseSigned(string(eabBytes))
@@ -2665,7 +2666,7 @@ func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignatu
 		break
 	default:
 		return "", acme.BadPublicKeyProblem(
-			"the 'alg' field is not valid for external account binding")
+			fmt.Sprintf("the 'alg' field is set to %q, which is not valid for external account binding, valid values are: HS256, HS384 or HS512", header.Algorithm))
 	}
 	if len(header.Nonce) > 0 {
 		return "", acme.MalformedProblem(
