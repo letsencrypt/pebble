@@ -513,18 +513,6 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	httpRequest.Header.Set("User-Agent", userAgent())
 	httpRequest.Header.Set("Accept", "*/*")
 
-	addrs, err := va.resolveIP(identifier)
-
-	if err != nil {
-		return nil, url.String(), acme.MalformedProblem(
-			fmt.Sprintf("Error occurred while resolving URL %q: %q", url.String(), err))
-	}
-
-	if len(addrs) == 0 {
-		return nil, url.String(), acme.MalformedProblem(
-			fmt.Sprintf("Could not resolve URL %q", url.String()))
-	}
-
 	transport := &http.Transport{
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
@@ -537,10 +525,23 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 			InsecureSkipVerify: true,
 		},
 
-		// Control specifically which IP will be used for this request
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
 			dialer := &net.Dialer{}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(addrs[0], portString))
+
+			// Control specifically which IP will be used for this request
+			addrs, err := va.resolveIP(host)
+			if err != nil {
+				return nil, fmt.Errorf("error occurred while resolving URL %q: %q", url.String(), err)
+			}
+			if len(addrs) == 0 {
+				return nil, fmt.Errorf("could not resolve URL %q", url.String())
+			}
+
+			return dialer.DialContext(ctx, network, net.JoinHostPort(addrs[0], port))
 		},
 	}
 
