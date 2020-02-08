@@ -7,6 +7,10 @@ addons:
     - example.letsencrypt.org
     - elpmaxe.letsencrypt.org
 
+cache:
+  directories:
+    - $GOPATH/pkg/mod
+
 go:
   - "1.13.x"
 
@@ -32,6 +36,12 @@ install:
   - GO111MODULE=off go get golang.org/x/tools/cmd/cover
   - GO111MODULE=off go get github.com/mattn/goveralls
   - GO111MODULE=off go get github.com/letsencrypt/boulder/test/load-generator
+  - go mod tidy
+  - git diff --exit-code go.mod
+  - git diff --exit-code go.sum
+  - go mod download
+  - go mod vendor
+  - git diff --exit-code vendor/
   - go install -v -race -mod=vendor ./...
 
 before_script:
