@@ -32,9 +32,9 @@ issues:
   max-same-issues: 0
   # The following excludes are considered false-positives/known-OK.
   exclude-rules:
-    - path: ca/ca.go
+    - path: ca([/|\\])ca.go
       text: 'type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl'
-    - path: va/va.go
+    - path: va([/|\\])va.go
       text: 'type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl'
-    - path: wfe/wfe.go
+    - path: wfe([/|\\])wfe.go
       text: 'if` block ends with a `return` statement, so drop this `else` and outdent its block'
