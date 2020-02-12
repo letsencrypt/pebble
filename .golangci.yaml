@@ -20,4 +20,14 @@ linters:
     - gocritic
     - gochecknoinits
     - gochecknoglobals
-    - typecheck # Go 1.13 incompatible pending new golangci-lint binary release
+    - gomnd
+    - wsl
+
+issues:
+  exclude-use-default: true
+  max-per-linter: 0
+  max-same-issues: 0
+  # The following excludes are considered false-positives/known-OK.
+  exclude-rules:
+    - path: tlsalpnone.go
+      text: '`marshalling` is a misspelling of `marshaling`'
