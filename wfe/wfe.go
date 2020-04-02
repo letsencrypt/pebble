@@ -1401,6 +1401,9 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 				rawDomain))
 		}
 
+		if strings.HasSuffix(rawDomain, ".onion") {
+			return acme.MalformedProblem(fmt.Sprintf("Onion addresses need to sent as onion ident type"))
+		}
 		// If there is a wildcard character in the ident value there should be only
 		// *one* instance
 		if strings.Count(rawDomain, "*") > 1 {
@@ -1524,6 +1527,8 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		var enabledChallenges []string
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
+		} else if authz.Identifier.Type == acme.IdentifierONION {
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeCSR01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
@@ -1572,11 +1577,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	var orderDNSs []string
+	var orderONIONs []string
 	var orderIPs []net.IP
 	for _, ident := range newOrder.Identifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
 			orderDNSs = append(orderDNSs, ident.Value)
+		case acme.IdentifierONION:
+			orderDNSs = append(orderONIONs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
 		default:
@@ -1586,10 +1594,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 	orderDNSs = uniqueLowerNames(orderDNSs)
+	orderONIONs = uniqueLowerNames(orderONIONs)
 	orderIPs = uniqueIPs(orderIPs)
 	var uniquenames []acme.Identifier
 	for _, name := range orderDNSs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: name, Type: acme.IdentifierDNS})
+	}
+	for _, name := range orderONIONs {
+		uniquenames = append(uniquenames, acme.Identifier{Value: name, Type: acme.IdentifierONION})
 	}
 	for _, ip := range orderIPs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: ip.String(), Type: acme.IdentifierIP})
@@ -1824,12 +1836,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 		return
 	}
 
-	// split order identifiers per types
+	// split order identifiers per SAN types, onion acme type mareges to DNSNames
 	var orderDNSs []string
 	var orderIPs []net.IP
 	for _, ident := range orderIdentifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
+			orderDNSs = append(orderDNSs, ident.Value)
+		case acme.IdentifierONION:
 			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
@@ -1850,7 +1864,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Check that the CSR has the same number of names as the initial order contained
 	if len(csrDNSs) != len(orderDNSs) {
 		wfe.sendError(acme.UnauthorizedProblem(
-			"Order includes different number of DNSnames identifiers than CSR specifies"), response)
+			"Order includes different number of DNSnames+Onion identifiers than CSR specifies"), response)
 		return
 	}
 	if len(csrIPs) != len(orderIPs) {

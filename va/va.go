@@ -297,6 +297,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
+	case acme.ChallengeCSR01:
+		results <- va.validateCSR01(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
@@ -488,6 +490,26 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 				expectedKeyAuthorization, payload))
 	}
 
+	return result
+}
+func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
+	result := &core.ValidationRecord{
+		URL:         task.Identifier.Value,
+		ValidatedAt: time.Now(),
+	}
+
+	csrBytes, err := base64.RawURLEncoding.DecodeString(task.Challenge.Payload)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
+	}
+
+	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
+	}
+	if len(parsedCSR.DNSNames) != 1 {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challenge CSR must have exsectly one DNSNames SNI for it %s caused this error", result.URL))
+	}
 	return result
 }
 
