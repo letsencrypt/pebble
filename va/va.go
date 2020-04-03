@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base32"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -22,6 +23,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"golang.org/x/crypto/ed25519"
+	"golang.org/x/crypto/sha3"
 
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
@@ -498,6 +501,7 @@ func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 
+	// used base64url-encoded DER as same with finallizion*/
 	csrBytes, err := base64.RawURLEncoding.DecodeString(task.Challenge.Payload)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
@@ -509,6 +513,27 @@ func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
 	}
 	if len(parsedCSR.DNSNames) != 1 {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challenge CSR must have exsectly one DNSNames SNI for it %s caused this error", result.URL))
+	}
+	//key signing algorithm for onionv3 is ed25519
+	if parsedCSR.PublicKeyAlgorithm != x509.Ed25519 {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q has wrong signing", result.URL))
+	}
+	//check csr's signing key matches with domain name
+	publickey, ok := parsedCSR.PublicKey.(ed25519.PublicKey)
+	if !ok {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q has wrong signing algorithem", result.URL))
+		return result
+	}
+	i := append([]byte(".onion checksum"), []byte(publickey)...)
+	//mergeing this to to same state cause slice of unaddressable value error
+	j := sha3.Sum256(append(i, '\x03'))
+	checksum := j[:2]
+	byteaddress := append(publickey, checksum...)
+	byteaddress = append(byteaddress, '\x03')
+	address := base32.StdEncoding.EncodeToString(byteaddress)
+	address = address + ".onion"
+	if address != parsedCSR.DNSNames[0] {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q didn't signed with onion address's public key", result.URL))
 	}
 	return result
 }
