@@ -521,7 +521,7 @@ func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
 	//check csr's signing key matches with domain name
 	publickey, ok := parsedCSR.PublicKey.(ed25519.PublicKey)
 	if !ok {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q has wrong signing algorithem", result.URL))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q has wrong signing algorithm", result.URL))
 		return result
 	}
 	i := append([]byte(".onion checksum"), []byte(publickey)...)
