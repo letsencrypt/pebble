@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -534,6 +535,23 @@ func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
 	address = address + ".onion"
 	if address != parsedCSR.DNSNames[0] {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q didn't signed with onion address's public key", result.URL))
+	}
+	//check nonce Extensions
+	var caNonce, clNonce []byte
+	for _, extension := range parsedCSR.Extensions {
+		if extension.Id == nil {
+			caNonce = extension.Value
+		}
+		if extension.Id == nil {
+			clNonce = extension.Value
+		}
+	}
+	if bytes.Equal(caNonce, []byte(task.Challenge.Challenge.Token)) == false {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("ca side Nonce doesn't match (replay protection) from: %q", result.URL))
+	}
+	//placeholder as I couldn't find where to get client side nonce
+	if bytes.Equal(clNonce, nil) == false {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("client side Nonce doesn't match from : %q", result.URL))
 	}
 	return result
 }

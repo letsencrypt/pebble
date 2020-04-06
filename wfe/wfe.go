@@ -1355,6 +1355,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	// Check that all of the identifiers in the new-order are DNS or IPaddress type
 	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
+		var result *acme.ProblemDetails
 		if ident.Type == acme.IdentifierIP {
 			if net.ParseIP(ident.Value) == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
@@ -1363,64 +1364,87 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 			}
 			continue
 		}
+		if ident.Type == acme.IdentifierONION {
+			result = verifyOrderOnion(ident.Value)
+			if result == nil {
+				continue
+			}
+		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
 				"Order included unsupported type identifier: type %q, value %q",
 				ident.Type, ident.Value))
 		}
 
-		rawDomain := ident.Value
-		if rawDomain == "" {
+		result = verifyOrderDomain(ident.Value)
+		if result != nil {
+			return result
+		}
+	}
+	return nil
+}
+func verifyOrderDomain(rawDomain string) *acme.ProblemDetails {
+	if rawDomain == "" {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier with empty value"))
+	}
+
+	for _, ch := range []byte(rawDomain) {
+		if !isDNSCharacter(ch) {
 			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier with empty value"))
+				"Order included DNS identifier with a value containing an illegal character: %q",
+				ch))
 		}
+	}
 
-		for _, ch := range []byte(rawDomain) {
-			if !isDNSCharacter(ch) {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS identifier with a value containing an illegal character: %q",
-					ch))
-			}
-		}
+	if len(rawDomain) > maxDNSIdentifierLength {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier that was longer than %d characters",
+			maxDNSIdentifierLength))
+	}
 
-		if len(rawDomain) > maxDNSIdentifierLength {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier that was longer than %d characters",
-				maxDNSIdentifierLength))
-		}
+	if ip := net.ParseIP(rawDomain); ip != nil {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with an IP address value: %q\n",
+			rawDomain))
+	}
 
-		if ip := net.ParseIP(rawDomain); ip != nil {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with an IP address value: %q\n",
-				rawDomain))
-		}
+	if strings.HasSuffix(rawDomain, ".") {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with a value ending in a period: %q\n",
+			rawDomain))
+	}
 
-		if strings.HasSuffix(rawDomain, ".") {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with a value ending in a period: %q\n",
-				rawDomain))
-		}
-
-		if strings.HasSuffix(rawDomain, ".onion") {
-			return acme.MalformedProblem(fmt.Sprintf("Onion addresses need to sent as onion ident type"))
-		}
-		// If there is a wildcard character in the ident value there should be only
-		// *one* instance
-		if strings.Count(rawDomain, "*") > 1 {
+	if strings.HasSuffix(rawDomain, ".onion") {
+		return acme.MalformedProblem(fmt.Sprintf("Onion addresses need to sent as onion ident type"))
+	}
+	// If there is a wildcard character in the ident value there should be only
+	// *one* instance
+	if strings.Count(rawDomain, "*") > 1 {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS type identifier with illegal wildcard value: "+
+				"too many wildcards %q",
+			rawDomain))
+	} else if strings.Count(rawDomain, "*") == 1 {
+		// If there is one wildcard character it should be the only character in
+		// the leftmost label.
+		if !strings.HasPrefix(rawDomain, "*.") {
 			return acme.MalformedProblem(fmt.Sprintf(
 				"Order included DNS type identifier with illegal wildcard value: "+
-					"too many wildcards %q",
+					"wildcard isn't leftmost prefix %q",
 				rawDomain))
-		} else if strings.Count(rawDomain, "*") == 1 {
-			// If there is one wildcard character it should be the only character in
-			// the leftmost label.
-			if !strings.HasPrefix(rawDomain, "*.") {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS type identifier with illegal wildcard value: "+
-						"wildcard isn't leftmost prefix %q",
-					rawDomain))
-			}
 		}
+	}
+	return nil
+}
+
+//va handles if onion domain's checksum matches
+func verifyOrderOnion(domain string) *acme.ProblemDetails {
+	if !strings.HasSuffix(domain, ".onion") {
+		return acme.MalformedProblem(fmt.Sprintf("Order include Onion type request for non-Onion type request %q", domain))
+	}
+	if len(domain) != 62 {
+		return acme.MalformedProblem(fmt.Sprintf("Only onion V3 address is supported, %q is not onion v3 address", domain))
 	}
 	return nil
 }
