@@ -536,24 +536,51 @@ func (va VAImpl) validateCSR01(task *vaTask) *core.ValidationRecord {
 	if address != parsedCSR.DNSNames[0] {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q didn't signed with onion address's public key", result.URL))
 	}
-	//check nonce Extensions
-	var caNonce, clNonce []byte
-	for _, extension := range parsedCSR.Extensions {
-		if extension.Id == nil {
-			caNonce = extension.Value
-		}
-		if extension.Id == nil {
-			clNonce = extension.Value
-		}
-	}
-	if bytes.Equal(caNonce, []byte(task.Challenge.Challenge.Token)) == false {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("ca side Nonce doesn't match (replay protection) from: %q", result.URL))
-	}
-	//placeholder as I couldn't find where to get client side nonce
-	if bytes.Equal(clNonce, nil) == false {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("client side Nonce doesn't match from : %q", result.URL))
-	}
+	//check nonce
+	result.Error = OnionNonceCheck(parsedCSR, []byte(task.Challenge.Challenge.Token))
 	return result
+}
+
+// OnionNonceCheck does checks Onion related attribute nonces
+func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.ProblemDetails {
+	//oid should-be constant
+	CaNonceOid := asn1.ObjectIdentifier([]int{2, 23, 140, 41})
+	//from where?
+	//	ClientNonceOid := asn1.ObjectIdentifier([]int{2, 23, 140, 42})
+
+	var tbsCsr struct {
+		Raw           asn1.RawContent
+		Version       int
+		Subject       asn1.RawValue
+		PublicKey     asn1.RawValue
+		RawAttributes []asn1.RawValue `asn1:"tag:0"`
+	}
+	if _, err := asn1.Unmarshal(csr.RawTBSCertificateRequest, &tbsCsr); err != nil {
+		log.Fatal(err)
+	}
+
+	var attr struct {
+		ID    asn1.ObjectIdentifier
+		Value asn1.RawValue `asn1:"set"`
+	}
+	for _, rawAttr := range tbsCsr.RawAttributes {
+		if _, err := asn1.Unmarshal(rawAttr.FullBytes, &attr); err != nil {
+			return acme.UnauthorizedProblem(fmt.Sprintf("couldn't unmarshal attribute in csr: %w", err))
+		}
+		if attr.ID.Equal(CaNonceOid) {
+			var onionVal []byte
+			csrCaNonce, err := asn1.Unmarshal(attr.Value.Bytes, &onionVal)
+			if err != nil {
+				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing canonce from CSR : %w from %q", err, csr.DNSNames[0]))
+			}
+			if !bytes.Equal(caNonce, csrCaNonce) {
+				return acme.UnauthorizedProblem(fmt.Sprintf("CANonce doesn't match"))
+
+			}
+			return nil
+		}
+	}
+	return acme.UnauthorizedProblem(fmt.Sprintf("onion oid was not found in CSR attributes"))
 }
 
 // NOTE(@cpu): fetchHTTP only fetches the ACME HTTP-01 challenge path for
