@@ -565,16 +565,16 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 	}
 	for _, rawAttr := range tbsCsr.RawAttributes {
 		if _, err := asn1.Unmarshal(rawAttr.FullBytes, &attr); err != nil {
-			return acme.UnauthorizedProblem(fmt.Sprintf("couldn't unmarshal attribute in csr: %w", err))
+			return acme.UnauthorizedProblem(fmt.Sprintf("couldn't unmarshal attribute in csr: %q", csr.DNSNames[0]))
 		}
 		if attr.ID.Equal(CaNonceOid) {
 			var onionVal []byte
 			csrCaNonce, err := asn1.Unmarshal(attr.Value.Bytes, &onionVal)
 			if err != nil {
-				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing canonce from CSR : %w from %q", err, csr.DNSNames[0]))
+				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing canonce from CSR : %q", csr.DNSNames[0]))
 			}
 			if !bytes.Equal(caNonce, csrCaNonce) {
-				return acme.UnauthorizedProblem(fmt.Sprintf("CANonce doesn't match"))
+				return acme.UnauthorizedProblem(fmt.Sprintf("CANonce doesn't match %q", csr.DNSNames[0]))
 
 			}
 			return nil
