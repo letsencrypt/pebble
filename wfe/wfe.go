@@ -2171,7 +2171,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	defer authz.RUnlock()
 
 	ident := authz.Identifier
-	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP {
+	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP && acme.IdentifierONION {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
