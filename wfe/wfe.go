@@ -245,6 +245,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+				// Process CORS as necessary. If it's a CORS preflight, no further processing may occur.
+				if wfe.processCORS(request, response, methods) {
+					return
+				}
+
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
@@ -278,6 +283,33 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 			},
 			)})
 	mux.Handle(pattern, defaultHandler)
+}
+
+// processCORS reads and writes all necessary request and response headers in order to
+// enable use by CORS-aware user agents. If the request is a CORS preflight request, the
+// function returns true, in which case no further data may be written to the response.
+func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.ResponseWriter,
+	allowedMethods []string) bool {
+	// No Origin header means CORS is not relevant
+	if request.Header.Get("Origin") == "" {
+		return false
+	}
+
+	// All CORS-aware responses include -Allow-Origin and -Expose-Headers
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
+
+	// Preflight responses additionally include -Max-Age, -Allow-Methods, -Allow-Headers
+	// and terminate the response.
+	if request.Method == http.MethodOptions {
+		response.Header().Set("Access-Control-Max-Age", "86400")
+		response.Header().Set("Access-Control-Allow-Methods", strings.Join(allowedMethods, ","))
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		response.WriteHeader(http.StatusNoContent)
+		return true
+	}
+
+	return false
 }
 
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
