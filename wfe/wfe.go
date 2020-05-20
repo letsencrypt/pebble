@@ -246,7 +246,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
 				// Process CORS as necessary. If it's a CORS preflight, no further processing may occur.
-				if wfe.processCORS(request, response, methods) {
+				if wfe.processCORS(request, response, methodsMap) {
 					return
 				}
 
@@ -289,26 +289,39 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 // enable use by CORS-aware user agents. If the request is a CORS preflight request, the
 // function returns true, in which case no further data may be written to the response.
 func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.ResponseWriter,
-	allowedMethods []string) bool {
-	// No Origin header means CORS is not relevant
+	allowedMethodsMap map[string]bool) bool {
+	// 6.1.1, 6.2.1. No Origin header means CORS is not relevant.
+	// 6.1.2, 6.2.2. Origin's value is not processed because it always matches.
 	if request.Header.Get("Origin") == "" {
 		return false
 	}
 
-	// All CORS-aware responses include -Allow-Origin and -Expose-Headers
-	response.Header().Set("Access-Control-Allow-Origin", "*")
-	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
-
-	// Preflight responses additionally include -Max-Age, -Allow-Methods, -Allow-Headers
-	// and terminate the response.
+	// 6.2. Request is a CORS preflight
 	if request.Method == http.MethodOptions {
-		response.Header().Set("Access-Control-Max-Age", "86400")
-		response.Header().Set("Access-Control-Allow-Methods", strings.Join(allowedMethods, ","))
+		// 6.2.3, 6.2.5. -Request-Method must be present and must be a match for one of the allowed methods
+		method := request.Header.Get("Access-Control-Request-Method")
+		if _, allowed := allowedMethodsMap[method]; method == "" || !allowed {
+			return false
+		}
+		// 6.2.4, 6.2.6. -Request-Headers i not processed because it always matches.
+		// 6.2.7. Send -Allow-Origin, without -Allow-Credentials support.
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+		// 6.2.8. Send -Max-Age.
+		response.Header().Set("Access-Control-Max-Age", "5")
+		// 6.2.9. -Allowed-Methods is not sent because ACME only uses simple methods.
+		// 6.2.10. -Allow-Headers required for "Content-Type: application/jose+json"
 		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// Terminate the request
 		response.WriteHeader(http.StatusNoContent)
 		return true
 	}
 
+	// 6.1. Otherwise, request is a CORS simple or actual request.
+	// 6.1.3. Send -Allow-Origin, without Allow-Credentials support.
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	// 6.1.4. Send -Expose-Headers for the response headers ACME uses.
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
+	// Continue processing the request
 	return false
 }
 
