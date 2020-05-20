@@ -308,7 +308,7 @@ func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.Res
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 		// 6.2.8. Send -Max-Age.
 		response.Header().Set("Access-Control-Max-Age", "5")
-		// 6.2.9. -Allowed-Methods is not sent because ACME only uses simple methods.
+		// 6.2.9. -Allow-Methods is not sent because ACME only uses simple methods.
 		// 6.2.10. -Allow-Headers required for "Content-Type: application/jose+json"
 		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		// Terminate the request
