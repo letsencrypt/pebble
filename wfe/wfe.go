@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/big"
@@ -61,6 +62,7 @@ const (
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
 	certStatusBySerial   = "/cert-status-by-serial/"
+	runtimeConfig        = "/runtimeConfig"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -484,6 +486,42 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	}
 }
 
+func (wfe *WebFrontEndImpl) updateRuntimeConfig(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	type requestSchema struct {
+		AuthzReusePercent *uint8 `json:",omitempty"`
+		NonceErrPercent   *uint8 `json:",omitempty"`
+	}
+
+	if request.Body == nil {
+		response.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
+
+	var maxBodyBytes int64 = 2048
+	d := json.NewDecoder(io.LimitReader(request.Body, maxBodyBytes))
+	requestObj := &requestSchema{}
+	err := d.Decode(requestObj)
+	if err != nil {
+		response.WriteHeader(http.StatusBadRequest)
+		_, _ = response.Write([]byte(err.Error()))
+		return
+	}
+
+	if requestObj.AuthzReusePercent != nil {
+		wfe.authzReusePercent = int(*requestObj.AuthzReusePercent)
+	}
+	if requestObj.NonceErrPercent != nil {
+		wfe.nonceErrPercent = int(*requestObj.NonceErrPercent)
+	}
+
+	response.WriteHeader(http.StatusAccepted)
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET & POST handlers
@@ -517,6 +555,7 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
 	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
 	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
+	wfe.HandleManagementFunc(m, runtimeConfig, wfe.updateRuntimeConfig)
 	return m
 }
 

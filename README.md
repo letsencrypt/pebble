@@ -348,6 +348,21 @@ The endpoint returns the information as a JSON object:
        "Status": "Revoked"
     }
 
+#### Updates to configuration at runtime
+
+A couple of Pebble's configurables can be modified after Pebble has started by sending
+a `PATCH` request to `https://localhost:15000/runtimeConfig` whose request body is a
+json object with one or more of the following properties:
+
+| Property          | Type           | Analogous Env Variable |
+|-------------------|----------------|-------------------------
+| AuthzReusePercent | integer, 0-100 | PEBBLE_AUTHZREUSE      |
+| NonceErrPercent   | integer, 0-100 | PEBBLE_WFE_NONCEREJECT |
+
+The endpoint returns HTTP 202 Accepted if the request was successful.
+
+Changing these percentages can simplify creating test suites where certain tests exercise
+authorization reuse or nonce error handling. 
 
 ### OCSP Responder URL
 
