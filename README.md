@@ -3,7 +3,6 @@
 [![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
 [![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg?branch=cpu-goveralls)](https://coveralls.io/github/letsencrypt/pebble?branch=cpu-goveralls)
 [![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
-[![GolangCI](https://golangci.com/badges/github.com/letsencrypt/pebble.svg)](https://golangci.com/r/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
 is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited
