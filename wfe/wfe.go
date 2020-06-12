@@ -2017,6 +2017,14 @@ func (wfe *WebFrontEndImpl) Authz(
 	orderAcctID := authz.Order.AccountID
 	authz.Order.RUnlock()
 
+	// `pending` items should transition to `expired` if too old
+	// the context of this request is irrelevant
+	if authz.Status == acme.StatusPending {
+		if authz.ExpiresDate.Before(time.Now()) {
+			authz.Status = acme.StatusExpired
+		}
+	}
+
 	// If the postData is not a POST-as-GET, treat this as case A) and update
 	// the authorization based on the postData
 	if !postData.postAsGet {
