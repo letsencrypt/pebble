@@ -29,21 +29,19 @@ type config struct {
 	}
 }
 
-func setConfigDefaults() (config) {
-	var conf config
-	conf.Pebble.ListenAddress = "0.0.0.0:14000"
-	conf.Pebble.ManagementListenAddress = "0.0.0.0:15000"
-	conf.Pebble.Certificate = "test/certs/localhost/cert.pem"
-	conf.Pebble.PrivateKey = "test/certs/localhost/key.pem"
-	conf.Pebble.HTTPPort = 5002
-	conf.Pebble.TLSPort = 5001
-	return conf
+const DefaultConfigPath = "test/config/default-config.json"
+
+func getDefaultConfig() (config) {
+	var c config
+	err := cmd.ReadConfigFile(DefaultConfigPath, &c)
+	cmd.FailOnError(err, "Reading default JSON config file into config structure")
+	return c
 }
 
 func main() {
 	configFile := flag.String(
 		"config",
-		"test/config/pebble-config.json",
+		DefaultConfigPath,
 		"File path to the Pebble configuration file")
 	strictMode := flag.Bool(
 		"strict",
@@ -63,7 +61,7 @@ func main() {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	logger.Printf("Starting Pebble ACME server")
 
-	c := setConfigDefaults()
+	c := getDefaultConfig()
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
