@@ -33,8 +33,10 @@ const DefaultConfigPath = "test/config/default-config.json"
 
 func getDefaultConfig() config {
 	var c config
-	err := cmd.ReadConfigFile(DefaultConfigPath, &c)
-	cmd.FailOnError(err, "Reading default JSON config file into config structure")
+	if _, err := os.Stat(DefaultConfigPath); err == nil {
+		err := cmd.ReadConfigFile(DefaultConfigPath, &c)
+		cmd.FailOnError(err, "Reading default JSON config file into config structure")
+	}
 	return c
 }
 
