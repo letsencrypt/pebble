@@ -76,7 +76,7 @@ correctly.
 ### Binary
 
 ```bash
-pebble -config ./test/config/pebble-config.json
+pebble -config ./test/config/default-config.json
 ```
 
 Afterwards you can access the Pebble server's ACME directory
@@ -206,7 +206,7 @@ challenge to observe the state since the CA may send many validation requests.
 To test issuance "at full speed" with no artificial sleeps set the environment
 variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 
-`PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
+`PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/default-config.json`
 
 The maximal number of seconds to sleep can be configured by defining
 `PEBBLE_VA_SLEEPTIME`. It must be set to a positive integer.
@@ -282,7 +282,7 @@ These endpoints are specific to Pebble and its internal behavior, and are not pa
 of the RFC 8555 that defines the ACME protocol.
 
 The management interface is configured by the `managementListenAddress` field in
-`pebble-config.json` that defines the address and the port on which the management
+`default-config.json` that defines the address and the port on which the management
 interface will listen on. Set `managementListenAddress` to an empty string or `null`
 to disable it.
 
@@ -353,12 +353,12 @@ The endpoint returns the information as a JSON object:
 Pebble does not support the OCSP protocol as a responder and so does not set
 the OCSP Responder URL in the issued certificates. However, if you setup a
 proper OCSP Responder run side by side with Pebble, you may want to set this URL.
-This is possible by setting the field `ocspResponderURL` of the `pebble-config.json`
+This is possible by setting the field `ocspResponderURL` of the `default-config.json`
 consummed by Pebble to a non empty string: in this case, this string will be use
 in the appropriate field of all issued certificates.
 
 For instance, to have Pebble issue certificates that instruct a client to check the URL `http://127.0.0.1:4002`
-to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.json` that includes:
+to retrieve the OCSP status of a certificate, run Pebble with a `default-config.json` that includes:
 
 ```
   "ocspResponderURL": "http://127.0.0.1:4002",

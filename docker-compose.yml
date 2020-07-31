@@ -2,7 +2,7 @@ version: '3'
 services:
   pebble:
     image: letsencrypt/pebble:latest
-    command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    command: pebble -config /test/config/default-config.json -strict -dnsserver 10.30.50.3:8053
     environment:
       # TODO(@cpu): Delete this explicit GODEBUG env var once Pebble is built
       # with Go 1.13.x which defaults TLS 1.3 to on
