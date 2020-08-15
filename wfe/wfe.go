@@ -2398,14 +2398,14 @@ func (wfe *WebFrontEndImpl) Certificate(
 		return
 	}
 
-	if no >= len(cert.Issuers) {
+	if no >= len(cert.IssuerChains) {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	// Add links to alternate roots
 	basePath := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, serial))
-	addAlternateLinks(response, basePath, no, len(cert.Issuers))
+	addAlternateLinks(response, basePath, no, len(cert.IssuerChains))
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)

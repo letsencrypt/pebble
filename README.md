@@ -320,6 +320,11 @@ request to `https://localhost:15000/roots/0`, `https://localhost:15000/root-keys
 etc. These endpoints also send `Link` HTTP headers for all alternative root and
 intermediate certificates and keys.
 
+The length of certificate chains can be controlled using `PEBBLE_CHAIN_LENGTH`, which has
+a default and minimum value of `1` (leaf + 1 intermediate). For higher values, Pebble will
+include extra intermediate certificates between the leaf and the root. Extra intermediate
+certificates are *not* exposed via the management interface.
+
 #### Certificate Status
 
 The certificate (in PEM format) and its revocation status can be queried by sending

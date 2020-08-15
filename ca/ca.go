@@ -35,8 +35,8 @@ type CAImpl struct {
 }
 
 type chain struct {
-	root         *issuer
-	intermediate *issuer
+	root          *issuer
+	intermediates []*issuer
 }
 
 type issuer struct {
@@ -138,8 +138,8 @@ func (ca *CAImpl) makeRootCert(
 		DER:  der,
 	}
 	if signer != nil && signer.cert != nil {
-		newCert.Issuers = make([]*core.Certificate, 1)
-		newCert.Issuers[0] = signer.cert
+		newCert.IssuerChains = make([][]*core.Certificate, 1)
+		newCert.IssuerChains[0] = []*core.Certificate{signer.cert}
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -163,7 +163,7 @@ func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 		return nil, err
 	}
 
-	ca.log.Printf("Generated new root issuer with serial %s and SKI %x\n", rc.ID, subjectKeyID)
+	ca.log.Printf("Generated new root issuer %s with serial %s and SKI %x\n", rc.Cert.Subject, rc.ID, subjectKeyID)
 	return &issuer{
 		key:  rk,
 		cert: rc,
@@ -186,18 +186,52 @@ func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Sig
 	}, nil
 }
 
-func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte) *chain {
+// newChain generates a new issuance chain, including a root certificate and numIntermediates intermediates (at least 1).
+// The first intermediate will use intermediateKey, intermediateSubject and subjectKeyId.
+// Any intermediates between the first intermediate and the root will have their keys and subjects generated automatically.
+func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte, numIntermediates int) *chain {
+	if numIntermediates <= 0 {
+		panic("At least one intermediate must be present in the certificate chain")
+	}
 	root, err := ca.newRootIssuer()
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
-	intermediate, err := ca.newIntermediateIssuer(root, intermediateKey, intermediateSubject, subjectKeyID)
+
+	// The last N-1 intermediates build a path from the root to the leaf signing certificate.
+	// If numIntermediates is only 1, then no intermediates will be generated here.
+	prev := root
+	intermediates := make([]*issuer, numIntermediates)
+	for i := 0; i < numIntermediates-1; i++ {
+		k, ski, err := makeKey()
+		if err != nil {
+			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
+		}
+		intermediate, err := ca.makeRootCert(k, pkix.Name{
+			CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
+		}, ski, prev)
+		if err != nil {
+			panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
+		}
+		intermediates[i] = &issuer{key: k, cert: intermediate}
+		prev = intermediates[i]
+	}
+
+	// The first issuer is the one which signs the leaf certificates
+	intermediate, err := ca.newIntermediateIssuer(prev, intermediateKey, intermediateSubject, subjectKeyID)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
+	intermediates[numIntermediates-1] = intermediate
+
+	// Reverse the order of the intermediates, from leaf signer to root.
+	for i, j := 0, len(intermediates)-1; i < j; i, j = i+1, j-1 {
+		intermediates[i], intermediates[j] = intermediates[j], intermediates[i]
+	}
+
 	return &chain{
-		root:         root,
-		intermediate: intermediate,
+		root:          root,
+		intermediates: intermediates,
 	}
 }
 
@@ -211,10 +245,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
-	issuer := ca.chains[0].intermediate
-	if issuer == nil || issuer.cert == nil {
+	defaultChain := ca.chains[0].intermediates
+	if len(defaultChain) == 0 || defaultChain[0].cert == nil {
 		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
 	}
+	issuer := defaultChain[0]
 
 	subjectKeyID, err := makeSubjectKeyID(key)
 	if err != nil {
@@ -252,18 +287,22 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, err
 	}
 
-	issuers := make([]*core.Certificate, len(ca.chains))
+	issuers := make([][]*core.Certificate, len(ca.chains))
 	for i := 0; i < len(ca.chains); i++ {
-		issuers[i] = ca.chains[i].intermediate.cert
+		issuerChain := make([]*core.Certificate, len(ca.chains[i].intermediates))
+		for j, cert := range ca.chains[i].intermediates {
+			issuerChain[j] = cert.cert
+		}
+		issuers[i] = issuerChain
 	}
 
 	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:        hexSerial,
-		AccountID: accountID,
-		Cert:      cert,
-		DER:       der,
-		Issuers:   issuers,
+		ID:           hexSerial,
+		AccountID:    accountID,
+		Cert:         cert,
+		DER:          der,
+		IssuerChains: issuers,
 	}
 	_, err = ca.db.AddCertificate(newCert)
 	if err != nil {
@@ -272,7 +311,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int) *CAImpl {
 	ca := &CAImpl{
 		log: log,
 		db:  db,
@@ -292,7 +331,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID)
+		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 	return ca
 }
@@ -368,12 +407,14 @@ func (ca *CAImpl) GetRootKey(no int) *rsa.PrivateKey {
 	return nil
 }
 
+// GetIntermediateCert returns the first (closest the the leaf) issuer certificate
+// in the chain identified by `no`.
 func (ca *CAImpl) GetIntermediateCert(no int) *core.Certificate {
 	chain := ca.getChain(no)
 	if chain == nil {
 		return nil
 	}
-	return chain.intermediate.cert
+	return chain.intermediates[0].cert
 }
 
 func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
@@ -382,7 +423,7 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 		return nil
 	}
 
-	switch key := chain.intermediate.key.(type) {
+	switch key := chain.intermediates[0].key.(type) {
 	case *rsa.PrivateKey:
 		return key
 	}
