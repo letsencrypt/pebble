@@ -179,7 +179,7 @@ func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Sig
 	if err != nil {
 		return nil, err
 	}
-	ca.log.Printf("Generated new intermediate issuer with serial %s and SKI %x\n", ic.ID, subjectKeyID)
+	ca.log.Printf("Generated new intermediate issuer %s with serial %s and SKI %x\n", ic.Cert.Subject, ic.ID, subjectKeyID)
 	return &issuer{
 		key:  intermediateKey,
 		cert: ic,
@@ -207,14 +207,14 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
 		}
-		intermediate, err := ca.makeRootCert(k, pkix.Name{
+		intermediate, err := ca.newIntermediateIssuer(prev, k, pkix.Name{
 			CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
-		}, ski, prev)
+		}, ski)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 		}
-		intermediates[i] = &issuer{key: k, cert: intermediate}
-		prev = intermediates[i]
+		intermediates[i] = intermediate
+		prev = intermediate
 	}
 
 	// The first issuer is the one which signs the leaf certificates
