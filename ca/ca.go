@@ -202,7 +202,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	// If numIntermediates is only 1, then no intermediates will be generated here.
 	prev := root
 	intermediates := make([]*issuer, numIntermediates)
-	for i := 0; i < numIntermediates-1; i++ {
+	for i := numIntermediates - 1; i > 0; i-- {
 		k, ski, err := makeKey()
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
@@ -222,12 +222,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
 	}
-	intermediates[numIntermediates-1] = intermediate
-
-	// Reverse the order of the intermediates, from leaf signer to root.
-	for i, j := 0, len(intermediates)-1; i < j; i, j = i+1, j-1 {
-		intermediates[i], intermediates[j] = intermediates[j], intermediates[i]
-	}
+	intermediates[0] = intermediate
 
 	return &chain{
 		root:          root,
