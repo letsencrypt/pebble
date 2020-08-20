@@ -14,6 +14,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/pebble/acme"
@@ -37,6 +38,17 @@ type CAImpl struct {
 type chain struct {
 	root          *issuer
 	intermediates []*issuer
+}
+
+func (c *chain) String() string {
+	fullchain := append(c.intermediates, c.root)
+	n := len(fullchain)
+
+	names := make([]string, n)
+	for i := range fullchain {
+		names[n-i-1] = fullchain[i].cert.Cert.Subject.CommonName
+	}
+	return strings.Join(names, " -> ")
 }
 
 type issuer struct {
@@ -148,7 +160,7 @@ func (ca *CAImpl) makeRootCert(
 	return newCert, nil
 }
 
-func (ca *CAImpl) newRootIssuer() (*issuer, error) {
+func (ca *CAImpl) newRootIssuer(name string) (*issuer, error) {
 	// Make a root private key
 	rk, subjectKeyID, err := makeKey()
 	if err != nil {
@@ -156,7 +168,7 @@ func (ca *CAImpl) newRootIssuer() (*issuer, error) {
 	}
 	// Make a self-signed root certificate
 	subject := pkix.Name{
-		CommonName: rootCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
+		CommonName: rootCAPrefix + name,
 	}
 	rc, err := ca.makeRootCert(rk, subject, subjectKeyID, nil)
 	if err != nil {
@@ -193,7 +205,10 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	if numIntermediates <= 0 {
 		panic("At least one intermediate must be present in the certificate chain")
 	}
-	root, err := ca.newRootIssuer()
+
+	chainID := hex.EncodeToString(makeSerial().Bytes()[:3])
+
+	root, err := ca.newRootIssuer(chainID)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
@@ -208,7 +223,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
 		}
 		intermediate, err := ca.newIntermediateIssuer(prev, k, pkix.Name{
-			CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
+			CommonName: fmt.Sprintf("%s%s #%d", intermediateCAPrefix, chainID, i),
 		}, ski)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %s", err.Error()))
@@ -224,10 +239,13 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	}
 	intermediates[0] = intermediate
 
-	return &chain{
+	c := &chain{
 		root:          root,
 		intermediates: intermediates,
 	}
+	ca.log.Printf("Generated issuance chain: %s", c)
+
+	return c
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
