@@ -232,7 +232,7 @@ failed request, rather than quitting outright.
 
 Experience from Boulder indicates that many ACME clients do not gracefully retry
 on invalid nonce errors. To help ensure future ACME clients are able to
-gracefully handle these errors by default **Pebble rejects 15% of all valid
+gracefully handle these errors by default **Pebble rejects 5% of all valid
 nonces as invalid**.
 
 The percentage of valid nonces that are rejected can be configured using the

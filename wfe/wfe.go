@@ -165,6 +165,10 @@ func New(
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool) WebFrontEndImpl {
+	// Seed rand from the current time so test environments don't always have
+	// the same nonce rejection and sleep time patterns.
+	rand.Seed(time.Now().UnixNano())
+
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
