@@ -62,8 +62,13 @@ func main() {
 		alternateRoots = int(val)
 	}
 
+	chainLength := 1
+	if val, err := strconv.ParseInt(os.Getenv("PEBBLE_CHAIN_LENGTH"), 10, 0); err == nil && val >= 0 {
+		chainLength = int(val)
+	}
+
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
