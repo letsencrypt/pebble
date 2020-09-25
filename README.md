@@ -245,15 +245,35 @@ To **never** reject a valid nonce as invalid run:
 
 `PEBBLE_WFE_NONCEREJECT=0 pebble`
 
-### Authorization Reuse
+### Object Reuse
 
-ACME servers may choose to reuse valid authorizations from previous orders in new orders. ACME clients [should always check](https://tools.ietf.org/html/rfc8555#section-7.1.3) the status of a new order and its authorizations to confirm whether they need to respond to any challenges.
+The RFC allows for several objects to be re-used.
+
+**Clients should be prepared an ACME server may re-use any given object type, regardless of Pebble implementing a reuse policy for that object.**
+
+#### Order Reuse
+
+The RFC allows ACME servers to reuse orders. Pebble does not reuse orders at this time; however Boulder does reuse Orders in at least two scenarios:
+
+1. If an Account requests a new Order that is identical to an already existing "pending" order for that same Account, the Order will be re-used.
+2. If an Account requests a new Order that is identical to a recently failed "invald" order for that same Account, the Order will be re-used and return to a "pending" state.
+
+#### Authorization Reuse
+
+ACME servers may choose to reuse authorizations from previous orders in new orders. ACME clients [should always check](https://tools.ietf.org/html/rfc8555#section-7.1.3) the status of a new order and its authorizations to confirm whether they need to respond to any challenges.
+
+#### Valid Authorization Reuse
 
 **Pebble will reuse valid authorizations in new orders, if they exist, 50% of the time**.
 
 The percentage may be controlled with the environment variable `PEBBLE_AUTHZREUSE`, e.g. to always reuse authorizations:
 
 `PEBBLE_AUTHZREUSE=100 pebble`
+
+#### Pending Authorization Reuse
+
+Pebble does not currently reuse Pending Authorizations across Orders, however other ACME servers - notably Boulder - will reuse Pending Authorizations. 
+
 
 ### Avoiding Client HTTPS Errors
 
