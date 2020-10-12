@@ -251,12 +251,13 @@ The RFC allows for several objects to be re-used.
 
 **Clients should be prepared an ACME server may re-use any given object type, regardless of Pebble implementing a reuse policy for that object.**
 
+Pebble and Boulder __may__ or __may not__ implement the same object re-use policies at any given time.  There exists an [ACME Implementation Details](https://github.com/letsencrypt/boulder/blob/main/docs/acme-implementation_details.md) document for Boulder which contains some information on how Boulder handles this.
+
 #### Order Reuse
 
-The RFC allows ACME servers to reuse orders. Pebble does not reuse orders at this time; however Boulder does reuse Orders in at least two scenarios:
+The RFC allows ACME servers to reuse an Order. Pebble does not reuse Orders at this time; however Boulder does reuse Orders in at least one scenario:
 
-1. If an Account requests a new Order that is identical to an already existing "pending" order for that same Account, the Order will be re-used.
-2. If an Account requests a new Order that is identical to a recently failed "invald" order for that same Account, the Order will be re-used and return to a "pending" state.
+* If an Account requests a new Order that is identical to an already existing "pending" or "ready" Order for that same Account, the Order will be re-used.
 
 #### Authorization Reuse
 
