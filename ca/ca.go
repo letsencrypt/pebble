@@ -248,7 +248,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
-func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID string) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
@@ -269,6 +269,22 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("cannot create subject key ID: %s", err.Error())
 	}
 
+	certNotBefore := time.Now()
+	if notBefore != "" {
+		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse Not Before date: %w", err)
+		}
+	}
+
+	certNotAfter := time.Now().AddDate(5, 0, 0)
+	if notAfter != "" {
+		certNotAfter, err = time.Parse(time.RFC3339, notAfter)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse Not After date: %w", err)
+		}
+	}
+
 	serial := makeSerial()
 	template := &x509.Certificate{
 		DNSNames:    domains,
@@ -277,8 +293,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 			CommonName: cn,
 		},
 		SerialNumber: serial,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(5, 0, 0),
+		NotBefore:    certNotBefore,
+		NotAfter:     certNotAfter,
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
@@ -375,7 +391,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
