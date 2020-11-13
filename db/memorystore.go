@@ -55,6 +55,8 @@ type MemoryStore struct {
 	revokedCertificatesByID map[string]*core.RevokedCertificate
 
 	externalAccountKeysByID map[string][]byte
+
+	blockListByDomain map[string]bool
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -69,6 +71,7 @@ func NewMemoryStore() *MemoryStore {
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 		externalAccountKeysByID: make(map[string][]byte),
+		blockListByDomain:       make(map[string]bool),
 	}
 }
 
@@ -436,4 +439,26 @@ func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
 	defer m.RUnlock()
 	key, ok := m.externalAccountKeysByID[keyID]
 	return key, ok
+}
+
+// AddBlockedDomain will add the domain name to the block list
+func (m *MemoryStore) AddBlockedDomain(name string) error {
+	if len(name) == 0 {
+		return errors.New("domain name must not be empty")
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	m.blockListByDomain[name] = true
+
+	return nil
+}
+
+// GetBlockedDomain will return true if a domain is on teh block list
+func (m *MemoryStore) GetBlockedDomain(name string) bool {
+	m.RLock()
+	defer m.RUnlock()
+	_, ok := m.blockListByDomain[name]
+	return ok
 }

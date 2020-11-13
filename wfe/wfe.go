@@ -1383,8 +1383,7 @@ func isDNSCharacter(ch byte) bool {
  * compared to Boulder. We should consider adding:
  * 1) Checks for the # of labels, and the size of each label
  * 2) Checks against the Public Suffix List
- * 3) Checks against a configured domain blocklist
- * 4) Checks for malformed IDN, RLDH, etc
+ * 3) Checks for malformed IDN, RLDH, etc
  */
 // verifyOrder checks that a new order is considered well formed. Light
 // validation is done on the order identifiers.
@@ -1404,6 +1403,11 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	// Check that all of the identifiers in the new-order are DNS or IPaddress type
 	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
+		if wfe.db.GetBlockedDomain(ident.Value) {
+			return acme.RejectedIdentifierProblem(fmt.Sprintf(
+				"Cannot issue for %q: The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+				ident.Value))
+		}
 		if ident.Type == acme.IdentifierIP {
 			if net.ParseIP(ident.Value) == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
