@@ -455,7 +455,7 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 	return nil
 }
 
-// GetBlockedDomain will return true if a domain is on teh block list
+// GetBlockedDomain will return true if a domain is on the block list
 func (m *MemoryStore) GetBlockedDomain(name string) bool {
 	m.RLock()
 	defer m.RUnlock()
