@@ -1422,56 +1422,63 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 				ident.Type, ident.Value))
 		}
 
-		rawDomain := ident.Value
-		if rawDomain == "" {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier with empty value"))
-		}
-
-		for _, ch := range []byte(rawDomain) {
-			if !isDNSCharacter(ch) {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS identifier with a value containing an illegal character: %q",
-					ch))
-			}
-		}
-
-		if len(rawDomain) > maxDNSIdentifierLength {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier that was longer than %d characters",
-				maxDNSIdentifierLength))
-		}
-
-		if ip := net.ParseIP(rawDomain); ip != nil {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with an IP address value: %q\n",
-				rawDomain))
-		}
-
-		if strings.HasSuffix(rawDomain, ".") {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with a value ending in a period: %q\n",
-				rawDomain))
-		}
-
-		// If there is a wildcard character in the ident value there should be only
-		// *one* instance
-		if strings.Count(rawDomain, "*") > 1 {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS type identifier with illegal wildcard value: "+
-					"too many wildcards %q",
-				rawDomain))
-		} else if strings.Count(rawDomain, "*") == 1 {
-			// If there is one wildcard character it should be the only character in
-			// the leftmost label.
-			if !strings.HasPrefix(rawDomain, "*.") {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS type identifier with illegal wildcard value: "+
-						"wildcard isn't leftmost prefix %q",
-					rawDomain))
-			}
+		if problem := wfe.validateDNSName(ident.Value); problem != nil {
+			return problem
 		}
 	}
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
+	if rawDomain == "" {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier with empty value"))
+	}
+
+	for _, ch := range []byte(rawDomain) {
+		if !isDNSCharacter(ch) {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS identifier with a value containing an illegal character: %q",
+				ch))
+		}
+	}
+
+	if len(rawDomain) > maxDNSIdentifierLength {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier that was longer than %d characters",
+			maxDNSIdentifierLength))
+	}
+
+	if ip := net.ParseIP(rawDomain); ip != nil {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with an IP address value: %q\n",
+			rawDomain))
+	}
+
+	if strings.HasSuffix(rawDomain, ".") {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with a value ending in a period: %q\n",
+			rawDomain))
+	}
+
+	// If there is a wildcard character in the ident value there should be only
+	// *one* instance
+	if strings.Count(rawDomain, "*") > 1 {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS type identifier with illegal wildcard value: "+
+				"too many wildcards %q",
+			rawDomain))
+	} else if strings.Count(rawDomain, "*") == 1 {
+		// If there is one wildcard character it should be the only character in
+		// the leftmost label.
+		if !strings.HasPrefix(rawDomain, "*.") {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS type identifier with illegal wildcard value: "+
+					"wildcard isn't leftmost prefix %q",
+				rawDomain))
+		}
+	}
+
 	return nil
 }
 
