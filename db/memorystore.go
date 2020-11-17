@@ -57,7 +57,7 @@ type MemoryStore struct {
 
 	externalAccountKeysByID map[string][]byte
 
-	blockListByDomain []string
+	blockListByDomain [][]string
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -72,7 +72,7 @@ func NewMemoryStore() *MemoryStore {
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 		externalAccountKeysByID: make(map[string][]byte),
-		blockListByDomain:       make([]string, 0),
+		blockListByDomain:       make([][]string, 0),
 	}
 }
 
@@ -457,7 +457,7 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
 	}
 
-	m.blockListByDomain = append(m.blockListByDomain, strings.Join(domainParts, "."))
+	m.blockListByDomain = append(m.blockListByDomain, domainParts)
 
 	return nil
 }
@@ -474,9 +474,7 @@ func (m *MemoryStore) IsDomainBlocked(name string) bool {
 		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
 	}
 
-	for _, blockedDomain := range m.blockListByDomain {
-		blockedParts := strings.Split(blockedDomain, ".")
-
+	for _, blockedParts := range m.blockListByDomain {
 		isMatch := true
 		for i := range blockedParts {
 			if blockedParts[i] != domainParts[i] {
