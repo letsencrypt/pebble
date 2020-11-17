@@ -1425,12 +1425,6 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 }
 
 func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
-	if wfe.db.IsDomainBlocked(rawDomain) {
-		return acme.RejectedIdentifierProblem(fmt.Sprintf(
-			"Order included an identifier for which issuance is forbidden by policy: %q",
-			rawDomain))
-	}
-
 	if rawDomain == "" {
 		return acme.MalformedProblem(fmt.Sprintf(
 			"Order included DNS identifier with empty value"))
@@ -1478,6 +1472,12 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 					"wildcard isn't leftmost prefix %q",
 				rawDomain))
 		}
+	}
+
+	if wfe.db.IsDomainBlocked(rawDomain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf(
+			"Order included an identifier for which issuance is forbidden by policy: %q",
+			rawDomain))
 	}
 
 	return nil

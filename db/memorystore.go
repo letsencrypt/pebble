@@ -467,8 +467,24 @@ func (m *MemoryStore) IsDomainBlocked(name string) bool {
 	m.RLock()
 	defer m.RUnlock()
 
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
 	for _, blockedDomain := range m.blockListByDomain {
-		if strings.HasPrefix(name, blockedDomain) {
+		blockedParts := strings.Split(blockedDomain, ".")
+
+		isMatch := true
+		for i := range blockedParts {
+			if blockedParts[i] != domainParts[i] {
+				isMatch = false
+				break
+			}
+		}
+		if isMatch {
 			return true
 		}
 	}
