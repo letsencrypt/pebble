@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,7 +57,7 @@ type MemoryStore struct {
 
 	externalAccountKeysByID map[string][]byte
 
-	blockListByDomain map[string]bool
+	blockListByDomain []string
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -71,7 +72,7 @@ func NewMemoryStore() *MemoryStore {
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 		externalAccountKeysByID: make(map[string][]byte),
-		blockListByDomain:       make(map[string]bool),
+		blockListByDomain:       make([]string, 0),
 	}
 }
 
@@ -449,16 +450,28 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 
 	m.Lock()
 	defer m.Unlock()
+	domainParts := strings.Split(name, ".")
 
-	m.blockListByDomain[name] = true
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.blockListByDomain = append(m.blockListByDomain, strings.Join(domainParts, "."))
 
 	return nil
 }
 
-// GetBlockedDomain will return true if a domain is on the block list
-func (m *MemoryStore) GetBlockedDomain(name string) bool {
+// IsDomainBlocked will return true if a domain is on the block list
+func (m *MemoryStore) IsDomainBlocked(name string) bool {
 	m.RLock()
 	defer m.RUnlock()
-	_, ok := m.blockListByDomain[name]
-	return ok
+
+	for _, blockedDomain := range m.blockListByDomain {
+		if strings.HasPrefix(name, blockedDomain) {
+			return true
+		}
+	}
+
+	return false
 }

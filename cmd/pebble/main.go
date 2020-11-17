@@ -27,7 +27,7 @@ type config struct {
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
-		BlockList []string
+		DomainBlocklist []string
 	}
 }
 
@@ -78,7 +78,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to add key to external account bindings")
 	}
 
-	for _, domainName := range c.Pebble.BlockList {
+	for _, domainName := range c.Pebble.DomainBlocklist {
 		err := db.AddBlockedDomain(domainName)
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}

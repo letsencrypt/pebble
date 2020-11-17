@@ -1403,11 +1403,6 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	// Check that all of the identifiers in the new-order are DNS or IPaddress type
 	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
-		if wfe.db.GetBlockedDomain(ident.Value) {
-			return acme.RejectedIdentifierProblem(fmt.Sprintf(
-				"Cannot issue for %q: The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
-				ident.Value))
-		}
 		if ident.Type == acme.IdentifierIP {
 			if net.ParseIP(ident.Value) == nil {
 				return acme.MalformedProblem(fmt.Sprintf(
@@ -1430,6 +1425,12 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 }
 
 func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
+	if wfe.db.IsDomainBlocked(rawDomain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf(
+			"Order included an identifier for which issuance is forbidden by policy: %q",
+			rawDomain))
+	}
+
 	if rawDomain == "" {
 		return acme.MalformedProblem(fmt.Sprintf(
 			"Order included DNS identifier with empty value"))
