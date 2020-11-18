@@ -448,8 +448,6 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 		return errors.New("domain name must not be empty")
 	}
 
-	m.Lock()
-	defer m.Unlock()
 	domainParts := strings.Split(name, ".")
 
 	// reversing the order
@@ -457,6 +455,8 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
 	}
 
+	m.Lock()
+	defer m.Unlock()
 	m.blockListByDomain = append(m.blockListByDomain, domainParts)
 
 	return nil
@@ -464,9 +464,6 @@ func (m *MemoryStore) AddBlockedDomain(name string) error {
 
 // IsDomainBlocked will return true if a domain is on the block list
 func (m *MemoryStore) IsDomainBlocked(name string) bool {
-	m.RLock()
-	defer m.RUnlock()
-
 	domainParts := strings.Split(name, ".")
 
 	// reversing the order
@@ -474,6 +471,8 @@ func (m *MemoryStore) IsDomainBlocked(name string) bool {
 		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
 	}
 
+	m.RLock()
+	defer m.RUnlock()
 	for _, blockedParts := range m.blockListByDomain {
 		isMatch := true
 		for i := range blockedParts {
