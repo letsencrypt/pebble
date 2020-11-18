@@ -22,6 +22,7 @@ const (
 	alreadyRevokedErr      = errNS + "alreadyRevoked"
 	orderNotReadyErr       = errNS + "orderNotReady"
 	badPublicKeyErr        = errNS + "badPublicKey"
+	rejectedIdentifierErr  = errNS + "rejectedIdentifier"
 )
 
 type ProblemDetails struct {
@@ -181,6 +182,14 @@ func OrderNotReadyProblem(detail string) *ProblemDetails {
 func BadPublicKeyProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       badPublicKeyErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func RejectedIdentifierProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       rejectedIdentifierErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

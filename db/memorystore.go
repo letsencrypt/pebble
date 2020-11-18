@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,6 +56,8 @@ type MemoryStore struct {
 	revokedCertificatesByID map[string]*core.RevokedCertificate
 
 	externalAccountKeysByID map[string][]byte
+
+	blockListByDomain [][]string
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -69,6 +72,7 @@ func NewMemoryStore() *MemoryStore {
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 		externalAccountKeysByID: make(map[string][]byte),
+		blockListByDomain:       make([][]string, 0),
 	}
 }
 
@@ -436,4 +440,51 @@ func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
 	defer m.RUnlock()
 	key, ok := m.externalAccountKeysByID[keyID]
 	return key, ok
+}
+
+// AddBlockedDomain will add the domain name to the block list
+func (m *MemoryStore) AddBlockedDomain(name string) error {
+	if len(name) == 0 {
+		return errors.New("domain name must not be empty")
+	}
+
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	m.blockListByDomain = append(m.blockListByDomain, domainParts)
+
+	return nil
+}
+
+// IsDomainBlocked will return true if a domain is on the block list
+func (m *MemoryStore) IsDomainBlocked(name string) bool {
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+	for _, blockedParts := range m.blockListByDomain {
+		isMatch := true
+		for i := range blockedParts {
+			if blockedParts[i] != domainParts[i] {
+				isMatch = false
+				break
+			}
+		}
+		if isMatch {
+			return true
+		}
+	}
+
+	return false
 }
