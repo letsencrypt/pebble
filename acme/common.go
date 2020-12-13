@@ -14,12 +14,12 @@ const (
 
 	IdentifierDNS   = "dns"
 	IdentifierIP    = "ip"
-	IdentifierONION = "onion"
+	IdentifierONION = "onion-v3"
 
 	ChallengeHTTP01    = "http-01"
 	ChallengeTLSALPN01 = "tls-alpn-01"
 	ChallengeDNS01     = "dns-01"
-	ChallengeCSR01     = "onioncsr-01"
+	ChallengeONIONV3CSR     = "onion-v3-csr"
 
 	HTTP01BaseURL = ".well-known/acme-challenge/"
 
@@ -83,7 +83,6 @@ type Challenge struct {
 	Token          string          `json:"token"`
 	Status         string          `json:"status"`
 	Payload        string          `json:"payload,omitempty"`
-	ApplicantNonce string          `json:"ApplicantNonce,omitempty"`
 	Validated      string          `json:"validated,omitempty"`
 	Error          *ProblemDetails `json:"error,omitempty"`
 }

@@ -1607,7 +1607,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else if authz.Identifier.Type == acme.IdentifierONION {
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeCSR01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeONIONV3CSR}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
@@ -1663,7 +1663,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		case acme.IdentifierDNS:
 			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierONION:
-			orderDNSs = append(orderONIONs, ident.Value)
+			orderONIONs = append(orderONIONs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
 		default:
@@ -2256,6 +2256,14 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		wfe.sendError(prob, response)
 		return
 	}
+	//check if it has valid payload
+	var onionpayload struct {
+		csr *string
+	}
+	// keep mind if it have valid csr it this will be nil
+	nothadcsr := json.Unmarshal(postData.body &onionpayload)
+	
+
 
 	// In strict mode we reject any challenge POST with a body other than `{}`.
 	// This matches RFC 8555 Section 7.5.1 and the ACME challenge types that
@@ -2263,7 +2271,8 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// extensions to ACME that add new challenge types.
 	//
 	// [0]: https://www.rfc-editor.org/errata/eid5729
-	if wfe.strict && !bytes.Equal(postData.body, []byte("{}")) {
+
+	if wfe.strict && nothadcsr != nil && !bytes.Equal(postData.body, []byte("{}")) {
 		wfe.sendError(
 			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
 		return
@@ -2354,6 +2363,13 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// validated.
 	if strings.HasPrefix(ident.Value, "*.") {
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	}
+
+	//if we had csr payload (so nothadcsr is nil) it should be updated
+	if nothadcsr == nil {
+		exsitingChal.Lock()
+		exsitingChal.Payload = onionpayload.csr
+		exsitingChal.Unlock()
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
