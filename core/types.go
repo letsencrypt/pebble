@@ -145,11 +145,11 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 }
 
 type Certificate struct {
-	ID        string
-	Cert      *x509.Certificate
-	DER       []byte
-	Issuers   []*Certificate
-	AccountID string
+	ID           string
+	Cert         *x509.Certificate
+	DER          []byte
+	IssuerChains [][]*Certificate
+	AccountID    string
 }
 
 func (c Certificate) PEM() []byte {
@@ -168,28 +168,22 @@ func (c Certificate) PEM() []byte {
 }
 
 func (c Certificate) Chain(no int) []byte {
-	chain := make([][]byte, 0)
+	fullchain := make([][]byte, 0)
 
 	// Add the leaf certificate
-	chain = append(chain, c.PEM())
+	fullchain = append(fullchain, c.PEM())
 
-	// Add zero or more issuers
-	var issuer *Certificate
-	if 0 <= no && no < len(c.Issuers) {
-		issuer = c.Issuers[no]
+	// Add zero or more intermediates
+	var chain []*Certificate
+	if 0 <= no && no < len(c.IssuerChains) {
+		chain = c.IssuerChains[no]
 	}
-	for {
-		// if the issuer is nil, or the issuer's issuer is nil then we've reached
-		// the root of the chain and can break
-		if issuer == nil || len(issuer.Issuers) == 0 {
-			break
-		}
-		chain = append(chain, issuer.PEM())
-		issuer = issuer.Issuers[0]
+	for _, cert := range chain {
+		fullchain = append(fullchain, cert.PEM())
 	}
 
 	// Return the chain, leaf cert first
-	return bytes.Join(chain, nil)
+	return bytes.Join(fullchain, nil)
 }
 
 // RevokedCertificate is a certificate together with information about its revocation.

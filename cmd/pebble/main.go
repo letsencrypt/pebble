@@ -26,6 +26,8 @@ type config struct {
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
+		// Configure policies to deny certain domains
+		DomainBlocklist []string
 	}
 }
 
@@ -62,13 +64,23 @@ func main() {
 		alternateRoots = int(val)
 	}
 
+	chainLength := 1
+	if val, err := strconv.ParseInt(os.Getenv("PEBBLE_CHAIN_LENGTH"), 10, 0); err == nil && val >= 0 {
+		chainLength = int(val)
+	}
+
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)
 		cmd.FailOnError(err, "Failed to add key to external account bindings")
+	}
+
+	for _, domainName := range c.Pebble.DomainBlocklist {
+		err := db.AddBlockedDomain(domainName)
+		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
 	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired)

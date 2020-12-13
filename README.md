@@ -3,7 +3,6 @@
 [![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
 [![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg?branch=cpu-goveralls)](https://coveralls.io/github/letsencrypt/pebble?branch=cpu-goveralls)
 [![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
-[![GolangCI](https://golangci.com/badges/github.com/letsencrypt/pebble.svg)](https://golangci.com/r/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
 is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited
@@ -54,9 +53,9 @@ clients are not hardcoding URLs.)
 ## Limitations
 
 Pebble is missing some ACME features (PRs are welcome!). It does not presently
-support subproblems, pre-authorization or external account binding. Pebble does
-not support revoking a certificate issued by a different ACME account by proving
-authorization of all of the certificate's domains.
+support subproblems, or pre-authorization. Pebble does not support revoking a 
+certificate issued by a different ACME account by proving authorization of all
+of the certificate's domains.
 
 Pebble does not perform all of the same input validation as Boulder. Some domain
 names that would be rejected by Boulder/Let's Encrypt may work with Pebble.
@@ -233,7 +232,7 @@ failed request, rather than quitting outright.
 
 Experience from Boulder indicates that many ACME clients do not gracefully retry
 on invalid nonce errors. To help ensure future ACME clients are able to
-gracefully handle these errors by default **Pebble rejects 15% of all valid
+gracefully handle these errors by default **Pebble rejects 5% of all valid
 nonces as invalid**.
 
 The percentage of valid nonces that are rejected can be configured using the
@@ -320,6 +319,11 @@ request to `https://localhost:15000/roots/0`, `https://localhost:15000/root-keys
 `https://localhost:15000/intermediates/2`, `https://localhost:15000/intermediate-keys/3`
 etc. These endpoints also send `Link` HTTP headers for all alternative root and
 intermediate certificates and keys.
+
+The length of certificate chains can be controlled using `PEBBLE_CHAIN_LENGTH`, which has
+a default and minimum value of `1` (leaf + 1 intermediate). For higher values, Pebble will
+include extra intermediate certificates between the leaf and the root. Extra intermediate
+certificates are *not* exposed via the management interface.
 
 #### Certificate Status
 
