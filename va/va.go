@@ -502,7 +502,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 	if task.Identifier.Type != acme.IdentifierONION {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("no onion address can't use this challgene. triggered by %s: ",result.url))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("no onion address can't use this challgene. triggered by %s: ",result.URL))
 		return result
 	}
 
@@ -516,7 +516,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 		result.Error = acme.MalformedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
 	}
 	if parsedCSR.CheckSignature() != nil {
-		results.Error = acme.MalformedProblem(fmt.Sprintf("Sign of CSR wasn't valid for %s:", result.url))
+		result.Error = acme.MalformedProblem(fmt.Sprintf("Sign of CSR wasn't valid for %s:", result.URL))
 	}
 	if len(parsedCSR.DNSNames) != 1 {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challenge CSR must have exsectly one DNSNames SNI for it %s caused this error", result.URL))

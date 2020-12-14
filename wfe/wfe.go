@@ -2259,10 +2259,10 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 	//check if it has valid payload
 	var onionpayload struct {
-		csr *string
+		csr string
 	}
 	// keep mind if it have valid csr it this will be nil
-	nothadcsr := json.Unmarshal(postData.body &onionpayload)
+	nothadcsr := json.Unmarshal(postData.body, &onionpayload)
 	
 
 
@@ -2368,9 +2368,9 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	//if we had csr payload (so nothadcsr is nil) it should be attached to it
 	if nothadcsr == nil {
-		exsitingChal.Lock()
-		exsitingChal.Payload = onionpayload.csr
-		exsitingChal.Unlock()
+		existingChal.Lock()
+		existingChal.Payload = onionpayload.csr
+		existingChal.Unlock()
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
