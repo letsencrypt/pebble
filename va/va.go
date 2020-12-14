@@ -567,7 +567,6 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 	if _, err := asn1.Unmarshal(csr.RawTBSCertificateRequest, &tbsCsr); err != nil {
 		log.Fatal(err)
 	}
-
 	var attr struct {
 		ID    asn1.ObjectIdentifier
 		Value asn1.RawValue `asn1:"set"`
@@ -593,8 +592,8 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 			if err != nil {
 				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing Clientnonce from CSR : %q", csr.DNSNames[0]))
 			}
-			if len(csrClientNonce) =< 8 {
-				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q",csr.DNSNames[0])
+			if len(csrClientNonce) < 9 {
+				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q",csr.DNSNames[0]))
 			}
 		}
 	}
