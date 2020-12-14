@@ -1,0 +1,50 @@
+.TH PEBBLE-CHALLTESTSRV 1
+.SH NAME
+pebble\-challtestsrv \- ACME challenge mock server
+.SH SYNOPSIS
+.B pebble
+[\fB\-defaultIPv4\fR \fIstring\fR]
+[\fB\-defaultIPv6\fR \fIstring\fR]
+[\fB\-dns01\fR \fIstring\fR]
+[\fB\-http01\fR \fIstring\fR]
+[\fB\-https01\fR \fIstring\fR]
+[\fB\-management\fR \fIstring\fR]
+[\fB\-tlsalpn01\fR \fIstring\fR]
+.SH DESCRIPTION
+.B pebble-challtestsrv
+is a utility that responds to HTTP-01,
+DNS-01, and TLS-ALPN-01 ACME challenges.  It can also be used as a
+mock DNS server letting developers mock `A`, `AAAA`, `CNAME`, and
+`CAA` DNS data for specific hostnames.
+.PP
+Important note: The `pebble-challtestsrv` utility is for TEST USAGE
+ONLY.  It is trivially insecure, offering no authentication
+whatsoever.  Only use this library in a controlled test environment.
+.SH OPTIONS
+.TP
+.BR \-defaultIPv4\ \fIstring\fR
+Default IPv4 address for mock DNS responses to A queries (default
+"127.0.0.1")
+.TP
+.BR \-defaultIPv6\ \fIstring\fR
+Default IPv6 address for mock DNS responses to AAAA queries (default
+"::1")
+.TP
+.BR \-dns01\ \fIstring\fR
+Comma separated bind addresses/ports for DNS-01 challenges and fake
+DNS data. Set empty to disable. (default ":8053")
+.TP
+.BR \-http01\ \fIstring\fR
+Comma separated bind addresses/ports for HTTP-01 challenges. Set empty
+to disable. (default ":5002")
+.TP
+.BR \-https01\ \fIstring\fR
+Comma separated bind addresses/ports for HTTPS HTTP-01 challenges. Set
+empty to disable. (default ":5003")
+.TP
+.BR \-management\ \fIstring\fR
+Bind address/port for management HTTP interface (default ":8055")
+.TP
+.BR -tlsalpn01\ \fIstring\fR
+Comma separated bind addresses/ports for TLS-ALPN-01 and HTTPS HTTP-01
+challenges. Set empty to disable. (default ":5001")
