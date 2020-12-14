@@ -2365,7 +2365,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 	}
 
-	//if we had csr payload (so nothadcsr is nil) it should be updated
+	//if we had csr payload (so nothadcsr is nil) it should be attached to it
 	if nothadcsr == nil {
 		exsitingChal.Lock()
 		exsitingChal.Payload = onionpayload.csr
