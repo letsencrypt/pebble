@@ -594,9 +594,8 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing Clientnonce from CSR : %q", csr.DNSNames[0]))
 			}
 			if len(csrClientNonce) =< 8 {
-				return acme.UnauthorizedProblem(fmt.Sprintf("",csr.DNSNames[0])
+				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q",csr.DNSNames[0])
 			}
-			if !bytes.Equal()
 		}
 	}
 	return acme.UnauthorizedProblem(fmt.Sprintf("onion oid was not found in CSR attributes"))

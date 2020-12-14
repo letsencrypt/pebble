@@ -1916,6 +1916,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// split order identifiers per SAN types, onion acme type mareges to DNSNames
+	// onion names will merged to dns, as they are both dnsname in csr
 	var orderDNSs []string
 	var orderIPs []net.IP
 	for _, ident := range orderIdentifiers {
