@@ -2266,8 +2266,6 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 	// keep mind if it have valid csr it this will be nil
 	nothadcsr := json.Unmarshal(postData.body, &onionpayload)
-	
-
 
 	// In strict mode we reject any challenge POST with a body other than `{}`.
 	// This matches RFC 8555 Section 7.5.1 and the ACME challenge types that

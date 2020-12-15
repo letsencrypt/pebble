@@ -502,7 +502,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 	if task.Identifier.Type != acme.IdentifierONION {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("no onion address can't use this challgene. triggered by %s: ",result.URL))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("no onion address can't use this challgene. triggered by %s: ", result.URL))
 		return result
 	}
 
@@ -593,7 +593,7 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing Clientnonce from CSR : %q", csr.DNSNames[0]))
 			}
 			if len(csrClientNonce) < 9 {
-				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q",csr.DNSNames[0]))
+				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q", csr.DNSNames[0]))
 			}
 		}
 	}

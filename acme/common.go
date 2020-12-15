@@ -16,10 +16,10 @@ const (
 	IdentifierIP    = "ip"
 	IdentifierONION = "onion-v3"
 
-	ChallengeHTTP01    = "http-01"
-	ChallengeTLSALPN01 = "tls-alpn-01"
-	ChallengeDNS01     = "dns-01"
-	ChallengeONIONV3CSR     = "onion-v3-csr"
+	ChallengeHTTP01     = "http-01"
+	ChallengeTLSALPN01  = "tls-alpn-01"
+	ChallengeDNS01      = "dns-01"
+	ChallengeONIONV3CSR = "onion-v3-csr"
 
 	HTTP01BaseURL = ".well-known/acme-challenge/"
 
@@ -78,11 +78,11 @@ type Authorization struct {
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type           string          `json:"type"`
-	URL            string          `json:"url"`
-	Token          string          `json:"token"`
-	Status         string          `json:"status"`
-	Payload        string          `json:"payload,omitempty"`
-	Validated      string          `json:"validated,omitempty"`
-	Error          *ProblemDetails `json:"error,omitempty"`
+	Type      string          `json:"type"`
+	URL       string          `json:"url"`
+	Token     string          `json:"token"`
+	Status    string          `json:"status"`
+	Payload   string          `json:"payload,omitempty"`
+	Validated string          `json:"validated,omitempty"`
+	Error     *ProblemDetails `json:"error,omitempty"`
 }
