@@ -2262,7 +2262,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 	//check if it has valid payload
 	var onionpayload struct {
-		csr string
+		CSR string `json:"csr"`
 	}
 	// keep mind if it have valid csr it this will be nil
 	nothadcsr := json.Unmarshal(postData.body, &onionpayload)
@@ -2370,7 +2370,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	//if we had csr payload (so nothadcsr is nil) it should be attached to it
 	if nothadcsr == nil {
 		existingChal.Lock()
-		existingChal.Payload = onionpayload.csr
+		existingChal.Payload = onionpayload.CSR
 		existingChal.Unlock()
 	}
 
