@@ -1414,9 +1414,11 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 		}
 		if ident.Type == acme.IdentifierONION {
 			result = verifyOrderOnion(ident.Value)
-			if result == nil {
-				continue
+			if result != nil {
+				return acme.MalformedProblem(fmt.Sprintf(
+					"Order included malformed 'onion-v3' type identifier value: %q\n", ident.Value))
 			}
+			continue
 		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
@@ -1464,7 +1466,7 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 	}
 
 	if strings.HasSuffix(rawDomain, ".onion") {
-		return acme.MalformedProblem(fmt.Sprintf("Onion addresses need to sent as onion ident type"))
+		return acme.MalformedProblem(fmt.Sprintf("Onion addresses need to sent as onion-v3 ident type"))
 	}
 	// If there is a wildcard character in the ident value there should be only
 	// *one* instance
@@ -1607,6 +1609,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else if authz.Identifier.Type == acme.IdentifierONION {
+			//onion-v3 address only get it's CSR challgene, it may legal to use http-01 behind tor deamon, but LE won't
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeONIONV3CSR}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
