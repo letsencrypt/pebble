@@ -647,7 +647,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
@@ -666,7 +666,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
