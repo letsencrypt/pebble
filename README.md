@@ -272,6 +272,11 @@ store or to any production systems/codebases. The private key for this CA is
 intentionally made [publicly available in this
 repo](test/certs/pebble.minica.key.pem).**
 
+### Listening on HTTP
+
+In order to make Pebble accessible over HTTP, you can set the
+`listenHttp` setting of the `pebble-config.json` file.
+
 ### Management interface
 
 In order to ease the interaction of Pebble with testing systems, a specific HTTP

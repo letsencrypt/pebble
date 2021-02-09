@@ -17,6 +17,7 @@ import (
 type config struct {
 	Pebble struct {
 		ListenAddress           string
+		ListenHTTP              bool
 		ManagementListenAddress string
 		HTTPPort                int
 		TLSPort                 int
@@ -110,10 +111,14 @@ func main() {
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
-	err = http.ListenAndServeTLS(
-		c.Pebble.ListenAddress,
-		c.Pebble.Certificate,
-		c.Pebble.PrivateKey,
-		muxHandler)
+	if c.Pebble.ListenHTTP {
+		err = http.ListenAndServe(c.Pebble.ListenAddress, muxHandler)
+	} else {
+		err = http.ListenAndServeTLS(
+			c.Pebble.ListenAddress,
+			c.Pebble.Certificate,
+			c.Pebble.PrivateKey,
+			muxHandler)
+	}
 	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
 }
