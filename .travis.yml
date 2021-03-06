@@ -1,7 +1,7 @@
 language: go
 
 sudo: true
-dist: xenial
+dist: focal
 addons:
   hosts:
     - example.letsencrypt.org
