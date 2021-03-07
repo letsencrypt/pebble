@@ -17,8 +17,8 @@ artifacts:
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
-  - python tools\venv3.py
-  - venv3\Scripts\activate.bat
+  - python tools\venv.py
+  - venv\Scripts\activate.bat
   - cd ..
 
 before_build:
