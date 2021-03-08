@@ -31,10 +31,21 @@ type config struct {
 	}
 }
 
+const DefaultConfigPath = "test/config/default-config.json"
+
+func getDefaultConfig() config {
+	var c config
+	if _, err := os.Stat(DefaultConfigPath); err == nil {
+		err := cmd.ReadConfigFile(DefaultConfigPath, &c)
+		cmd.FailOnError(err, "Reading default JSON config file into config structure")
+	}
+	return c
+}
+
 func main() {
 	configFile := flag.String(
 		"config",
-		"test/config/pebble-config.json",
+		DefaultConfigPath,
 		"File path to the Pebble configuration file")
 	strictMode := flag.Bool(
 		"strict",
@@ -54,7 +65,7 @@ func main() {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	logger.Printf("Starting Pebble ACME server")
 
-	var c config
+	c := getDefaultConfig()
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
