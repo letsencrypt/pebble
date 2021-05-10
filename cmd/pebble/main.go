@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/pebble/db"
 	"github.com/letsencrypt/pebble/va"
 	"github.com/letsencrypt/pebble/wfe"
+	"github.com/letsencrypt/pebble/mail"
 )
 
 type config struct {
@@ -23,11 +24,15 @@ type config struct {
 		Certificate             string
 		PrivateKey              string
 		OCSPResponderURL        string
+		// Email related setting, only given when needed
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
+		// Email has too many settings by itself so it get new config
+		Emailenabed bool
+		Emailconfigfile string
 	}
 }
 

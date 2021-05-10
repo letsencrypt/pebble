@@ -1400,6 +1400,19 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
+	//For Email cert you cannot mix Email and TLS idents
+	if idents[0].Type == acme.IdentifierEmail {
+		for _, ident := range idents {
+			if ident.Type != acmme.IdentifierEmail{
+				return acme.MalformedProblem("Order Cannot have both Email ident and Domain or IP address")
+			}
+			if problem := wfe.validateEmailAddress(ident.Value); problem != nil {
+			return problem
+			}
+		}
+		//if All the identifier are valid Email address, return here
+		return nil
+	}
 	// Check that all of the identifiers in the new-order are DNS or IPaddress type
 	// Validity check of ipaddresses are done here.
 	for _, ident := range idents {
@@ -1410,6 +1423,9 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 					ident.Value))
 			}
 			continue
+		}
+		if ident.Type == acme.IdentifierEmail {
+			return acme.MalformedProblem("Order Cannot have both Email ident and Domain or IP address")
 		}
 		if ident.Type != acme.IdentifierDNS {
 			return acme.MalformedProblem(fmt.Sprintf(
@@ -1480,6 +1496,23 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 			rawDomain))
 	}
 
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) validateEmailAddress(rawEmailaddress string) *acme.ProblemDetails {
+	parts := strings.SplitN(rawEmailaddress, "@", 2)
+	//parts[0] is IDish and parts[1]is domain
+	if parts.len < 2 {
+		return acme.MalformedProblem(fmt.Sprintf("Order included Malformed Email type Identifier : %q",rawEmailaddress))
+	}
+	emaildomain := parts[1]
+	//not so much check for ID part of mail eddress
+	if wfe.db.IsDomainBlocked(emaildomain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf("Order incldued an Identifier that policy forbid to issue certificate for its domain : %q",emaildomain))
+	}
+	if err := wfe.validateDNSName(emaildomain); err != nil{
+		return err
+	}
 	return nil
 }
 
@@ -1556,6 +1589,7 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 			URL:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
+		OutOfBandToken: newToken(),
 		Authz: authz,
 	}
 
@@ -1572,8 +1606,10 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
 
+
 	// Authorizations for a wildcard identifier only get a DNS-01 challenges to
 	// match Boulder/Let's Encrypt wildcard issuance policy
+
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
 		chal, err := wfe.makeChallenge(acme.ChallengeDNS01, authz, request)
 		if err != nil {
@@ -1583,12 +1619,15 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
 		var enabledChallenges []string
-		if authz.Identifier.Type == acme.IdentifierIP {
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
-		} else {
-			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
-		}
+		switch auth.Identifier.Type {
+			case acme.IdentifierIP:
+				enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
+			case acme.IdentifierEmail:
+				enabledChallenges = []string{acme.ChallengeMAILREPLY00}
+				//should send mail here
+			default:
+				enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+			}
 		for _, chalType := range enabledChallenges {
 			chal, err := wfe.makeChallenge(chalType, authz, request)
 			if err != nil {
@@ -1634,26 +1673,34 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	var orderDNSs []string
 	var orderIPs []net.IP
+	var orderEmails []string
 	for _, ident := range newOrder.Identifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
 			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
+		case acme.IdentifierEmail:
+			orderEmails = append(orderEmails, idnet.Value)
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
 			return
 		}
 	}
-	orderDNSs = uniqueLowerNames(orderDNSs)
+
+    orderDNSs = uniqueLowerNames(orderDNSs)
 	orderIPs = uniqueIPs(orderIPs)
+	orderEmails = uniqueLowerNames(orderEmails)
 	var uniquenames []acme.Identifier
 	for _, name := range orderDNSs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: name, Type: acme.IdentifierDNS})
 	}
 	for _, ip := range orderIPs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: ip.String(), Type: acme.IdentifierIP})
+	}
+	for _, email := range orderEmails {
+		uniquenames = append(uniquenames, acme.Identifier{Value: email, Type: acme.IdentifierEmail})
 	}
 	expires := time.Now().AddDate(0, 0, 1)
 	order := &core.Order{
@@ -1888,12 +1935,15 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// split order identifiers per types
 	var orderDNSs []string
 	var orderIPs []net.IP
+	var orderEmails []string
 	for _, ident := range orderIdentifiers {
 		switch ident.Type {
 		case acme.IdentifierDNS:
 			orderDNSs = append(orderDNSs, ident.Value)
 		case acme.IdentifierIP:
 			orderIPs = append(orderIPs, net.ParseIP(ident.Value))
+		case acme.IdentifierEmail:
+			orderEmails = append(orderIPs, ident.Value)
 		default:
 			wfe.sendError(acme.MalformedProblem(
 				fmt.Sprintf("Order includes unknown identifier type %s", ident.Type)), response)
@@ -1903,10 +1953,17 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// looks like saving order to db doesn't preserve order of Identifiers, so sort them again.
 	orderDNSs = uniqueLowerNames(orderDNSs)
 	orderIPs = uniqueIPs(orderIPs)
+	orderEmails = uniqueLowerNames(orderEmails)
+
+	var certforEmails bool = false
+	if len(orderEmails) == len(orderIdentifiers) {
+		certforEmails = true
+	}
 
 	// sort and deduplicate CSR SANs
 	csrDNSs := uniqueLowerNames(parsedCSR.DNSNames)
 	csrIPs := uniqueIPs(parsedCSR.IPAddresses)
+	csrEmails := uniqueLowerNames(parsedCSR.EmailAddresses)
 
 	// Check that the CSR has the same number of names as the initial order contained
 	if len(csrDNSs) != len(orderDNSs) {
@@ -1919,6 +1976,12 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			"Order includes different number of IP address identifiers than CSR specifies"), response)
 		return
 	}
+
+	if len(csrEmails) != len(orderEmails) {
+		wfe.sendError(acme.UnauthorizedProblem(
+			"Order includes different number of Email address identifiers than CSR specifies"), response)
+		return
+	}	
 
 	// Check that the CSR's names match the order names exactly
 	for i, name := range orderDNSs {
@@ -1935,6 +1998,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			return
 		}
 	}
+	for i, name := range orderEmails {
+		if name != csrEmails[i] {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("CSR is missing Order Email %q", name)), response)
+			return
+		}
+	}	
+
 
 	// No account key signing RFC8555 Section 11.1
 	existsAcctForCSRKey, _ := wfe.getAcctByKey(parsedCSR.PublicKey)

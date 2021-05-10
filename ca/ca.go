@@ -117,7 +117,9 @@ func (ca *CAImpl) makeRootCert(
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		// Although CA/B BR forbids EmailProtection bit on TLS signing certificate, 
+		// but as ACME alternativechain can't have saparate chain for TLS and Email certs
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection},
 		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  true,

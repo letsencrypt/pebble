@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"net/mail"
 	"os"
 	"runtime"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
@@ -297,6 +299,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
+	case acme.ChallengeMAILREPLY00:
+		results <- va.validateMailReply00(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
@@ -338,6 +342,19 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	msg := fmt.Sprintf("Correct value not found for DNS challenge")
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
+}
+
+func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
+	const Emailprefix = "ACME: "
+	// ChallengedEmail := task.Identifier.Value
+
+
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
+
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
+
+
 }
 
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
@@ -574,6 +591,11 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	return body, url.String(), nil
+}
+
+// fetchEmail fetches  ACME "Response" Email from a Imap server by searching by sender and outofband token.
+func (va VAImpl) fetchEmail(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
+	return nil, nil, acme.InternalErrorProblem("Not implemented yet") 
 }
 
 // getTXTEntry fetches TXT entries for the given domain name using the recursive resolver located at
