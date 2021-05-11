@@ -250,7 +250,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
-func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
+func (ca *CAImpl) newTLSCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
 	var cn string
 	if len(domains) > 0 {
 		cn = domains[0]
@@ -300,6 +300,112 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		SubjectKeyId:          subjectKeyID,
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	if ca.ocspResponderURL != "" {
+		template.OCSPServer = []string{ca.ocspResponderURL}
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, err
+	}
+
+	issuers := make([][]*core.Certificate, len(ca.chains))
+	for i := 0; i < len(ca.chains); i++ {
+		issuerChain := make([]*core.Certificate, len(ca.chains[i].intermediates))
+		for j, cert := range ca.chains[i].intermediates {
+			issuerChain[j] = cert.cert
+		}
+		issuers[i] = issuerChain
+	}
+
+	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
+	newCert := &core.Certificate{
+		ID:           hexSerial,
+		AccountID:    accountID,
+		Cert:         cert,
+		DER:          der,
+		IssuerChains: issuers,
+	}
+	_, err = ca.db.AddCertificate(newCert)
+	if err != nil {
+		return nil, err
+	}
+	return newCert, nil
+}
+
+func (ca *CAImpl) newSMIMECertificate(emails []string, keyusage x509.KeyUsage, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
+	var cn string
+	if len(emails{
+		cn = emails[0]
+	} else {
+		return nil, fmt.Errorf("must specify at least Email address for S/MIME cert")
+	}
+
+	defaultChain := ca.chains[0].intermediates
+	if len(defaultChain) == 0 || defaultChain[0].cert == nil {
+		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
+	}
+	issuer := defaultChain[0]
+
+	subjectKeyID, err := makeSubjectKeyID(key)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create subject key ID: %s", err.Error())
+	}
+
+	certNotBefore := time.Now()
+	if notBefore != "" {
+		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse Not Before date: %w", err)
+		}
+	}
+
+	certNotAfter := time.Now().AddDate(5, 0, 0)
+	if notAfter != "" {
+		certNotAfter, err = time.Parse(time.RFC3339, notAfter)
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse Not After date: %w", err)
+		}
+	}
+
+	//parse Cert key useage to see if client requested sign-only or encrypt-only certificate
+	var certKeyUsage x509.KeyUsage
+	var certExtKeyUsage []x509.ExtKeyUsage
+	// trim for digitalsignature and keyencipherment as rfc8823 3.3 as we compare them as int, cases only happen if it only has that usage
+	switch KeyUsage {
+	case x509.KeyUsageDigitalSignature:
+		certKeyUsage = x509.KeyUsageDigitalSignature
+		certExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	case x509.KeyUsageKeyEncipherment:
+		certKeyUsage = x509.KeyUsageKeyEncipherment
+		certExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageEmailProtection}
+	default:
+		certKeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+		certExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}
+	}
+
+
+	serial := makeSerial()
+	template := &x509.Certificate{
+		EmailAddresses: emails
+		Subject: pkix.Name{
+			CommonName: cn,
+		},
+		SerialNumber: serial,
+		NotBefore:    certNotBefore,
+		NotAfter:     certNotAfter,
+
+		KeyUsage:              certKeyUsage,
+		ExtKeyUsage:           certExtKeyUsage,
 		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
@@ -393,7 +499,19 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
+	var cert *core.Certificate
+	var err error
+	if len(csr.EmailAddresses) == 0 {
+		cert, err = ca.newTLSCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
+	} else {
+		var csrkeyusage x509.KeyUsage
+		for _, expension in csr.Extensions {
+			if expension.Id.Equal(asn1.ObjectIdentifier([]int{2,5,29,15})) {
+				csrkeyusage = parseKeyUsageExtension(expension.Value)
+			}
+		}
+		cert, err = ca.newSMIMECertificate(csr.EmailAddresses, csrkeyusage. order.AccountID, order.NotBefore, order.NotAfter)
+	}
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
@@ -459,4 +577,21 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 		return key
 	}
 	return nil
+}
+
+func parseKeyUsage(ext []byte) (x509.KeyUsage, error) {
+	var usageBits asn1.BitString
+	if remain, err := asn1.Unmarshal(ext, &usageBits); err != nil {
+		return 0, err
+	} else if len(remain) != 0 {
+		return 0, errors.New("Parsing KeyUsage has leftover")
+	}
+
+	var usage int
+	for i := 0; i < 9; i++ {
+		if usageBits.At(i) != 0 {
+			usage |= 1 << uint(i)
+		}
+	}
+	return x509.KeyUsage(usage), nil
 }
