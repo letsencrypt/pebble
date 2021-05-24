@@ -12,13 +12,13 @@ const (
 	StatusReady       = "ready"
 	StatusDeactivated = "deactivated"
 
-	IdentifierDNS = "dns"
-	IdentifierIP  = "ip"
+	IdentifierDNS   = "dns"
+	IdentifierIP    = "ip"
 	IdentifierEmail = "email"
 
-	ChallengeHTTP01    = "http-01"
-	ChallengeTLSALPN01 = "tls-alpn-01"
-	ChallengeDNS01     = "dns-01"
+	ChallengeHTTP01      = "http-01"
+	ChallengeTLSALPN01   = "tls-alpn-01"
+	ChallengeDNS01       = "dns-01"
 	ChallengeMAILREPLY00 = "email-reply-00"
 
 	HTTP01BaseURL = ".well-known/acme-challenge/"
@@ -84,5 +84,6 @@ type Challenge struct {
 	Status    string          `json:"status"`
 	Validated string          `json:"validated,omitempty"`
 	Error     *ProblemDetails `json:"error,omitempty"`
-	from      string            `json:"from,omitempty"`
+	// Each Challenge type have additional properties
+	From string `json:"from,omitempty"`
 }

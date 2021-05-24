@@ -1500,17 +1500,17 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 }
 
 func (wfe *WebFrontEndImpl) validateEmailAddress(rawEmailaddress string) *acme.ProblemDetails {
-	parts := strings.SplitN(rawEmailaddress, "@", 2)
-	//parts[0] is IDish and parts[1]is domain
-	if len(parts) < 2 {
-		return acme.MalformedProblem(fmt.Sprintf("Order included Malformed Email type Identifier : %q", rawEmailaddress))
+	at := strings.LastIndex(rawEmailaddress, "@")
+	if at >= 0 {
+		username, domain := rawEmailaddress[:at], rawEmailaddress[at+1:]
+	} else {
+		return acme.MalformedProblem(fmt.Printf("Error: %s is an invalid email address\n", rawEmailaddress))
 	}
-	emaildomain := parts[1]
-	//not so much check for ID part of mail eddress
-	if wfe.db.IsDomainBlocked(emaildomain) {
-		return acme.RejectedIdentifierProblem(fmt.Sprintf("Order incldued an Identifier that policy forbid to issue certificate for its domain : %q", emaildomain))
+	//not so much check for Username of mail eddress
+	if wfe.db.IsDomainBlocked(domain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf("Order incldued an Identifier that policy forbid to issue certificate for its domain : %q", domain))
 	}
-	if err := wfe.validateDNSName(emaildomain); err != nil {
+	if err := wfe.validateDNSName(domain); err != nil {
 		return err
 	}
 	return nil
@@ -1589,8 +1589,13 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 			URL:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
-		OutOfBandToken: newToken(),
-		Authz:          authz,
+		Authz: authz,
+	}
+	if chalType == ChallengeMAILREPLY00 {
+		//send mail
+		chal.OutOfBandToken = newToken()
+		chal.Challenge.From = "acme-challange@acme.com"
+		// sendmail(chal)
 	}
 
 	// Add it to the in-memory database

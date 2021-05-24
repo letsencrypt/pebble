@@ -10,16 +10,15 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
+	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/db"
 	"log"
 	"math"
 	"math/big"
 	"net"
 	"strings"
 	"time"
-
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/core"
-	"github.com/letsencrypt/pebble/db"
 )
 
 const (
@@ -116,8 +115,8 @@ func (ca *CAImpl) makeRootCert(
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		// Although CA/B BR forbids EmailProtection bit on TLS signing certificate, 
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		// Although CA/B BR forbids EmailProtection bit on TLS signing certificate,
 		// but as ACME alternativechain can't have saparate chain for TLS and Email certs
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection},
 		SubjectKeyId:          subjectKeyID,
@@ -342,9 +341,9 @@ func (ca *CAImpl) newTLSCertificate(domains []string, ips []net.IP, key crypto.P
 	return newCert, nil
 }
 
-func (ca *CAImpl) newSMIMECertificate(emails []string, keyusage x509.KeyUsage, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
+func (ca *CAImpl) newSMIMECertificate(emails []string, keyUsage x509.KeyUsage, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
 	var cn string
-	if len(emails{
+	if len(emails) == 0 {
 		cn = emails[0]
 	} else {
 		return nil, fmt.Errorf("must specify at least Email address for S/MIME cert")
@@ -381,7 +380,7 @@ func (ca *CAImpl) newSMIMECertificate(emails []string, keyusage x509.KeyUsage, k
 	var certKeyUsage x509.KeyUsage
 	var certExtKeyUsage []x509.ExtKeyUsage
 	// trim for digitalsignature and keyencipherment as rfc8823 3.3 as we compare them as int, cases only happen if it only has that usage
-	switch KeyUsage {
+	switch keyUsage {
 	case x509.KeyUsageDigitalSignature:
 		certKeyUsage = x509.KeyUsageDigitalSignature
 		certExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
@@ -393,10 +392,9 @@ func (ca *CAImpl) newSMIMECertificate(emails []string, keyusage x509.KeyUsage, k
 		certExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection}
 	}
 
-
 	serial := makeSerial()
 	template := &x509.Certificate{
-		EmailAddresses: emails
+		EmailAddresses: emails,
 		Subject: pkix.Name{
 			CommonName: cn,
 		},
@@ -505,12 +503,16 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		cert, err = ca.newTLSCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
 	} else {
 		var csrkeyusage x509.KeyUsage
-		for _, expension in csr.Extensions {
-			if expension.Id.Equal(asn1.ObjectIdentifier([]int{2,5,29,15})) {
-				csrkeyusage = parseKeyUsageExtension(expension.Value)
+		for _, expension := range csr.Extensions {
+			if expension.Id.Equal(asn1.ObjectIdentifier([]int{2, 5, 29, 15})) {
+				csrkeyusage, err = parseKeyUsageExtension(expension.Value)
+				if err != nil {
+					ca.log.Printf("Error: Failed to parse KeyUsage of CSR : %s", err.Error())
+					return
+				}
 			}
 		}
-		cert, err = ca.newSMIMECertificate(csr.EmailAddresses, csrkeyusage. order.AccountID, order.NotBefore, order.NotAfter)
+		cert, err = ca.newSMIMECertificate(csr.EmailAddresses, csrkeyusage, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
 	}
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
@@ -579,12 +581,12 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 	return nil
 }
 
-func parseKeyUsage(ext []byte) (x509.KeyUsage, error) {
+func parseKeyUsageExtension(ext []byte) (x509.KeyUsage, error) {
 	var usageBits asn1.BitString
 	if remain, err := asn1.Unmarshal(ext, &usageBits); err != nil {
 		return 0, err
 	} else if len(remain) != 0 {
-		return 0, errors.New("Parsing KeyUsage has leftover")
+		return 0, fmt.Errorf("Parsing KeyUsage has leftover")
 	}
 
 	var usage int

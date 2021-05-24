@@ -10,9 +10,9 @@ import (
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/cmd"
 	"github.com/letsencrypt/pebble/db"
+	"github.com/letsencrypt/pebble/ma"
 	"github.com/letsencrypt/pebble/va"
 	"github.com/letsencrypt/pebble/wfe"
-	"github.com/letsencrypt/pebble/mail"
 )
 
 type config struct {
@@ -32,7 +32,16 @@ type config struct {
 		DomainBlocklist []string
 		// Email has too many settings by itself so it get new config
 		Emailenabed bool
-		Emailconfigfile string
+		Smtpserver  struct {
+			address  string
+			username string
+			password string
+		}
+		Imapserver struct {
+			address  string
+			username string
+			password string
+		}
 	}
 }
 

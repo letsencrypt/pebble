@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -15,19 +16,18 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"net/mail"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/miekg/dns"
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-msgauth/dkim"
-
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
+	"github.com/miekg/dns"
 )
 
 const (
@@ -156,6 +156,53 @@ func New(
 
 	go va.processTasks()
 	return va
+}
+
+func checkDkim(mail []byte, domain string) bool {
+	HeaderKeyNeeded := []string{
+		"From", "Sender", "Reply-To", "To", "CC", "Subject",
+		"Date", "In-Reply-To", "References", "Message-ID",
+		"Content-Type", "Content-Transfer-Encoding",
+	}
+	signs, err := dkim.Verify(bytes.NewReader(mail))
+	//invalid or no signs on this mail
+	if err != nil || len(signs) != 0 {
+		return false
+	}
+	for _, sign := range signs {
+		// is dkim sender is our expected domain?
+		if sign.Domain != domain {
+			return false
+		}
+		for _, h := range HeaderKeyNeeded {
+			_, exsit := sign.HeaderKeys[h]
+			if !exsit {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// extractKeyauths finds and return KeyauthDigest from a email body, don't process multipart
+func extractKeyauth(mailpart *Entity) (string, error) {
+	t, _, err := mailpart.ContentType()
+	if err != nil {
+		return "", err
+	} else if t != "text/plain" {
+		return fmt.Errorf("Now allowed Content Type: %s, only text/plain or text/plain in /multipart/alternative allowd", t)
+	}
+	m, err := io.ReadAll(mailpart.Body)
+	if err != nil {
+		return "", err
+	}
+	mailbody := string(m)
+	if strings.Contains(mailbody, "-----BEGIN ACME RESPONSE-----") && strings.Contains(mailbody, "-----END ACME RESPONSE-----") {
+		digest := strings.TrimSurfix(strings.TrimPrefix(mailbody, "-----BEGIN ACME RESPONSE-----"), "-----END ACME RESPONSE-----")
+		digest = strings.ReplaceAll(digest, "\r\n", "")
+		return digest, nil
+	}
+	return "", fmt.Errorf("ACME response header not found")
 }
 
 func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
@@ -345,16 +392,91 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 }
 
 func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
-	const Emailprefix = "ACME: "
-	// ChallengedEmail := task.Identifier.Value
+	challengeAddress := task.Identifier.Value
 
+	result := &core.ValidationRecord{
+		URL:         challengeAddress,
+		ValidatedAt: time.Now(),
+	}
 
+	mails, err := va.getMails(challengeAddress)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving Email for MailReply challenge (%q)", err))
+		return result
+	}
+
+	if len(mails) == 0 {
+		msg := fmt.Sprintf("No Email reply found challenge for %s", challengeAddress)
+		result.Error = acme.UnauthorizedProblem(msg)
+		return result
+	}
+	// var for mail we are looking, defined here as it need to be out of for scope
+	var responseMail *message.Entity
+	var extractedKeyAuth string
+	//now extract key in string
+	for _, mail := range mails {
+		sender, _ := mail.Header.Text("Sender")
+		if sender != challengeAddress {
+			va.log.Println("Wrong sender")
+			continue
+		}
+		subject, err := mail.Header.Text("Subject")
+		if err != nil {
+			continue
+		}
+		//split and join them back make it strip and UTF-8 whitespace chars
+		subject = strings.Join(strings.split(strings.TrimPrefix(subject, "ACME: "), ""), "")
+		if subject != task.Challenge.OutOfBandToken {
+			va.log.Printf("found non acme mail in inbox from requester: %s", subject)
+			continue
+		}
+		va.log.Printf("found the ACME-response mail, as client must not send multiple, other mail will ignored")
+		responseMail = mail
+		break
+	}
+	//now parse this mail
+	if mr := responseMail.MultipartReader(); mr != nil {
+		if t, _, _ := responseMail.Header.ContentType(); t != "multipart/alternative" {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Now allowed Content Type: %s, only text/plain or text/plain in /multipart/alternative allowd"))
+		} else {
+			// check each part until we found Keyauth or eof
+			for {
+				p, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					continue
+				}
+				var k string
+				k, err = extractKeyauth(p)
+				if err == nil {
+					extractKeyauth = k
+					break
+				}
+			}
+		}
+	} else {
+		//this is single part meseage
+		extractedKeyAuth, err = extractKeyauth(responseMail)
+		if err != nil {
+			retsult.Error = err
+			extractedKeyAuth = ""
+		}
+	}
+
+	task.Challenge.RLock()
 	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
-
+	task.Challenge.RUnlock()
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
 
+	if subtle.ConstantTimeCompare([]byte(extractedKeyAuth), []byte(authorizedKeysDigest)) == 1 {
+		return result
+	}
 
+	msg := fmt.Sprintf("Correct value not found for Email challenge")
+	result.Error = acme.UnauthorizedProblem(msg)
+	return result
 }
 
 func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
@@ -593,9 +715,37 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	return body, url.String(), nil
 }
 
-// fetchEmail fetches  ACME "Response" Email from a Imap server by searching by sender and outofband token.
-func (va VAImpl) fetchEmail(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
-	return nil, nil, acme.InternalErrorProblem("Not implemented yet") 
+// getEmail get emails with provided sender from outside Imap server and return parsed mails with valid dkim
+func (va VAImpl) getMails(mailaddress string) ([]*Message.Entity, *acme.ProblemDetails) {
+	//get mail domain
+	at := strings.LastIndex(mailaddress, "@")
+	if at >= 0 {
+		domain := mailaddress[at+1:]
+	} else {
+		return nil, acme.MalformedProblem(fmt.Printf("Error: %s is an invalid email address\n", mailaddress))
+	}
+	var mails []io.Reader
+	//validmails are mail have valid dkim signigture for it's sender domain, and
+	var validmails []*Message.Entity
+	//todo. fetch mails from imap server
+	for _, rawmail := range mails {
+		mailbyte, err := io.ReadAll(rawmail)
+		if err != nil {
+			continue
+		}
+		valid := checkDkim(mailbyte, domain)
+		if !valid {
+			va.log.Println("massage has invalid dkim, ditch this mail")
+			continue
+		}
+		parsedmail, err := Message.Read(bytes.NewReader(mailbyte))
+		if err != nil {
+			va.log.Println("this mail is broken")
+		} else {
+			validmails.append(validmails, parsedmail)
+		}
+	}
+	return validmails, nil
 }
 
 // getTXTEntry fetches TXT entries for the given domain name using the recursive resolver located at
