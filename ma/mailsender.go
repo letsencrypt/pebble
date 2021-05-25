@@ -2,32 +2,14 @@ package ma
 
 import (
 	"bytes"
-	"context"
-	"crypto/sha256"
-	"crypto/subtle"
-	"crypto/tls"
-	"encoding/asn1"
-	"encoding/base64"
-	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
-	"math/rand"
-	"os"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
 
-	"github.com/emersion/go-imap"
-	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message"
-	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
-	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
-	"github.com/miekg/dns"
 )
 
 const ()
@@ -47,13 +29,13 @@ type SenderImpl struct {
 }
 
 func NewSender(address string, log *log.Logger, username string, password string) *SenderImpl {
-	s := *SenderImpl{
+	s := &SenderImpl{
 		log:      log,
 		fromaddr: address,
 		auth:     sasl.NewPlainClient("", username, password),
 	}
 	go s.processTasks()
-	return &s
+	return s
 }
 
 // CraftMailforChallenge creates mail reader
@@ -63,7 +45,7 @@ func CraftMailforChallenge(ident acme.Identifier, chal *core.Challenge) (bytes.B
 	h.SetContentType("text/plain", nil)
 	h.SetText("subject", "ACME: "+chal.OutOfBandToken)
 	h.SetText("from", chal.Challenge.From)
-	h.SetText("to", idnet.Value)
+	h.SetText("to", ident.Value)
 	w, err := message.CreateWriter(&b, h)
 	if err != nil {
 		log.Fatal(err)
@@ -73,17 +55,16 @@ func CraftMailforChallenge(ident acme.Identifier, chal *core.Challenge) (bytes.B
 	io.WriteString(w, bodytowrite)
 	w.Close()
 	return b, nil
-	smtp.sendmail
 }
 
 // this doesn't do dkim sign, so recieving smtp server should sign message for us.
 func (s *SenderImpl) processTasks() {
 	for task := range s.tasks {
 		//todo: async or reuse connection
-		m, err := CraftMailforChallenge(task.Identifier.Value, task.Challenge)
+		m, err := CraftMailforChallenge(task.Identifier, task.Challenge)
 		if err != nil {
-			s.log.Printf()
+			s.log.Println(err)
 		}
-		smtp.Sendmail(s.smtpserver, s.auth, s.fromaddr, task.Identifier.Value, m)
+		smtp.SendMail(s.smtpserver, s.auth, s.fromaddr, []string{task.Identifier.Value}, &m)
 	}
 }
