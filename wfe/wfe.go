@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/pebble/ca"
 	"github.com/letsencrypt/pebble/core"
 	"github.com/letsencrypt/pebble/db"
+	"github.com/letsencrypt/pebble/ma"
 	"github.com/letsencrypt/pebble/va"
 )
 
@@ -153,6 +154,7 @@ type WebFrontEndImpl struct {
 	ordersPerPage     int
 	va                *va.VAImpl
 	ca                *ca.CAImpl
+	mailsender        *ma.SenderImpl
 	strict            bool
 	requireEAB        bool
 }
@@ -164,6 +166,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
+	mailsender *ma.SenderImpl,
 	strict, requireEAB bool) WebFrontEndImpl {
 	// Seed rand from the current time so test environments don't always have
 	// the same nonce rejection and sleep time patterns.
@@ -1501,10 +1504,14 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 
 func (wfe *WebFrontEndImpl) validateEmailAddress(rawEmailaddress string) *acme.ProblemDetails {
 	at := strings.LastIndex(rawEmailaddress, "@")
+	var recipientname, domain string
 	if at >= 0 {
-		username, domain := rawEmailaddress[:at], rawEmailaddress[at+1:]
+		recipientname, domain = rawEmailaddress[:at], rawEmailaddress[at+1:]
 	} else {
-		return acme.MalformedProblem(fmt.Printf("Error: %s is an invalid email address\n", rawEmailaddress))
+		return acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", rawEmailaddress))
+	}
+	if len(recipientname) == 0 {
+		return acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", rawEmailaddress))
 	}
 	//not so much check for Username of mail eddress
 	if wfe.db.IsDomainBlocked(domain) {
@@ -1591,7 +1598,7 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 		},
 		Authz: authz,
 	}
-	if chalType == ChallengeMAILREPLY00 {
+	if chalType == acme.ChallengeMAILREPLY00 {
 		//send mail
 		chal.OutOfBandToken = newToken()
 		chal.Challenge.From = "acme-challange@acme.com"

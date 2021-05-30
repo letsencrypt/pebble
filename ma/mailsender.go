@@ -28,11 +28,12 @@ type SenderImpl struct {
 	alwaysValid bool
 }
 
-func NewSender(address string, log *log.Logger, username string, password string) *SenderImpl {
+func NewSender(log *log.Logger, address string, username string, password string) *SenderImpl {
 	s := &SenderImpl{
 		log:      log,
 		fromaddr: address,
 		auth:     sasl.NewPlainClient("", username, password),
+		tasks:    make(chan *MailTaskSend),
 	}
 	go s.processTasks()
 	return s

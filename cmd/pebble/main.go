@@ -30,17 +30,20 @@ type config struct {
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
-		// Email has too many settings by itself so it get new config
+		// if this is false mail related remote clients are disabled
 		Emailenabed bool
 		Smtpserver  struct {
-			address  string
-			username string
-			password string
+			Address  string
+			Username string
+			Password string
+			//This is Sender's email address
+			Fromaddr string
 		}
 		Imapserver struct {
-			address  string
-			username string
-			password string
+			Address    string
+			Username   string
+			Password   string
+			Verifydkim bool
 		}
 	}
 }
@@ -82,10 +85,21 @@ func main() {
 	if val, err := strconv.ParseInt(os.Getenv("PEBBLE_CHAIN_LENGTH"), 10, 0); err == nil && val >= 0 {
 		chainLength = int(val)
 	}
+	var imapclient *ma.MailFetcher
+	var smtpsender *ma.SenderImpl
+	if c.Pebble.Emailenabed {
+		imapclient, err = ma.NewFetcher(logger, c.Pebble.Imapserver.Address, c.Pebble.Imapserver.Username, c.Pebble.Imapserver.Password, c.Pebble.Imapserver.Verifydkim)
+		if err != nil {
+			panic("Failed to connect to remote Imap server")
+		}
+		smtpsender = ma.NewSender(logger, c.Pebble.Smtpserver.Address, c.Pebble.Smtpserver.Username, c.Pebble.Smtpserver.Password)
+	} else {
+		logger.Println("Email support is disabled")
+	}
 
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
+	va := va.New(logger, imapclient, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)
@@ -97,7 +111,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired)
+	wfeImpl := wfe.New(logger, db, va, ca, smtpsender, *strictMode, c.Pebble.ExternalAccountBindingRequired)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {

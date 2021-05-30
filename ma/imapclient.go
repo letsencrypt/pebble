@@ -2,12 +2,15 @@ package ma
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/emersion/go-msgauth/dkim"
+	"github.com/letsencrypt/pebble/acme"
 )
 
 //those are for TLS setting for servers.
@@ -30,15 +33,17 @@ type MailFetcher struct {
 	tasks      chan *MailTaskGet
 	clt        *client.Client
 	istls      int
+	verifydkim bool
 }
 
 // NewFetcher make new mail fetcher that curaties imap connection. send empty mailbox, it will filled with io.reader
-func NewFetcher(address string, log *log.Logger, username string, password string) (*MailFetcher, error) {
+func NewFetcher(log *log.Logger, address string, username string, password string, verifydkim bool) (*MailFetcher, error) {
 	c := &MailFetcher{
 		log:        log,
 		imapserver: address,
 		username:   username,
 		password:   password,
+		verifydkim: verifydkim,
 	}
 	c.istls = Implicit
 	imapclient, err := client.DialTLS(address, nil)
@@ -80,8 +85,17 @@ func (c *MailFetcher) Fetch(address string) [][]byte {
 	}
 	var mails [][]byte
 	for i := range f {
+		//this for doesn't loop, which literal is full mail body
 		for _, literal := range i.Body {
-			mails = append(mails, StreamToByte(literal))
+			mailbytes := streamToByte(literal)
+			if c.verifydkim {
+				valid, dkerr := checkDkim(mailbytes, address[strings.LastIndex(address, "@")+1:])
+				if !valid {
+					c.log.Println(dkerr.Detail)
+					continue
+				}
+			}
+			mails = append(mails, mailbytes)
 		}
 	}
 	return mails
@@ -123,7 +137,7 @@ func (c *MailFetcher) processTasks() {
 	}
 }
 
-func checkDkim(mail []byte, domain string) bool {
+func checkDkim(mail []byte, domain string) (bool, *acme.ProblemDetails) {
 	// string type can't be constant in golang so it's variable
 	HeaderKeyNeeded := []string{
 		"From", "Sender", "Reply-To", "To", "CC", "Subject",
@@ -133,14 +147,18 @@ func checkDkim(mail []byte, domain string) bool {
 	signs, err := dkim.Verify(bytes.NewReader(mail))
 	//invalid or no signs on this mail
 	if err != nil || len(signs) != 0 {
-		return false
+		return false, acme.UnauthorizedProblem("mail had no dkim signiture in it")
 	}
+	var invaliddkimreason *acme.ProblemDetails
+	var haddomains []string
 	for _, sign := range signs {
 		// is dkim sender is our expected domain?
 		if sign.Domain != domain {
-			return false
+			haddomains = append(haddomains, sign.Domain)
+			continue
 		}
-		// Does this dkim have all the field we need?
+		// Does this dkim have all the Headers we need?
+		var missingheader []string
 		for _, hn := range HeaderKeyNeeded {
 			hasheader := false
 			for _, h := range sign.HeaderKeys {
@@ -150,14 +168,23 @@ func checkDkim(mail []byte, domain string) bool {
 				}
 			}
 			if !hasheader {
-				return false
+				missingheader = append(missingheader, hn)
 			}
 		}
+		if len(missingheader) != 0 {
+			invaliddkimreason =
+				acme.UnauthorizedProblem(fmt.Sprintf("dkim sign form domain %s does not cover required header(s): %s", domain, missingheader))
+		} else {
+			return true, nil
+		}
 	}
-	return true
+	if invaliddkimreason == nil {
+		invaliddkimreason = acme.UnauthorizedProblem(fmt.Sprintf("dkim sign wasn't didn't mach requested mail's domain %s, found sign form %s", domain, haddomains))
+	}
+	return false, invaliddkimreason
 }
 
-func StreamToByte(stream io.Reader) []byte {
+func streamToByte(stream io.Reader) []byte {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(stream)
 	return buf.Bytes()
