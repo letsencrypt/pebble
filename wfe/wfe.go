@@ -216,7 +216,6 @@ func New(
 		ordersPerPage = defaultOrdersPerPage
 	}
 	log.Printf("Configured to show %d orders per page", ordersPerPage)
-
 	return WebFrontEndImpl{
 		log:               log,
 		db:                db,
@@ -226,6 +225,7 @@ func New(
 		ordersPerPage:     ordersPerPage,
 		va:                va,
 		ca:                ca,
+		mailsender:        mailsender,
 		strict:            strict,
 		requireEAB:        requireEAB,
 	}
@@ -1601,8 +1601,11 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 	if chalType == acme.ChallengeMAILREPLY00 {
 		//send mail
 		chal.OutOfBandToken = newToken()
-		chal.Challenge.From = "acme-challange@acme.com"
-		// sendmail(chal)
+		chal.Challenge.From = wfe.mailsender.Fromaddr
+		wfe.mailsender.Tasks <- &ma.MailTaskSend{
+			Identifier:     authz.Identifier,
+			OutOfBandToken: chal.OutOfBandToken,
+		}
 	}
 
 	// Add it to the in-memory database
@@ -1635,7 +1638,6 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		case acme.IdentifierEmail:
 			enabledChallenges = []string{acme.ChallengeMAILREPLY00}
-			//should send mail here
 		default:
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
 		}
@@ -2270,7 +2272,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 	defer authz.RUnlock()
 
 	ident := authz.Identifier
-	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP {
+	if ident.Type != acme.IdentifierDNS && ident.Type != acme.IdentifierIP && ident.Type != acme.IdentifierEmail {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))

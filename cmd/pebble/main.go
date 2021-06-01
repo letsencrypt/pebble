@@ -88,11 +88,12 @@ func main() {
 	var imapclient *ma.MailFetcher
 	var smtpsender *ma.SenderImpl
 	if c.Pebble.Emailenabed {
+		logger.Printf("loading email configs")
 		imapclient, err = ma.NewFetcher(logger, c.Pebble.Imapserver.Address, c.Pebble.Imapserver.Username, c.Pebble.Imapserver.Password, c.Pebble.Imapserver.Verifydkim)
 		if err != nil {
 			panic("Failed to connect to remote Imap server")
 		}
-		smtpsender = ma.NewSender(logger, c.Pebble.Smtpserver.Address, c.Pebble.Smtpserver.Username, c.Pebble.Smtpserver.Password)
+		smtpsender = ma.NewSender(logger, c.Pebble.Smtpserver.Address, c.Pebble.Smtpserver.Fromaddr, c.Pebble.Smtpserver.Username, c.Pebble.Smtpserver.Password)
 	} else {
 		logger.Println("Email support is disabled")
 	}

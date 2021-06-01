@@ -343,10 +343,10 @@ func (ca *CAImpl) newTLSCertificate(domains []string, ips []net.IP, key crypto.P
 
 func (ca *CAImpl) newSMIMECertificate(emails []string, keyUsage x509.KeyUsage, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
 	var cn string
-	if len(emails) == 0 {
+	if len(emails) != 0 {
 		cn = emails[0]
 	} else {
-		return nil, fmt.Errorf("must specify at least Email address for S/MIME cert")
+		return nil, fmt.Errorf("must specify at least one Email address for S/MIME cert")
 	}
 
 	defaultChain := ca.chains[0].intermediates

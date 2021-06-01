@@ -230,8 +230,10 @@ func extractKeyauth(mailpart *message.Entity) (string, *acme.ProblemDetails) {
 		return "", acme.MalformedProblem("failed to parse Email body")
 	}
 	mailbody := string(m)
-	if strings.Contains(mailbody, "-----BEGIN ACME RESPONSE-----") && strings.Contains(mailbody, "-----END ACME RESPONSE-----") {
-		digest := strings.TrimSuffix(strings.TrimPrefix(mailbody, "-----BEGIN ACME RESPONSE-----"), "-----END ACME RESPONSE-----")
+	start := strings.Index(mailbody, "-----BEGIN ACME RESPONSE-----")
+	end := strings.Index(mailbody, "-----END ACME RESPONSE-----")
+	if start != -1 && end != -1 {
+		digest := mailbody[start+len("-----BEGIN ACME RESPONSE-----") : end]
 		digest = strings.ReplaceAll(digest, "\r\n", "")
 		return digest, nil
 	}
@@ -432,7 +434,7 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 
-	mails, err := va.getMails(challengeAddress)
+	mails, err := va.getMails(challengeAddress, task.Challenge.OutOfBandToken)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving Email for MailReply challenge (%q)", err))
 		return result
@@ -457,15 +459,28 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 		if err != nil {
 			continue
 		}
-		//split and join them back make it strip and UTF-8 whitespace chars
-		subject = strings.Join(strings.Split(strings.TrimPrefix(subject, "ACME: "), ""), "")
+		//trim anything before ACME: prefix
+		at := strings.LastIndex(subject, "ACME: ")
+		if at >= 0 {
+			subject = subject[at+6:] //because "ACME: " is 6 letter long
+		} else {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error: %s mail didn't have ACME: prefix\n", subject))
+			return result
+		}
+
 		if subject != task.Challenge.OutOfBandToken {
 			va.log.Printf("found non acme mail or mail for different challenge in inbox from requester: %s", subject)
+			va.log.Printf("expected mail head %s", task.Challenge.OutOfBandToken)
 			continue
 		}
 		va.log.Printf("found the ACME-response mail, as client must not send multiple, other mail will ignored")
 		responseMail = mail
 		break
+	}
+	//return if there was no right mail
+	if responseMail == nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("there wasn't ACME-response mail for this challenge in inbox"))
+		return result
 	}
 	//now parse this mail
 	if mr := responseMail.MultipartReader(); mr != nil {
@@ -500,7 +515,6 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 	h := sha256.Sum256([]byte(expectedKeyAuthorization))
 	task.Challenge.RUnlock()
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
-
 	if subtle.ConstantTimeCompare([]byte(extractedKeyAuth), []byte(authorizedKeysDigest)) == 1 {
 		return result
 	}
@@ -747,8 +761,9 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 }
 
 // getEmail get emails with provided sender with ACME prefix in it and return as go-message format message
-func (va VAImpl) getMails(mailaddress string) ([]*message.Entity, *acme.ProblemDetails) {
+func (va VAImpl) getMails(mailaddress string, token string) ([]*message.Entity, *acme.ProblemDetails) {
 	//get mail domain
+
 	at := strings.LastIndex(mailaddress, "@")
 	if at >= 0 {
 		domain := mailaddress[at+1:]
@@ -759,19 +774,24 @@ func (va VAImpl) getMails(mailaddress string) ([]*message.Entity, *acme.ProblemD
 		return nil, acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", mailaddress))
 	}
 	var mails [][]byte
-	mails = va.mailfetcher.Fetch(mailaddress)
-	//validmails are mail have valid dkim signigture for it's sender domain, and
-	var validmails []*message.Entity
-	//todo. fetch mails from imap server
+	mails = va.mailfetcher.Fetch(mailaddress, token)
+	if len(mails) == 0 {
+		return nil, acme.MalformedProblem(fmt.Sprintf("Error: there is no reply mail for %s in inbox", mailaddress))
+	}
+	//validmails are Pares
+	var parsedmails []*message.Entity
 	for _, mailbyte := range mails {
 		parsedmail, err := message.Read(bytes.NewReader(mailbyte))
 		if err != nil {
 			va.log.Println("this mail is broken")
 		} else {
-			validmails = append(validmails, parsedmail)
+			parsedmails = append(parsedmails, parsedmail)
 		}
 	}
-	return validmails, nil
+	if len(parsedmails) == 0 {
+		return nil, acme.MalformedProblem(fmt.Sprintf("Error: no valid mail from %s", mailaddress))
+	}
+	return parsedmails, nil
 }
 
 // getTXTEntry fetches TXT entries for the given domain name using the recursive resolver located at

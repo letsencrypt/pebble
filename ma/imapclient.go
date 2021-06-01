@@ -22,6 +22,7 @@ const (
 
 type MailTaskGet struct {
 	address    string
+	tokenPart1 string
 	mailchanel chan *imap.Message
 }
 
@@ -43,6 +44,7 @@ func NewFetcher(log *log.Logger, address string, username string, password strin
 		imapserver: address,
 		username:   username,
 		password:   password,
+		tasks:      make(chan *MailTaskGet),
 		verifydkim: verifydkim,
 	}
 	c.istls = Implicit
@@ -77,10 +79,14 @@ func NewFetcher(log *log.Logger, address string, username string, password strin
 	return nil, err
 }
 
-func (c *MailFetcher) Fetch(address string) [][]byte {
+//Fetch look for imap message from mailserver, verify dkim sig if configed to, and return raw mail as slice of []byte
+func (c *MailFetcher) Fetch(address string, tokenPart1 string) [][]byte {
+	c.log.Printf("enter ma %s, looking que %p", address, c.tasks)
 	f := make(chan *imap.Message)
+	//why it stuck here?
 	c.tasks <- &MailTaskGet{
 		address:    address,
+		tokenPart1: tokenPart1,
 		mailchanel: f,
 	}
 	var mails [][]byte
@@ -102,6 +108,7 @@ func (c *MailFetcher) Fetch(address string) [][]byte {
 }
 
 func (c *MailFetcher) processTasks() {
+	c.log.Printf("listening tasks : %p", c.tasks)
 	for task := range c.tasks {
 		//Can't spawn goroutine here as imap client isn't safe to use concurrently
 		//test if connection is alive
@@ -121,8 +128,8 @@ func (c *MailFetcher) processTasks() {
 		//now get ACME related mail from challenge sender
 		criteria := imap.NewSearchCriteria()
 		criteria.Header.Add("FROM", task.address)
-		criteria.Header.Add("SUBJECT", "ACME: ")
-		criteria.WithoutFlags = []string{imap.SeenFlag}
+		//looking for mail with token
+		criteria.Header.Add("SUBJECT", fmt.Sprintf("ACME: %s", task.tokenPart1))
 		ids, err := c.clt.Search(criteria)
 		if err != nil {
 			c.log.Printf("mail Search failed server side")
@@ -132,8 +139,7 @@ func (c *MailFetcher) processTasks() {
 			seqset.AddNum(ids...)
 		}
 		c.clt.Fetch(seqset, []imap.FetchItem{imap.FetchItem("BODY[]")}, task.mailchanel)
-		//we sent all, close
-		close(task.mailchanel)
+		//this close task.mailchanel so no close(task.mailchanel) needed
 	}
 }
 
