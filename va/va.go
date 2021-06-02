@@ -473,7 +473,7 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 			va.log.Printf("expected mail head %s", task.Challenge.OutOfBandToken)
 			continue
 		}
-		va.log.Printf("found the ACME-response mail, as client must not send multiple, other mail will ignored")
+		va.log.Printf("found the ACME-response mail, as client must not send multiple, other mails will ignored")
 		responseMail = mail
 		break
 	}
@@ -481,6 +481,17 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 	if responseMail == nil {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("there wasn't ACME-response mail for this challenge in inbox"))
 		return result
+	}
+	//loop until there is no next header, emultate do-while to not skip first header as calling Header.Next() advances to next header.
+	hf := responseMail.Header.Fields()
+	for {
+		if strings.HasPrefix(hf.Key(), "List-") {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("ACME-response email can't be from mailling list. Found [%s] header", hf.Key))
+			return result
+		}
+		if !hf.Next() {
+			break
+		}
 	}
 	//now parse this mail
 	if mr := responseMail.MultipartReader(); mr != nil {

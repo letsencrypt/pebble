@@ -1404,7 +1404,10 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 		return acme.MalformedProblem("Order did not specify any identifiers")
 	}
 	//For Email cert you cannot mix Email and TLS idents, and check mail sender has real mailer attached
-	if idents[0].Type == acme.IdentifierEmail && wfe.mailsender != nil {
+	if idents[0].Type == acme.IdentifierEmail {
+		if wfe.mailsender == nil {
+			return acme.RejectedIdentifierProblem("This ACME server refuse to sign cert for S/MIME")
+		}
 		for _, ident := range idents {
 			if ident.Type != acme.IdentifierEmail {
 				return acme.MalformedProblem("Order Cannot have both Email ident and Domain or IP address")

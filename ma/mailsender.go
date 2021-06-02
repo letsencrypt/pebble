@@ -53,7 +53,7 @@ func (s *SenderImpl) CraftMailforChallenge(ident acme.Identifier, OutOfBandToken
 		log.Fatal(err)
 	}
 	//fill body of the message
-	bodytowrite := fmt.Sprintf("Pebble RFC8823 challenge mail: for testing sent %s", time.Now)
+	bodytowrite := fmt.Sprintf("Pebble RFC8823 challenge mail: for testing sent %s", time.Now())
 	io.WriteString(w, bodytowrite)
 	w.Close()
 	return b, nil
