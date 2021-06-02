@@ -80,7 +80,7 @@ func NewFetcher(log *log.Logger, address string, username string, password strin
 }
 
 //Fetch look for imap message from mailserver, verify dkim sig if configed to, and return raw mail as slice of []byte
-func (c *MailFetcher) Fetch(address string, tokenPart1 string) [][]byte {
+func (c *MailFetcher) Fetch(address string, tokenPart1 string) ([][]byte, *acme.ProblemDetails) {
 	c.log.Printf("enter ma %s, looking que %p", address, c.tasks)
 	f := make(chan *imap.Message)
 	//why it stuck here?
@@ -90,21 +90,25 @@ func (c *MailFetcher) Fetch(address string, tokenPart1 string) [][]byte {
 		mailchanel: f,
 	}
 	var mails [][]byte
+	var dkimErr *acme.ProblemDetails
 	for i := range f {
 		//this for doesn't loop, which literal is full mail body
 		for _, literal := range i.Body {
 			mailbytes := streamToByte(literal)
 			if c.verifydkim {
-				valid, dkerr := checkDkim(mailbytes, address[strings.LastIndex(address, "@")+1:])
+				var valid bool
+				valid, dkimErr = checkDkim(mailbytes, address[strings.LastIndex(address, "@")+1:])
 				if !valid {
-					c.log.Println(dkerr.Detail)
 					continue
 				}
 			}
 			mails = append(mails, mailbytes)
 		}
 	}
-	return mails
+	if len(mails) == 0 && dkimErr != nil {
+		return mails, dkimErr
+	}
+	return mails, nil
 }
 
 func (c *MailFetcher) processTasks() {

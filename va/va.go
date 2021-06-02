@@ -436,7 +436,7 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 
 	mails, err := va.getMails(challengeAddress, task.Challenge.OutOfBandToken)
 	if err != nil {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving Email for MailReply challenge (%q)", err))
+		result.Error = err
 		return result
 	}
 
@@ -773,9 +773,11 @@ func (va VAImpl) getMails(mailaddress string, token string) ([]*message.Entity, 
 	} else {
 		return nil, acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", mailaddress))
 	}
-	var mails [][]byte
-	mails = va.mailfetcher.Fetch(mailaddress, token)
+	mails, dkimerr := va.mailfetcher.Fetch(mailaddress, token)
 	if len(mails) == 0 {
+		if dkimerr != nil {
+			return nil, dkimerr
+		}
 		return nil, acme.MalformedProblem(fmt.Sprintf("Error: there is no reply mail for %s in inbox", mailaddress))
 	}
 	//validmails are Pares
