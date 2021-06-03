@@ -128,6 +128,8 @@ type Challenge struct {
 	acme.Challenge
 	ID            string
 	Authz         *Authorization
+	OutOfBandToken	string
+	// OutOfBandToken is for when challenge needs out-of-band token, and won't shown to acme client by https 
 	ValidatedDate time.Time
 }
 
@@ -140,7 +142,9 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 	if err != nil {
 		panic("ExpectedKeyAuthorization: " + err.Error())
 	}
-
+	if ch.Type ==  acme.ChallengeMAILREPLY00 {
+		return ch.OutOfBandToken + ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint)
+	}
 	return ch.Token + "." + base64.RawURLEncoding.EncodeToString(thumbprint)
 }
 

@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -9,6 +10,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -21,11 +23,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/miekg/dns"
-
+	"github.com/emersion/go-message"
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/ma"
+	"github.com/miekg/dns"
 )
 
 const (
@@ -88,6 +91,61 @@ func certNames(cert *x509.Certificate) string {
 	return strings.Join(names, ", ")
 }
 
+// isDomainName checks if a string is a presentation-format domain name
+// (currently restricted to hostname-compatible "preferred name" LDH labels and
+// SRV-like "underscore labels"; see golang.org/issue/12421).
+func isDomainName(s string) bool {
+	// See RFC 1035, RFC 3696.
+	// Presentation format has dots before every label except the first, and the
+	// terminal empty label is optional here because we assume fully-qualified
+	// (absolute) input. We must therefore reserve space for the first and last
+	// labels' length octets in wire format, where they are necessary and the
+	// maximum total length is 255.
+	// So our _effective_ maximum is 253, but 254 is not rejected if the last
+	// character is a dot.
+	l := len(s)
+	if l == 0 || l > 254 || l == 254 && s[l-1] != '.' {
+		return false
+	}
+	last := byte('.')
+	nonNumeric := false // true once we've seen a letter or hyphen
+	partlen := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		default:
+			return false
+		case 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || c == '_':
+			nonNumeric = true
+			partlen++
+		case '0' <= c && c <= '9':
+			// fine
+			partlen++
+		case c == '-':
+			// Byte before dash cannot be dot.
+			if last == '.' {
+				return false
+			}
+			partlen++
+			nonNumeric = true
+		case c == '.':
+			// Byte before dot cannot be dot, dash.
+			if last == '.' || last == '-' {
+				return false
+			}
+			if partlen > 63 || partlen == 0 {
+				return false
+			}
+			partlen = 0
+		}
+		last = c
+	}
+	if last == '-' || partlen > 63 {
+		return false
+	}
+	return nonNumeric
+}
+
 type vaTask struct {
 	Identifier acme.Identifier
 	Challenge  *core.Challenge
@@ -105,10 +163,12 @@ type VAImpl struct {
 	strict             bool
 	customResolverAddr string
 	dnsClient          *dns.Client
+	mailfetcher        *ma.MailFetcher
 }
 
 func New(
 	log *log.Logger,
+	mailFetcher *ma.MailFetcher,
 	httpPort, tlsPort int,
 	strict bool, customResolverAddr string) *VAImpl {
 	va := &VAImpl{
@@ -120,6 +180,7 @@ func New(
 		sleepTime:          defaultSleepTime,
 		strict:             strict,
 		customResolverAddr: customResolverAddr,
+		mailfetcher:        mailFetcher,
 	}
 
 	if customResolverAddr != "" {
@@ -154,6 +215,29 @@ func New(
 
 	go va.processTasks()
 	return va
+}
+
+// extractKeyauths finds and return KeyauthDigest from a email body, don't process multipart
+func extractKeyauth(mailpart *message.Entity) (string, *acme.ProblemDetails) {
+	t, _, err := mailpart.Header.ContentType()
+	if err != nil {
+		return "", acme.UnauthorizedProblem("Failed to Parse Email ContentType")
+	} else if t != "text/plain" {
+		return "", acme.UnauthorizedProblem(fmt.Sprintf("Now allowed Content Type: %s, only text/plain or text/plain in /multipart/alternative allowd", t))
+	}
+	m, err := ioutil.ReadAll(mailpart.Body)
+	if err != nil {
+		return "", acme.MalformedProblem("failed to parse Email body")
+	}
+	mailbody := string(m)
+	start := strings.Index(mailbody, "-----BEGIN ACME RESPONSE-----")
+	end := strings.Index(mailbody, "-----END ACME RESPONSE-----")
+	if start != -1 && end != -1 {
+		digest := mailbody[start+len("-----BEGIN ACME RESPONSE-----") : end]
+		digest = strings.ReplaceAll(digest, "\r\n", "")
+		return digest, nil
+	}
+	return "", acme.UnauthorizedProblem(fmt.Sprintf("ACME response header not found"))
 }
 
 func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
@@ -297,6 +381,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
+	case acme.ChallengeMAILREPLY00:
+		results <- va.validateMailReply00(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
@@ -336,6 +422,112 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	result.Error = acme.UnauthorizedProblem(msg)
+	return result
+}
+
+func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
+	challengeAddress := task.Identifier.Value
+
+	result := &core.ValidationRecord{
+		URL:         challengeAddress,
+		ValidatedAt: time.Now(),
+	}
+
+	mails, err := va.getMails(challengeAddress, task.Challenge.OutOfBandToken)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+
+	if len(mails) == 0 {
+		msg := fmt.Sprintf("No Email reply found challenge for %s", challengeAddress)
+		result.Error = acme.UnauthorizedProblem(msg)
+		return result
+	}
+	// var for mail we are looking, defined here as it need to be out of for scope
+	var responseMail *message.Entity
+	var extractedKeyAuth string
+	//now extract key in string
+	for _, mail := range mails {
+		from := mail.Header.Get("From")
+		if !strings.Contains(from, "<"+challengeAddress+">") {
+			va.log.Println("Wrong sender:" + from)
+			continue
+		}
+		subject, err := mail.Header.Text("Subject")
+		if err != nil {
+			continue
+		}
+		//trim anything before ACME: prefix
+		at := strings.LastIndex(subject, "ACME: ")
+		if at >= 0 {
+			subject = subject[at+6:] //because "ACME: " is 6 letter long
+		} else {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error: %s mail didn't have ACME: prefix\n", subject))
+			return result
+		}
+
+		if subject != task.Challenge.OutOfBandToken {
+			va.log.Printf("found non acme mail or mail for different challenge in inbox from requester: %s", subject)
+			va.log.Printf("expected mail head %s", task.Challenge.OutOfBandToken)
+			continue
+		}
+		va.log.Printf("found the ACME-response mail, as client must not send multiple, other mails will ignored")
+		responseMail = mail
+		break
+	}
+	//return if there was no right mail
+	if responseMail == nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("there wasn't ACME-response mail for this challenge in inbox"))
+		return result
+	}
+	//loop until there is no next header, emultate do-while to not skip first header as calling Header.Next() advances to next header.
+	hf := responseMail.Header.Fields()
+	for hf.Next() {
+		if strings.HasPrefix(hf.Key(), "List-") {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("ACME-response email can't be from mailling list. Found [%s] header", hf.Key))
+			return result
+		}
+	}
+	//now parse this mail
+	if mr := responseMail.MultipartReader(); mr != nil {
+		if t, _, _ := responseMail.Header.ContentType(); t != "multipart/alternative" {
+			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Now allowed Content Type: %s, only text/plain or text/plain in /multipart/alternative allowd", t))
+		} else {
+			// check each part until we found Keyauth or eof
+			for {
+				p, innererr := mr.NextPart()
+				if innererr == io.EOF {
+					break
+				} else if innererr != nil {
+					continue
+				}
+				extractedKeyAuth, innererr = extractKeyauth(p)
+				if innererr == nil {
+					break
+				}
+			}
+		}
+	} else {
+		//this is single part meseage
+		extractedKeyAuth, err = extractKeyauth(responseMail)
+		if err != nil {
+			result.Error = err
+			extractedKeyAuth = ""
+		}
+	}
+
+	task.Challenge.RLock()
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
+	task.Challenge.RUnlock()
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
+	if subtle.ConstantTimeCompare([]byte(extractedKeyAuth), []byte(authorizedKeysDigest)) == 1 {
+		return result
+	}
+
+	msg := fmt.Sprintf("Correct value not found for Email challenge")
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
@@ -574,6 +766,43 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	return body, url.String(), nil
+}
+
+// getEmail get emails with provided sender with ACME prefix in it and return as go-message format message
+func (va VAImpl) getMails(mailaddress string, token string) ([]*message.Entity, *acme.ProblemDetails) {
+	//get mail domain
+
+	at := strings.LastIndex(mailaddress, "@")
+	if at >= 0 {
+		domain := mailaddress[at+1:]
+		if !isDomainName(domain) {
+			return nil, acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", mailaddress))
+		}
+	} else {
+		return nil, acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", mailaddress))
+	}
+	mails, dkimerr := va.mailfetcher.Fetch(mailaddress, token)
+	va.log.Printf("found %d mails after dkim check in inbox", len(mails))
+	if len(mails) == 0 {
+		if dkimerr != nil {
+			return nil, dkimerr
+		}
+		return nil, acme.MalformedProblem(fmt.Sprintf("Error: there is no reply mail for %s in inbox", mailaddress))
+	}
+	//validmails are Pares
+	var parsedmails []*message.Entity
+	for _, mailbyte := range mails {
+		parsedmail, err := message.Read(bytes.NewReader(mailbyte))
+		if err != nil {
+			va.log.Println("this mail is broken")
+		} else {
+			parsedmails = append(parsedmails, parsedmail)
+		}
+	}
+	if len(parsedmails) == 0 {
+		return nil, acme.MalformedProblem(fmt.Sprintf("Error: no valid mail from %s", mailaddress))
+	}
+	return parsedmails, nil
 }
 
 // getTXTEntry fetches TXT entries for the given domain name using the recursive resolver located at
