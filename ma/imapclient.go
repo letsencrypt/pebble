@@ -99,6 +99,7 @@ func (c *MailFetcher) Fetch(address string, tokenPart1 string) ([][]byte, *acme.
 				var valid bool
 				valid, dkimErr = checkDkim(mailbytes, address[strings.LastIndex(address, "@")+1:])
 				if !valid {
+					c.log.Println(dkimErr.Detail)
 					continue
 				}
 			}
@@ -137,6 +138,8 @@ func (c *MailFetcher) processTasks() {
 		ids, err := c.clt.Search(criteria)
 		if err != nil {
 			c.log.Printf("mail Search failed server side")
+		} else {
+			c.log.Printf("imap search found %d mails", len(ids))
 		}
 		seqset := new(imap.SeqSet)
 		if len(ids) > 0 {
