@@ -156,7 +156,7 @@ func checkDkim(mail []byte, domain string) (bool, *acme.ProblemDetails) {
 	}
 	signs, err := dkim.Verify(bytes.NewReader(mail))
 	//invalid or no signs on this mail
-	if err != nil || len(signs) != 0 {
+	if err != nil || len(signs) == 0 {
 		return false, acme.UnauthorizedProblem("mail had no dkim signiture in it")
 	}
 	var invaliddkimreason *acme.ProblemDetails
@@ -172,7 +172,7 @@ func checkDkim(mail []byte, domain string) (bool, *acme.ProblemDetails) {
 		for _, hn := range HeaderKeyNeeded {
 			hasheader := false
 			for _, h := range sign.HeaderKeys {
-				if h == hn {
+				if strings.EqualFold(h, hn) {
 					hasheader = true
 					break
 				}
