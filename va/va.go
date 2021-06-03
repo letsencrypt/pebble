@@ -484,13 +484,10 @@ func (va VAImpl) validateMailReply00(task *vaTask) *core.ValidationRecord {
 	}
 	//loop until there is no next header, emultate do-while to not skip first header as calling Header.Next() advances to next header.
 	hf := responseMail.Header.Fields()
-	for {
+	for hf.Next() {
 		if strings.HasPrefix(hf.Key(), "List-") {
 			result.Error = acme.UnauthorizedProblem(fmt.Sprintf("ACME-response email can't be from mailling list. Found [%s] header", hf.Key))
 			return result
-		}
-		if !hf.Next() {
-			break
 		}
 	}
 	//now parse this mail
@@ -785,6 +782,7 @@ func (va VAImpl) getMails(mailaddress string, token string) ([]*message.Entity, 
 		return nil, acme.MalformedProblem(fmt.Sprintf("Error: %s is an invalid email address\n", mailaddress))
 	}
 	mails, dkimerr := va.mailfetcher.Fetch(mailaddress, token)
+	va.log.Printf("found %d mails after dkim check in inbox", len(mails))
 	if len(mails) == 0 {
 		if dkimerr != nil {
 			return nil, dkimerr
