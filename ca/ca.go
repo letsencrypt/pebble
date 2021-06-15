@@ -2,7 +2,7 @@ package ca
 
 import (
 	"crypto"
-	"crypto/rand"
+	crand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/x509"
@@ -13,6 +13,7 @@ import (
 	"log"
 	"math"
 	"math/big"
+	mrand "math/rand"
 	"net"
 	"strings"
 	"time"
@@ -31,6 +32,7 @@ type CAImpl struct {
 	log              *log.Logger
 	db               *db.MemoryStore
 	ocspResponderURL string
+	sleepTime        int
 
 	chains []*chain
 }
@@ -57,7 +59,7 @@ type issuer struct {
 }
 
 func makeSerial() *big.Int {
-	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	serial, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		panic(fmt.Sprintf("unable to create random serial number: %s", err.Error()))
 	}
@@ -92,7 +94,7 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 
 // makeKey creates a new 2048 bit RSA private key and a Subject Key Identifier
 func makeKey() (*rsa.PrivateKey, []byte, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(crand.Reader, 2048)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -133,7 +135,7 @@ func (ca *CAImpl) makeRootCert(
 		parent = template
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, parent, subjectKey.Public(), signerKey)
+	der, err := x509.CreateCertificate(crand.Reader, template, parent, subjectKey.Public(), signerKey)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +309,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		template.OCSPServer = []string{ca.ocspResponderURL}
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
+	der, err := x509.CreateCertificate(crand.Reader, template, issuer.cert.Cert, key, issuer.key)
 	if err != nil {
 		return nil, err
 	}
@@ -340,10 +342,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, sleepTime int) *CAImpl {
 	ca := &CAImpl{
-		log: log,
-		db:  db,
+		log:       log,
+		db:        db,
+		sleepTime: sleepTime,
 	}
 
 	if ocspResponderURL != "" {
@@ -397,6 +400,12 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		return
 	}
 	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, order.ID)
+
+	if ca.sleepTime > 0 {
+		sleepLen := time.Duration(mrand.Intn(ca.sleepTime))
+		ca.log.Printf("Sleeping for %s seconds before marking order %s complete", time.Second*sleepLen, order.ID)
+		time.Sleep(time.Second * sleepLen)
+	}
 
 	// Lock and update the order to store the issued certificate
 	order.Lock()
