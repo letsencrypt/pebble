@@ -260,11 +260,17 @@ func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.I
 	m.RLock()
 	defer m.RUnlock()
 	for _, authz := range m.authorizationsByID {
+		// Lock is needed as Authorizations can be mutated outside the scope of the MemoryStore lock.
+		// Racey code path is exercised through the test in va/va_test.go, which should be considered
+		// for removal in the event that there's a by-value refactoring of MemoryStore.
+		authz.RLock()
 		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
 			authz.Order != nil && authz.Order.AccountID == accountID &&
 			authz.ExpiresDate.After(time.Now()) {
+			authz.RUnlock()
 			return authz
 		}
+		authz.RUnlock()
 	}
 	return nil
 }

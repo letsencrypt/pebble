@@ -12,7 +12,7 @@ import (
 )
 
 func TestAuthzRace(t *testing.T) {
-	// Exercises a specific race condition:
+	// Exercises a specific (fixed) race condition:
 	// WARNING: DATA RACE
 	// Read at 0x00c00040cde8 by goroutine 55:
 	//  github.com/letsencrypt/pebble/db.(*MemoryStore).FindValidAuthorization()
@@ -28,6 +28,8 @@ func TestAuthzRace(t *testing.T) {
 
 	// VAImpl.setAuthzInvalid updates authz.Status
 	// MemoryStore.FindValidAuthorization searches and tests authz.Status
+
+	// This whole test can be removed if/when the MemoryStore becomes 100% by value
 	ms := db.NewMemoryStore()
 	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "")
 
