@@ -24,6 +24,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/challtestsrv"
+
 	"github.com/letsencrypt/pebble/acme"
 	"github.com/letsencrypt/pebble/core"
 )
@@ -41,24 +42,6 @@ const (
 
 	// How many concurrent validations are performed?
 	concurrentValidations = 3
-
-	// noSleepEnvVar defines the environment variable name used to signal that the
-	// VA should *not* sleep between validation attempts. Set this to 1 when you
-	// invoke Pebble if you wish validation to be done at full speed, e.g.:
-	//   PEBBLE_VA_NOSLEEP=1 pebble
-	noSleepEnvVar = "PEBBLE_VA_NOSLEEP"
-
-	// sleepTimeEnvVar defines the environment variable name used to set the time
-	// the VA should sleep between validation attempts (if not disabled). Set this
-	// e.g. to 5 when you invoke Pebble if you wish the delays to be between 0
-	// and 5 seconds (instead between 0 and 15 seconds):
-	//   PEBBLE_VA_SLEEPTIME=5 pebble
-	sleepTimeEnvVar = "PEBBLE_VA_SLEEPTIME"
-
-	// defaultSleepTime defines the default sleep time (in seconds) between
-	// validation attempts. Can be disabled or modified by the environment
-	// variables PEBBLE_VA_NOSLEEP resp. PEBBLE_VA_SLEEPTIME (see above).
-	defaultSleepTime = 5
 
 	// validationTimeout defines the timeout for validation attempts.
 	validationTimeout = 15 * time.Second
@@ -99,7 +82,6 @@ type VAImpl struct {
 	httpPort           int
 	tlsPort            int
 	tasks              chan *vaTask
-	sleep              bool
 	sleepTime          int
 	alwaysValid        bool
 	strict             bool
@@ -110,14 +92,15 @@ type VAImpl struct {
 func New(
 	log *log.Logger,
 	httpPort, tlsPort int,
-	strict bool, customResolverAddr string) *VAImpl {
+	strict bool,
+	customResolverAddr string,
+	sleepTime int) *VAImpl {
 	va := &VAImpl{
 		log:                log,
 		httpPort:           httpPort,
 		tlsPort:            tlsPort,
 		tasks:              make(chan *vaTask, taskQueueSize),
-		sleep:              true,
-		sleepTime:          defaultSleepTime,
+		sleepTime:          sleepTime,
 		strict:             strict,
 		customResolverAddr: customResolverAddr,
 	}
@@ -127,22 +110,6 @@ func New(
 		va.dnsClient = new(dns.Client)
 	} else {
 		va.log.Print("Using system DNS resolver for ACME challenges")
-	}
-
-	// Read the PEBBLE_VA_NOSLEEP environment variable string
-	noSleep := os.Getenv(noSleepEnvVar)
-	// If it is set to something true-like, then the VA shouldn't sleep
-	switch noSleep {
-	case "1", "true", "True", "TRUE":
-		va.sleep = false
-		va.log.Printf("Disabling random VA sleeps")
-	}
-
-	sleepTime := os.Getenv(sleepTimeEnvVar)
-	sleepTimeInt, err := strconv.Atoi(sleepTime)
-	if err == nil && va.sleep && sleepTimeInt >= 1 {
-		va.sleepTime = sleepTimeInt
-		va.log.Printf("Setting maximum random VA sleep time to %d seconds", va.sleepTime)
 	}
 
 	noValidate := os.Getenv(noValidateEnvVar)
@@ -251,6 +218,13 @@ func (va VAImpl) process(task *vaTask) {
 	}
 
 	err := va.firstError(results)
+
+	if va.sleepTime > 0 {
+		sleepLen := time.Duration(rand.Intn(va.sleepTime))
+		va.log.Printf("Sleeping for %s seconds before marking authz %s valid", time.Second*sleepLen, authz.ID)
+		time.Sleep(time.Second * sleepLen)
+	}
+
 	// If one of the results was an error, the challenge fails
 	if err != nil {
 		va.setAuthzInvalid(authz, chal, err)
@@ -266,11 +240,10 @@ func (va VAImpl) process(task *vaTask) {
 }
 
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
-	if va.sleep {
-		// Sleep for a random amount of time between 0 and va.sleepTime seconds
-		len := time.Duration(rand.Intn(va.sleepTime))
-		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
-		time.Sleep(time.Second * len)
+	if va.sleepTime > 0 {
+		sleepLen := time.Duration(rand.Intn(va.sleepTime))
+		va.log.Printf("Sleeping for %s seconds before attempting validation for authz %s", time.Second*sleepLen, task.Challenge.Authz.ID)
+		time.Sleep(time.Second * sleepLen)
 	}
 
 	// If `alwaysValid` is true then return a validation record immediately
