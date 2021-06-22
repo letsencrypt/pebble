@@ -46,7 +46,7 @@ install:
   - go install -v -race -mod=vendor ./...
 
 before_script:
-  - GORACE="halt_on_error=1" pebble &
+  - GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
 
 script:
   # Vet Go source code using the linter config (see .golang-ci.yml)
