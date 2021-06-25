@@ -596,12 +596,37 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	}
 
 	if in.Rcode != dns.RcodeSuccess {
-		return nil, fmt.Errorf("DNS lookup for %q returned an unsuccessful response: %q", name, in.Rcode)
+		return nil, fmt.Errorf("DNS TXT lookup for %q returned an unsuccessful response: %q", name, in.Rcode)
 	}
 
 	for _, record := range in.Answer {
 		if t, ok := record.(*dns.TXT); ok {
 			txts = append(txts, t.Txt...)
+		}
+	}
+
+	// If no TXT records are present, follow CNAME
+	// Per RFC 1034, no CNAME exists if a TXT record is present
+	if len(txts) == 0 {
+		message.SetQuestion(dns.Fqdn(name), dns.TypeCNAME)
+		in, _, err = va.dnsClient.ExchangeContext(ctx, message, va.customResolverAddr)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if in.Rcode != dns.RcodeSuccess {
+			return nil, fmt.Errorf("DNS CNAME lookup for %q returned an unsuccessful response: %q", name, in.Rcode)
+		}
+
+		for _, record := range in.Answer {
+			if t, ok := record.(*dns.CNAME); ok {
+				cname_txts, _ := va.getTXTEntry(t.Target)
+
+				if cname_txts != nil {
+					txts = append(txts, cname_txts...)
+				}
+			}
 		}
 	}
 
