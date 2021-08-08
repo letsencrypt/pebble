@@ -14,6 +14,8 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,8 @@ import (
 const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
+	certLifetimeEnvVar   = "PEBBLE_CERT_LIFETIME"
+	defaultCertLifetime  = 1826
 )
 
 type CAImpl struct {
@@ -33,6 +37,8 @@ type CAImpl struct {
 	ocspResponderURL string
 
 	chains []*chain
+
+	certLifetime int
 }
 
 type chain struct {
@@ -277,7 +283,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := time.Now().AddDate(5, 0, 0)
+	certNotAfter := time.Now().AddDate(0, 0, ca.certLifetime)
 	if notAfter != "" {
 		certNotAfter, err = time.Parse(time.RFC3339, notAfter)
 		if err != nil {
@@ -362,6 +368,17 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	for i := 0; i < len(ca.chains); i++ {
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
+
+        // Get cert lifetime in days from the environment
+        ca.certLifetime = defaultCertLifetime
+        if val, err := strconv.ParseInt(os.Getenv(certLifetimeEnvVar), 10, 0); err == nil &&
+                val > 0 {
+                ca.certLifetime = int(val)
+                ca.log.Printf("Using user defined certificate lifetime of %d days", ca.certLifetime)
+        } else {
+                ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
+        }
+
 	return ca
 }
 
