@@ -369,15 +369,15 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 
-        // Get cert lifetime in days from the environment
-        ca.certLifetime = defaultCertLifetime
-        if val, err := strconv.ParseInt(os.Getenv(certLifetimeEnvVar), 10, 0); err == nil &&
-                val > 0 {
-                ca.certLifetime = int(val)
-                ca.log.Printf("Using user defined certificate lifetime of %d days", ca.certLifetime)
-        } else {
-                ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
-        }
+	// Get cert lifetime in days from the environment
+	ca.certLifetime = defaultCertLifetime
+	if val, err := strconv.ParseInt(os.Getenv(certLifetimeEnvVar), 10, 0); err == nil &&
+		val > 0 {
+		ca.certLifetime = int(val)
+		ca.log.Printf("Using user defined certificate lifetime of %d days", ca.certLifetime)
+	} else {
+		ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
+	}
 
 	return ca
 }
