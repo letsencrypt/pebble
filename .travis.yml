@@ -18,13 +18,11 @@ services:
   - docker
 
 before_install:
-  - sudo apt-get install python3-venv
-  - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
-  - cd certbot
-  - ./certbot-auto --os-packages-only -n
-  - ./tools/venv.py
-  - . venv/bin/activate
-  - cd -
+  - sudo apt-get install snapd
+  - sudo snap install core
+  - sudo snap refresh core
+  - sudo snap install --classic certbot
+  - sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
