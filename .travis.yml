@@ -18,18 +18,8 @@ services:
   - docker
 
 before_install:
-  # snap for installing cerbot, python3-venv for activating certbot's venv, and
-  # augeas for providing a C lib that cerbot's venv expects to exist.
-  - sudo apt-get install snapd python3-venv libaugeas0 augeas-lenses
-  # We need the `acme` and `josepy` python libraries for chisel2.py, so we
-  # clone and activate cerbot's virtualenv to provide access to those.
-  - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
-  - cd certbot
-  - ./tools/venv.py
-  - . venv/bin/activate
-  - cd -
-  # We need certbot to be available on $PATH, so we use the recommended (snap)
-  # installation method.
+  # snap for installing cerbot, python3-acme and python3-josepy for chisel2.py
+  - sudo apt-get install snapd python3-acme python3-josepy
   - sudo snap install core
   - sudo snap refresh core
   - sudo snap install --classic certbot
