@@ -58,6 +58,11 @@ var (
 	// an RSA private key with more than two primes.
 	ErrUnsupportedKeyType = errors.New("square/go-jose: unsupported key type/format")
 
+	// ErrInvalidKeySize indicates that the given key is not the correct size
+	// for the selected algorithm. This can occur, for example, when trying to
+	// encrypt with AES-256 but passing only a 128-bit key as input.
+	ErrInvalidKeySize = errors.New("square/go-jose: invalid key size for algorithm")
+
 	// ErrNotSupported serialization of object is not supported. This occurs when
 	// trying to compact-serialize an object which can't be represented in
 	// compact form.
@@ -148,11 +153,17 @@ const (
 	headerJWK   = "jwk"   // *JSONWebKey
 	headerKeyID = "kid"   // string
 	headerNonce = "nonce" // string
+	headerB64   = "b64"   // bool
 
 	headerP2C = "p2c" // *byteBuffer (int)
 	headerP2S = "p2s" // *byteBuffer ([]byte)
 
 )
+
+// supportedCritical is the set of supported extensions that are understood and processed.
+var supportedCritical = map[string]bool{
+	headerB64: true,
+}
 
 // rawHeader represents the JOSE header for JWE/JWS objects (used for parsing).
 //
@@ -172,7 +183,7 @@ type Header struct {
 	// Unverified certificate chain parsed from x5c header.
 	certificates []*x509.Certificate
 
-	// Any headers not recognised above get unmarshaled
+	// Any headers not recognised above get unmarshalled
 	// from JSON in a generic manner and placed in this map.
 	ExtraHeaders map[HeaderKey]interface{}
 }
@@ -284,12 +295,12 @@ func (parsed rawHeader) getAPV() (*byteBuffer, error) {
 	return parsed.getByteBuffer(headerAPV)
 }
 
-// getIV extracts parsed "iv" frpom the raw JSON.
+// getIV extracts parsed "iv" from the raw JSON.
 func (parsed rawHeader) getIV() (*byteBuffer, error) {
 	return parsed.getByteBuffer(headerIV)
 }
 
-// getTag extracts parsed "tag" frpom the raw JSON.
+// getTag extracts parsed "tag" from the raw JSON.
 func (parsed rawHeader) getTag() (*byteBuffer, error) {
 	return parsed.getByteBuffer(headerTag)
 }
@@ -342,6 +353,21 @@ func (parsed rawHeader) getP2C() (int, error) {
 // getS2S extracts parsed "p2s" from the raw JSON.
 func (parsed rawHeader) getP2S() (*byteBuffer, error) {
 	return parsed.getByteBuffer(headerP2S)
+}
+
+// getB64 extracts parsed "b64" from the raw JSON, defaulting to true.
+func (parsed rawHeader) getB64() (bool, error) {
+	v := parsed[headerB64]
+	if v == nil {
+		return true, nil
+	}
+
+	var b64 bool
+	err := json.Unmarshal(*v, &b64)
+	if err != nil {
+		return true, err
+	}
+	return b64, nil
 }
 
 // sanitized produces a cleaned-up header object from the raw JSON.
