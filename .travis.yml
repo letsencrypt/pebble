@@ -18,7 +18,7 @@ services:
   - docker
 
 before_install:
-  - sudo apt-get install snapd
+  - sudo apt-get install snapd python3-josepy
   - sudo snap install core
   - sudo snap refresh core
   - sudo snap install --classic certbot
