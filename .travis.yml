@@ -19,19 +19,19 @@ services:
 
 before_install:
   - sudo apt-get install snapd python3-venv
-  # We need certbot to be available on $PATH, so we use the recommended (snap)
-  # installation method.
-  - sudo snap install core
-  - sudo snap refresh core
-  - sudo snap install --classic certbot
-  - sudo ln -s /snap/bin/certbot /usr/bin/certbot
-  # We also need the `acme` and `josepy` python libraries for chisel2.py, so we
+  # We need the `acme` and `josepy` python libraries for chisel2.py, so we
   # clone and activate cerbot's virtualenv to provide access to those.
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
   - ./tools/venv.py
   - . venv/bin/activate
   - cd -
+  # We need certbot to be available on $PATH, so we use the recommended (snap)
+  # installation method.
+  - sudo snap install core
+  - sudo snap refresh core
+  - sudo snap install --classic certbot
+  - sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
