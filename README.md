@@ -129,7 +129,7 @@ services:
     - 14000:14000  # ACME port
     - 15000:15000  # Management port
   environment:
-    - PEBBLE_VA_NOSLEEP=1
+    - PEBBLE_SLEEPTIME=0
   volumes:
     - ./my-pebble-config.json:/test/my-pebble-config.json
 ```
@@ -137,9 +137,9 @@ services:
 With a Docker command:
 
 ```bash
-docker run -e "PEBBLE_VA_NOSLEEP=1" letsencrypt/pebble
+docker run -e "PEBBLE_SLEEPTIME=0" letsencrypt/pebble
 # or
-docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
+docker run -e "PEBBLE_SLEEPTIME=0" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
 
 **Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
@@ -197,19 +197,28 @@ for more information.
 
 ### Testing at full speed
 
-By default Pebble will sleep a random number of seconds (from 0 to 15) between
-individual challenge validation attempts. This ensures clients don't make
-assumptions about when the challenge is solved from the CA side by observing
-a single request for a challenge response. Instead clients must poll the
-challenge to observe the state since the CA may send many validation requests.
+By default, Pebble will sleep a random number of seconds (from 0 to 5) during
+specific stages of the workflow. This ensures clients don't make assumptions
+about the state of the system based on observing external behavior. Instead,
+clients must poll at the appropriate time.
 
-To test issuance "at full speed" with no artificial sleeps set the environment
-variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
+These sleeps occur at the following 3 points:
 
-`PEBBLE_VA_NOSLEEP=1 pebble -config ./test/config/pebble-config.json`
+1. Before attempting to perform a validation
+2. Between validating and updating the order state
+3. After creating the certificate and marking it as ready
 
-The maximal number of seconds to sleep can be configured by defining
-`PEBBLE_VA_SLEEPTIME`. It must be set to a positive integer.
+The maximum sleep time can be configured through the `PEBBLE_SLEEPTIME` environment
+variable. To test "at full speed" with no artificial sleeps, set the environment
+variable to `0`.
+
+For example, to test polling code by forcing a large delay:
+
+`PEBBLE_SLEEPTIME=60 pebble -config ./test/config/pebble-config.json`
+
+and to disable sleeping entirely:
+
+`PEBBLE_SLEEPTIME=0 pebble -config ./test/config/pebble-config.json`
 
 ### Skipping Validation
 
