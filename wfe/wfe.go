@@ -61,6 +61,7 @@ const (
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
 	certStatusBySerial   = "/cert-status-by-serial/"
+	certLifetime         = "/change-cert-lifetime/"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -488,6 +489,40 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	}
 }
 
+func (wfe *WebFrontEndImpl) handleChangeCertLifetime(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	lifetimeStr := strings.TrimPrefix(request.URL.Path, certLifetime)
+	wfe.log.Printf("Setting certificate lifetime to %s days", lifetimeStr)
+	if lifetime, err := strconv.ParseInt(lifetimeStr, 10, 0); err == nil &&
+		lifetime > 0 {
+		result := struct {
+			Old int
+			New int
+		}{
+			Old: wfe.ca.GetCertificateLifetime(),
+			New: int(lifetime),
+		}
+
+		if wfe.ca.ChangeCertificateLifetime(int(lifetime)) {
+			err := wfe.writeJSONResponse(response, http.StatusOK, result)
+			if err != nil {
+				response.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		} else {
+			response.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		response.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET & POST handlers
@@ -521,6 +556,7 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
 	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
 	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
+	wfe.HandleManagementFunc(m, certLifetime, wfe.handleChangeCertLifetime)
 	return m
 }
 

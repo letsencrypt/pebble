@@ -25,6 +25,7 @@ import (
 const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
+	defaultCertLifetime  = 1826
 )
 
 type CAImpl struct {
@@ -33,6 +34,8 @@ type CAImpl struct {
 	ocspResponderURL string
 
 	chains []*chain
+
+	certLifetime int
 }
 
 type chain struct {
@@ -277,7 +280,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := time.Now().AddDate(5, 0, 0)
+	certNotAfter := time.Now().AddDate(0, 0, ca.certLifetime)
 	if notAfter != "" {
 		certNotAfter, err = time.Parse(time.RFC3339, notAfter)
 		if err != nil {
@@ -362,6 +365,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	for i := 0; i < len(ca.chains); i++ {
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
+	ca.certLifetime = defaultCertLifetime
 	return ca
 }
 
@@ -457,4 +461,13 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 		return key
 	}
 	return nil
+}
+
+func (ca *CAImpl) GetCertificateLifetime() int {
+	return ca.certLifetime
+}
+
+func (ca *CAImpl) ChangeCertificateLifetime(lifetime int) bool {
+	ca.certLifetime = lifetime
+	return true
 }
