@@ -25,6 +25,7 @@ import (
 const (
 	rootCAPrefix         = "Pebble Root CA "
 	intermediateCAPrefix = "Pebble Intermediate CA "
+	defaultCertLifetime  = 1826
 )
 
 type CAImpl struct {
@@ -33,6 +34,8 @@ type CAImpl struct {
 	ocspResponderURL string
 
 	chains []*chain
+
+	certLifetime int
 }
 
 type chain struct {
@@ -277,7 +280,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := time.Now().AddDate(5, 0, 0)
+	certNotAfter := time.Now().AddDate(0, 0, ca.certLifetime)
 	if notAfter != "" {
 		certNotAfter, err = time.Parse(time.RFC3339, notAfter)
 		if err != nil {
@@ -340,7 +343,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateLifetime int) *CAImpl {
 	ca := &CAImpl{
 		log: log,
 		db:  db,
@@ -362,6 +365,20 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	for i := 0; i < len(ca.chains); i++ {
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
+
+	if certificateLifetime != 0 {
+		if certificateLifetime > 0 {
+			ca.certLifetime = certificateLifetime
+			ca.log.Printf("Using user defined certificate lifetime of %d days", certificateLifetime)
+		} else {
+			ca.certLifetime = defaultCertLifetime
+			ca.log.Printf("certificateLifetime (%d) is not a valid value (valid values: integer > 0), using default certificate lifetime of %d days", certificateLifetime, defaultCertLifetime)
+		}
+	} else {
+		ca.certLifetime = defaultCertLifetime
+		ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
+	}
+
 	return ca
 }
 
