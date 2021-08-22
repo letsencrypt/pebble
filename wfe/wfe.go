@@ -495,7 +495,6 @@ func (wfe *WebFrontEndImpl) handleChangeCertLifetime(
 	request *http.Request) {
 
 	lifetimeStr := strings.TrimPrefix(request.URL.Path, certLifetime)
-	wfe.log.Printf("Setting certificate lifetime to %s days", lifetimeStr)
 	if lifetime, err := strconv.ParseInt(lifetimeStr, 10, 0); err == nil &&
 		lifetime > 0 {
 		result := struct {
@@ -507,6 +506,7 @@ func (wfe *WebFrontEndImpl) handleChangeCertLifetime(
 		}
 
 		if wfe.ca.ChangeCertificateLifetime(int(lifetime)) {
+			wfe.log.Printf("Certificate lifetime set to %s days", lifetimeStr)
 			err := wfe.writeJSONResponse(response, http.StatusOK, result)
 			if err != nil {
 				response.WriteHeader(http.StatusInternalServerError)
