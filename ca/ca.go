@@ -352,8 +352,9 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int) *CAImpl {
 	ca := &CAImpl{
-		log: log,
-		db:  db,
+		log:          log,
+		db:           db,
+		certLifetime: defaultCertLifetime,
 	}
 
 	if ocspResponderURL != "" {
@@ -374,7 +375,6 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	}
 
 	// Get cert lifetime in days from the environment
-	ca.certLifetime = defaultCertLifetime
 	if val, err := strconv.ParseInt(os.Getenv(certLifetimeEnvVar), 10, 0); err == nil &&
 		val > 0 {
 		ca.certLifetime = int(val)
