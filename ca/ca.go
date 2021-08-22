@@ -349,8 +349,9 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int) *CAImpl {
 	ca := &CAImpl{
-		log: log,
-		db:  db,
+		log:          log,
+		db:           db,
+		certLifetime: defaultCertLifetime,
 	}
 
 	if ocspResponderURL != "" {
@@ -369,7 +370,6 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	for i := 0; i < len(ca.chains); i++ {
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
-	ca.certLifetime = defaultCertLifetime
 	return ca
 }
 
