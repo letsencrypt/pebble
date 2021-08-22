@@ -349,8 +349,9 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateLifetime int) *CAImpl {
 	ca := &CAImpl{
-		log: log,
-		db:  db,
+		log:          log,
+		db:           db,
+		certLifetime: defaultCertLifetime,
 	}
 
 	if ocspResponderURL != "" {
@@ -375,11 +376,9 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 			ca.certLifetime = certificateLifetime
 			ca.log.Printf("Using user defined certificate lifetime of %d days", certificateLifetime)
 		} else {
-			ca.certLifetime = defaultCertLifetime
-			ca.log.Printf("certificateLifetime (%d) is not a valid value (valid values: integer > 0), using default certificate lifetime of %d days", certificateLifetime, defaultCertLifetime)
+			ca.log.Printf("certificateLifetime (%d) is not a valid value (valid values: integer > 0), using default certificate lifetime of %d days", certificateLifetime, ca.certLifetime)
 		}
 	} else {
-		ca.certLifetime = defaultCertLifetime
 		ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
 	}
 
