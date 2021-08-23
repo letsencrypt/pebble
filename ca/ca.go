@@ -280,7 +280,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := time.Now().Add(time.Duration(ca.certValidityPeriod-1) * time.Second)
+	certNotAfter := certNotBefore.Add(time.Duration(ca.certValidityPeriod-1) * time.Second)
 	maxNotAfter := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 	if certNotAfter.After(maxNotAfter) {
 		certNotAfter = maxNotAfter
