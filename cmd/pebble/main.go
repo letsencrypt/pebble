@@ -29,7 +29,7 @@ type config struct {
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
 
-		CertificateLifetime int
+		CertificateValidityPeriod uint
 	}
 }
 
@@ -72,7 +72,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateLifetime)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

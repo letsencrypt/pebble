@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	rootCAPrefix         = "Pebble Root CA "
-	intermediateCAPrefix = "Pebble Intermediate CA "
-	defaultCertLifetime  = 1826
+	rootCAPrefix          = "Pebble Root CA "
+	intermediateCAPrefix  = "Pebble Intermediate CA "
+	defaultValidityPeriod = 157766400
 )
 
 type CAImpl struct {
@@ -35,7 +35,7 @@ type CAImpl struct {
 
 	chains []*chain
 
-	certLifetime int
+	certValidityPeriod uint
 }
 
 type chain struct {
@@ -280,7 +280,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := time.Now().AddDate(0, 0, ca.certLifetime)
+	certNotAfter := time.Now().Add(time.Duration(ca.certValidityPeriod-1) * time.Second)
 	maxNotAfter := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 	if certNotAfter.After(maxNotAfter) {
 		certNotAfter = maxNotAfter
@@ -347,11 +347,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateLifetime int) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint) *CAImpl {
 	ca := &CAImpl{
-		log:          log,
-		db:           db,
-		certLifetime: defaultCertLifetime,
+		log:                log,
+		db:                 db,
+		certValidityPeriod: defaultValidityPeriod,
 	}
 
 	if ocspResponderURL != "" {
@@ -371,16 +371,11 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 
-	if certificateLifetime != 0 {
-		if certificateLifetime > 0 {
-			ca.certLifetime = certificateLifetime
-			ca.log.Printf("Using user defined certificate lifetime of %d days", certificateLifetime)
-		} else {
-			ca.log.Printf("certificateLifetime (%d) is not a valid value (valid values: integer > 0), using default certificate lifetime of %d days", certificateLifetime, ca.certLifetime)
-		}
-	} else {
-		ca.log.Printf("Using default certificate lifetime of %d days", ca.certLifetime)
+	if certificateValidityPeriod != 0 {
+		ca.certValidityPeriod = certificateValidityPeriod
 	}
+
+	ca.log.Printf("Using certificate validity period of %d seconds", ca.certValidityPeriod)
 
 	return ca
 }
