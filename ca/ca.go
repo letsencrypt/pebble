@@ -371,7 +371,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 
-	if certificateValidityPeriod != 0 {
+	if certificateValidityPeriod != 0 && certificateValidityPeriod < 9223372038 {
 		ca.certValidityPeriod = certificateValidityPeriod
 	}
 
