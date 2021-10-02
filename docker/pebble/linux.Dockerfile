@@ -20,3 +20,6 @@ COPY --from=builder /go/bin/pebble /usr/bin/pebble
 COPY --from=builder /pebble-src/test/ /test/
 
 CMD [ "/usr/bin/pebble" ]
+
+EXPOSE 14000
+EXPOSE 15000

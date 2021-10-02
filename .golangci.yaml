@@ -20,13 +20,21 @@ linters:
     - gocritic
     - gochecknoinits
     - gochecknoglobals
+    - godox
+    - funlen
+    - wsl
+    - whitespace
+    - gomnd
 
 issues:
-  exclude:
-    # The following excludes are considered false-positives/known-OK.
-    # ca/ca.go:
-    - "type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl"
-    # va/va.go:
-    - "type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl"
-    # wfe/wfe.go: L1647 and L1878
-    - "if` block ends with a `return` statement, so drop this `else` and outdent its block"
+  exclude-use-default: true
+  max-per-linter: 0
+  max-same-issues: 0
+  # The following excludes are considered false-positives/known-OK.
+  exclude-rules:
+    - path: ca([/|\\])ca.go
+      text: 'type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl'
+    - path: va([/|\\])va.go
+      text: 'type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl'
+    - path: wfe([/|\\])wfe.go
+      text: 'if` block ends with a `return` statement, so drop this `else` and outdent its block'

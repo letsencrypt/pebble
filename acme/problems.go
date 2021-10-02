@@ -10,7 +10,9 @@ const (
 	serverInternalErr      = errNS + "serverInternal"
 	malformedErr           = errNS + "malformed"
 	badNonceErr            = errNS + "badNonce"
+	badCSRErr              = errNS + "badCSR"
 	agreementReqErr        = errNS + "agreementRequired"
+	externalAccountReqErr  = errNS + "externalAccountRequired"
 	connectionErr          = errNS + "connection"
 	unauthorizedErr        = errNS + "unauthorized"
 	invalidContactErr      = errNS + "invalidContact"
@@ -20,6 +22,7 @@ const (
 	alreadyRevokedErr      = errNS + "alreadyRevoked"
 	orderNotReadyErr       = errNS + "orderNotReady"
 	badPublicKeyErr        = errNS + "badPublicKey"
+	rejectedIdentifierErr  = errNS + "rejectedIdentifier"
 )
 
 type ProblemDetails struct {
@@ -72,6 +75,14 @@ func BadNonceProblem(detail string) *ProblemDetails {
 	}
 }
 
+func BadCSRProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       badCSRErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
 func Conflict(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       malformedErr,
@@ -83,6 +94,14 @@ func Conflict(detail string) *ProblemDetails {
 func AgreementRequiredProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       agreementReqErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+func ExternalAccountRequiredProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       externalAccountReqErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}
@@ -163,6 +182,14 @@ func OrderNotReadyProblem(detail string) *ProblemDetails {
 func BadPublicKeyProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       badPublicKeyErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func RejectedIdentifierProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       rejectedIdentifierErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

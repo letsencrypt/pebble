@@ -1,47 +1,53 @@
 language: go
 
 sudo: true
-dist: xenial
+dist: focal
 addons:
   hosts:
     - example.letsencrypt.org
     - elpmaxe.letsencrypt.org
 
-go:
-  - "1.12.x"
+cache:
+  directories:
+    - $GOPATH/pkg/mod
 
-env:
-  - GO111MODULE=on
+go:
+  - "1.16.x"
 
 services:
   - docker
 
 before_install:
-  - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
-  - cd certbot
-  - ./certbot-auto --os-packages-only -n
-  - ./tools/venv.py
-  - . venv/bin/activate
-  - cd -
+  # snap for installing cerbot, python3-acme and python3-josepy for chisel2.py
+  - sudo apt-get install snapd python3-acme python3-josepy
+  - sudo snap install core
+  - sudo snap refresh core
+  - sudo snap install --classic certbot
+  - sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 # Override the base install phase so that the project can be installed using
 # `-mod=vendor` to use the vendored dependencies
 install:
   # Install `golangci-lint` using their installer script
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.15.0
+  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.23.6
   # Install tools without `GO111MODULE` enabled so that we
   # don't download Pebble's deps and just put the tools in our
   # gobin.
   - GO111MODULE=off go get golang.org/x/tools/cmd/cover
   - GO111MODULE=off go get github.com/mattn/goveralls
   - GO111MODULE=off go get github.com/letsencrypt/boulder/test/load-generator
+  - go mod tidy
+  - git diff --exit-code go.mod
+  - git diff --exit-code go.sum
+  - go mod download
+  - go mod vendor
+  - git diff --exit-code vendor/
   - go install -v -race -mod=vendor ./...
 
 before_script:
-  - GORACE="halt_on_error=1" pebble &
+  - GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
 
 script:
-  - go mod download
   # Vet Go source code using the linter config (see .golang-ci.yml)
   - golangci-lint run
   # Run project unit tests (with the race detector enabled and atomic

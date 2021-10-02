@@ -116,6 +116,15 @@ const (
 	defaultOrdersPerPage = 3
 )
 
+// newAccountRequest is the ACME account information submitted by the client
+type newAccountRequest struct {
+	Contact            []string `json:"contact"`
+	ToSAgreed          bool     `json:"termsOfServiceAgreed"`
+	OnlyReturnExisting bool     `json:"onlyReturnExisting"`
+
+	ExternalAccountBinding *acme.JSONSigned `json:"externalAccountBinding,omitempty"`
+}
+
 type wfeHandlerFunc func(context.Context, http.ResponseWriter, *http.Request)
 
 func (f wfeHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +154,7 @@ type WebFrontEndImpl struct {
 	va                *va.VAImpl
 	ca                *ca.CAImpl
 	strict            bool
+	requireEAB        bool
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -154,7 +164,10 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict bool) WebFrontEndImpl {
+	strict, requireEAB bool) WebFrontEndImpl {
+	// Seed rand from the current time so test environments don't always have
+	// the same nonce rejection and sleep time patterns.
+	rand.Seed(time.Now().UnixNano())
 
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
@@ -211,6 +224,7 @@ func New(
 		va:                va,
 		ca:                ca,
 		strict:            strict,
+		requireEAB:        requireEAB,
 	}
 }
 
@@ -225,20 +239,25 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 		methodsMap[m] = true
 	}
 
-	if methodsMap["GET"] && !methodsMap["HEAD"] {
+	if methodsMap[http.MethodGet] && !methodsMap[http.MethodHead] {
 		// Allow HEAD for any resource that allows GET
-		methods = append(methods, "HEAD")
-		methodsMap["HEAD"] = true
+		methods = append(methods, http.MethodHead)
+		methodsMap[http.MethodHead] = true
 	}
 
 	methodsStr := strings.Join(methods, ", ")
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+				// Process CORS as necessary. If it's a CORS preflight, no further processing may occur.
+				if wfe.processCORS(request, response, methodsMap) {
+					return
+				}
+
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
-				if request.Method == "POST" || pattern == noncePath {
+				if request.Method == http.MethodPost || pattern == noncePath {
 					response.Header().Set("Replay-Nonce", wfe.nonce.createNonce())
 				}
 
@@ -268,6 +287,46 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 			},
 			)})
 	mux.Handle(pattern, defaultHandler)
+}
+
+// processCORS reads and writes all necessary request and response headers in order to
+// enable use by CORS-aware user agents. If the request is a CORS preflight request, the
+// function returns true, in which case no further data may be written to the response.
+func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.ResponseWriter,
+	allowedMethodsMap map[string]bool) bool {
+	// 6.1.1, 6.2.1. No Origin header means CORS is not relevant.
+	// 6.1.2, 6.2.2. Origin's value is not processed because it always matches.
+	if request.Header.Get("Origin") == "" {
+		return false
+	}
+
+	// 6.2. Request is a CORS preflight
+	if request.Method == http.MethodOptions {
+		// 6.2.3, 6.2.5. -Request-Method must be present and must be a match for one of the allowed methods
+		method := request.Header.Get("Access-Control-Request-Method")
+		if _, allowed := allowedMethodsMap[method]; method == "" || !allowed {
+			return false
+		}
+		// 6.2.4, 6.2.6. -Request-Headers i not processed because it always matches.
+		// 6.2.7. Send -Allow-Origin, without -Allow-Credentials support.
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+		// 6.2.8. Send -Max-Age.
+		response.Header().Set("Access-Control-Max-Age", "5")
+		// 6.2.9. -Allow-Methods is not sent because ACME only uses simple methods.
+		// 6.2.10. -Allow-Headers required for "Content-Type: application/jose+json"
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// Terminate the request
+		response.WriteHeader(http.StatusNoContent)
+		return true
+	}
+
+	// 6.1. Otherwise, request is a CORS simple or actual request.
+	// 6.1.3. Send -Allow-Origin, without Allow-Credentials support.
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	// 6.1.4. Send -Expose-Headers for the response headers ACME uses.
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
+	// Continue processing the request
+	return false
 }
 
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
@@ -431,23 +490,23 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
-	// GET only handlers
-	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
-	// Note for noncePath: "GET" also implies "HEAD"
-	wfe.HandleFunc(m, noncePath, wfe.Nonce, "GET")
+	// GET & POST handlers
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, http.MethodGet, http.MethodPost)
+	// Note for noncePath: http.MethodGet also implies http.MethodHead
+	wfe.HandleFunc(m, noncePath, wfe.Nonce, http.MethodGet, http.MethodPost)
 
 	// POST only handlers
-	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, "POST")
-	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, "POST")
-	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, "POST")
-	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, "POST")
-	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, "POST")
-	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, "POST")
-	wfe.HandleFunc(m, certPath, wfe.Certificate, "POST")
-	wfe.HandleFunc(m, orderPath, wfe.Order, "POST")
-	wfe.HandleFunc(m, authzPath, wfe.Authz, "POST")
-	wfe.HandleFunc(m, challengePath, wfe.Challenge, "POST")
-	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, "POST")
+	wfe.HandleFunc(m, newAccountPath, wfe.NewAccount, http.MethodPost)
+	wfe.HandleFunc(m, newOrderPath, wfe.NewOrder, http.MethodPost)
+	wfe.HandleFunc(m, orderFinalizePath, wfe.FinalizeOrder, http.MethodPost)
+	wfe.HandleFunc(m, acctPath, wfe.UpdateAccount, http.MethodPost)
+	wfe.HandleFunc(m, keyRolloverPath, wfe.KeyRollover, http.MethodPost)
+	wfe.HandleFunc(m, revokeCertPath, wfe.RevokeCert, http.MethodPost)
+	wfe.HandleFunc(m, certPath, wfe.Certificate, http.MethodPost)
+	wfe.HandleFunc(m, orderPath, wfe.Order, http.MethodPost)
+	wfe.HandleFunc(m, authzPath, wfe.Authz, http.MethodPost)
+	wfe.HandleFunc(m, challengePath, wfe.Challenge, http.MethodPost)
+	wfe.HandleFunc(m, ordersPath, wfe.ListOrders, http.MethodPost)
 
 	return m
 }
@@ -478,6 +537,20 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  keyRolloverPath,
 	}
 
+	// RFC 8555 §6.3 says the server's directory endpoint should support
+	// POST-as-GET as well as GET.
+	if request.Method == http.MethodPost {
+		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+		if _, prob := wfe.validPOSTAsGET(postData); prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+	}
+
 	response.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	relDir, err := wfe.relativeDirectory(request, directoryEndpoints)
@@ -497,8 +570,9 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	for k, v := range directory {
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
-	relativeDir["meta"] = map[string]string{
-		"termsOfService": ToSURL,
+	relativeDir["meta"] = map[string]interface{}{
+		"termsOfService":          ToSURL,
+		"externalAccountRequired": wfe.requireEAB,
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -540,9 +614,24 @@ func (wfe *WebFrontEndImpl) Nonce(
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
 	// and HEAD requests should receive http.StatusOK.
-	if request.Method == "HEAD" {
+	if request.Method == http.MethodHead {
 		statusCode = http.StatusOK
 	}
+
+	// RFC 8555 §6.3 says the server's nonce endpoint should support
+	// POST-as-GET as well as GET.
+	if request.Method == http.MethodPost {
+		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		if prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+		if _, prob := wfe.validPOSTAsGET(postData); prob != nil {
+			wfe.sendError(prob, response)
+			return
+		}
+	}
+
 	response.WriteHeader(statusCode)
 }
 
@@ -558,7 +647,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
@@ -577,7 +666,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
@@ -1139,7 +1228,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	innerPayload, prob := wfe.verifyJWSSignatureAndAlgorithm(newPubKey, parsedInnerJWS)
-	if err != nil {
+	if prob != nil {
 		prob.Detail = "inner JWS error: " + prob.Detail
 		wfe.sendError(prob, response)
 		return
@@ -1193,11 +1282,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	// newAcctReq is the ACME account information submitted by the client
-	var newAcctReq struct {
-		Contact            []string `json:"contact"`
-		ToSAgreed          bool     `json:"termsOfServiceAgreed"`
-		OnlyReturnExisting bool     `json:"onlyReturnExisting"`
-	}
+	var newAcctReq newAccountRequest
 	err := json.Unmarshal(postData.body, &newAcctReq)
 	if err != nil {
 		wfe.sendError(
@@ -1239,12 +1324,24 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
+	// This function will return early with an empty keyID if no external account
+	// binding was given with the request. A request with an empty external
+	// account binding will error however if this is required by the server.
+	eab, prob := wfe.verifyEAB(newAcctReq, postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	// Create a new account object with the provided contact
 	newAcct := core.Account{
 		Account: acme.Account{
 			Contact: newAcctReq.Contact,
 			// New accounts are valid to start.
 			Status: acme.StatusValid,
+
+			// External account binding keyID may be nil which will be checked further on.
+			ExternalAccountBinding: eab,
 		},
 		Key: postData.jwk,
 	}
@@ -1286,8 +1383,7 @@ func isDNSCharacter(ch byte) bool {
  * compared to Boulder. We should consider adding:
  * 1) Checks for the # of labels, and the size of each label
  * 2) Checks against the Public Suffix List
- * 3) Checks against a configured domain blocklist
- * 4) Checks for malformed IDN, RLDH, etc
+ * 3) Checks for malformed IDN, RLDH, etc
  */
 // verifyOrder checks that a new order is considered well formed. Light
 // validation is done on the order identifiers.
@@ -1321,56 +1417,69 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 				ident.Type, ident.Value))
 		}
 
-		rawDomain := ident.Value
-		if rawDomain == "" {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier with empty value"))
-		}
-
-		for _, ch := range []byte(rawDomain) {
-			if !isDNSCharacter(ch) {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS identifier with a value containing an illegal character: %q",
-					ch))
-			}
-		}
-
-		if len(rawDomain) > maxDNSIdentifierLength {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier that was longer than %d characters",
-				maxDNSIdentifierLength))
-		}
-
-		if ip := net.ParseIP(rawDomain); ip != nil {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with an IP address value: %q\n",
-				rawDomain))
-		}
-
-		if strings.HasSuffix(rawDomain, ".") {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with a value ending in a period: %q\n",
-				rawDomain))
-		}
-
-		// If there is a wildcard character in the ident value there should be only
-		// *one* instance
-		if strings.Count(rawDomain, "*") > 1 {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS type identifier with illegal wildcard value: "+
-					"too many wildcards %q",
-				rawDomain))
-		} else if strings.Count(rawDomain, "*") == 1 {
-			// If there is one wildcard character it should be the only character in
-			// the leftmost label.
-			if !strings.HasPrefix(rawDomain, "*.") {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS type identifier with illegal wildcard value: "+
-						"wildcard isn't leftmost prefix %q",
-					rawDomain))
-			}
+		if problem := wfe.validateDNSName(ident.Value); problem != nil {
+			return problem
 		}
 	}
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
+	if rawDomain == "" {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier with empty value"))
+	}
+
+	for _, ch := range []byte(rawDomain) {
+		if !isDNSCharacter(ch) {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS identifier with a value containing an illegal character: %q",
+				ch))
+		}
+	}
+
+	if len(rawDomain) > maxDNSIdentifierLength {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier that was longer than %d characters",
+			maxDNSIdentifierLength))
+	}
+
+	if ip := net.ParseIP(rawDomain); ip != nil {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with an IP address value: %q\n",
+			rawDomain))
+	}
+
+	if strings.HasSuffix(rawDomain, ".") {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with a value ending in a period: %q\n",
+			rawDomain))
+	}
+
+	// If there is a wildcard character in the ident value there should be only
+	// *one* instance
+	if strings.Count(rawDomain, "*") > 1 {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS type identifier with illegal wildcard value: "+
+				"too many wildcards %q",
+			rawDomain))
+	} else if strings.Count(rawDomain, "*") == 1 {
+		// If there is one wildcard character it should be the only character in
+		// the leftmost label.
+		if !strings.HasPrefix(rawDomain, "*.") {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS type identifier with illegal wildcard value: "+
+					"wildcard isn't leftmost prefix %q",
+				rawDomain))
+		}
+	}
+
+	if wfe.db.IsDomainBlocked(rawDomain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf(
+			"Order included an identifier for which issuance is forbidden by policy: %q",
+			rawDomain))
+	}
+
 	return nil
 }
 
@@ -1474,7 +1583,7 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
 		var enabledChallenges []string
-		if authz.Identifier.Value == acme.IdentifierIP {
+		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
@@ -1825,6 +1934,13 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 				fmt.Sprintf("CSR is missing Order IP %q", IP)), response)
 			return
 		}
+	}
+
+	// No account key signing RFC8555 Section 11.1
+	existsAcctForCSRKey, _ := wfe.getAcctByKey(parsedCSR.PublicKey)
+	if existsAcctForCSRKey != nil {
+		wfe.sendError(acme.BadCSRProblem("CSR contains a public key for a known account"), response)
+		return
 	}
 
 	// Lock and update the order with the parsed CSR and the began processing
@@ -2298,14 +2414,14 @@ func (wfe *WebFrontEndImpl) Certificate(
 		return
 	}
 
-	if no >= len(cert.Issuers) {
+	if no >= len(cert.IssuerChains) {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	// Add links to alternate roots
 	basePath := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, serial))
-	addAlternateLinks(response, basePath, no, len(cert.Issuers))
+	addAlternateLinks(response, basePath, no, len(cert.IssuerChains))
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)
@@ -2556,5 +2672,128 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		RevokedAt:   time.Now(),
 		Reason:      revokeCertReq.Reason,
 	})
+	return nil
+}
+
+// Verify the External Account Binding in the request and return the same JSON
+// object that was given in the request if successful. If no External Account
+// Binding was given then return nil however if it is required by the server
+// then error.
+func (wfe *WebFrontEndImpl) verifyEAB(
+	newAcctReq newAccountRequest,
+	outerPostData *authenticatedPOST) (*acme.JSONSigned, *acme.ProblemDetails) {
+	if newAcctReq.ExternalAccountBinding == nil {
+		if wfe.requireEAB {
+			return nil, acme.ExternalAccountRequiredProblem(
+				"ACME server policy requires newAccount requests must include a value for the 'externalAccountBinding' field")
+		}
+
+		return nil, nil
+	}
+
+	//1.  Verify that the value of the field is a well-formed JWS
+	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
+	if err != nil {
+		return nil, acme.InternalErrorProblem(
+			fmt.Sprintf("failed to encode external account binding JSON structure: %s", err))
+	}
+
+	eab, err := jose.ParseSigned(string(eabBytes))
+	if err != nil {
+		return nil, acme.MalformedProblem(
+			fmt.Sprintf("failed to decode external account binding: %s", err))
+	}
+
+	//2.  Verify that the JWS protected field meets the following criteria
+	//-  The "alg" field MUST indicate a MAC-based algorithm
+	//-  The "kid" field MUST contain the key identifier provided by the CA
+	//-  The "nonce" field MUST NOT be present
+	//-  The "url" field MUST be set to the same value as the outer JWS
+	keyID, prob := wfe.verifyEABPayloadHeader(eab, outerPostData)
+	if prob != nil {
+		return nil, prob
+	}
+
+	//3.  Retrieve the MAC key corresponding to the key identifier in the
+	//    "kid" field
+	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
+	if !ok {
+		return nil, acme.UnauthorizedProblem(
+			"the field 'kid' references a key that is not known to the ACME server")
+	}
+
+	//4.  Verify that the MAC on the JWS verifies using that MAC key
+	payload, err := eab.Verify(key)
+	if err != nil {
+		return nil, acme.UnauthorizedProblem(
+			fmt.Sprintf("external account binding JWS verification error: %s", err))
+	}
+
+	//5.  Verify that the payload of the JWS represents the same key as was
+	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
+	//    JWS)
+	if prob := wfe.verifyEABMatchesKey(payload, outerPostData.jwk); prob != nil {
+		return nil, prob
+	}
+
+	wfe.log.Printf("Successful newAccount Binding with CA using kid %q", keyID)
+
+	return newAcctReq.ExternalAccountBinding, nil
+}
+
+// verifyEABPayloadHeader will verify the protected header object of the
+// External Account Binding object in a newAccount request. If successful, will
+// return the KID specified in the header.
+func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignature, outerPostData *authenticatedPOST) (string, *acme.ProblemDetails) {
+	if len(innerJWS.Signatures) != 1 {
+		return "", acme.MalformedProblem(
+			"expecting single signature associated with the external account binding")
+	}
+
+	header := innerJWS.Signatures[0].Protected
+	switch header.Algorithm {
+	case "HS256", "HS384", "HS512":
+		break
+	default:
+		return "", acme.BadPublicKeyProblem(
+			fmt.Sprintf("the 'alg' field is set to %q, which is not valid for external account binding, valid values are: HS256, HS384 or HS512", header.Algorithm))
+	}
+	if len(header.Nonce) > 0 {
+		return "", acme.MalformedProblem(
+			"the 'nonce' field must be absent in external account binding")
+	}
+	if len(header.KeyID) == 0 {
+		return "", acme.MalformedProblem(
+			"the 'kid' field is required in external account binding")
+	}
+	url, ok := header.ExtraHeaders["url"]
+	if !ok {
+		return "", acme.MalformedProblem(
+			"the 'url' field must be present in external account binding")
+	}
+	if url != outerPostData.url {
+		return "", acme.MalformedProblem(
+			"the 'url' field in external account binding differs from outer JWS")
+	}
+
+	return header.KeyID, nil
+}
+
+// verifyEABMatchesKey will verify that the payload of a External Account
+// Binding object contains the same key that was used to sign the full
+// newAccount request JSON.
+func (wfe *WebFrontEndImpl) verifyEABMatchesKey(payload []byte, jwk *jose.JSONWebKey) *acme.ProblemDetails {
+	var payloadJWK *jose.JSONWebKey
+	err := json.Unmarshal(payload, &payloadJWK)
+	if err != nil {
+		return acme.MalformedProblem(
+			fmt.Sprintf("external account binding JWK payload malformed: %s", err))
+	}
+
+	if !keyDigestEquals(jwk, payloadJWK) {
+		return acme.BadPublicKeyProblem(
+			"external account binding payload key does not match account key authenticating request")
+	}
+
 	return nil
 }

@@ -4,11 +4,14 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +54,10 @@ type MemoryStore struct {
 
 	certificatesByID        map[string]*core.Certificate
 	revokedCertificatesByID map[string]*core.RevokedCertificate
+
+	externalAccountKeysByID map[string][]byte
+
+	blockListByDomain [][]string
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -64,6 +71,8 @@ func NewMemoryStore() *MemoryStore {
 		challengesByID:          make(map[string]*core.Challenge),
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
+		externalAccountKeysByID: make(map[string][]byte),
+		blockListByDomain:       make([][]string, 0),
 	}
 }
 
@@ -251,11 +260,17 @@ func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.I
 	m.RLock()
 	defer m.RUnlock()
 	for _, authz := range m.authorizationsByID {
+		// Lock is needed as Authorizations can be mutated outside the scope of the MemoryStore lock.
+		// Racey code path is exercised through the test in va/va_test.go, which should be considered
+		// for removal in the event that there's a by-value refactoring of MemoryStore.
+		authz.RLock()
 		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
 			authz.Order != nil && authz.Order.AccountID == accountID &&
 			authz.ExpiresDate.After(time.Now()) {
+			authz.RUnlock()
 			return authz
 		}
+		authz.RUnlock()
 	}
 	return nil
 }
@@ -397,4 +412,85 @@ func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core
 	}
 
 	return nil
+}
+
+// AddExternalAccountKeyByID will add the base64 URL encoded key to the memory
+// store with the key ID as its index. This will store the key value in its
+// unencoded, raw form.
+func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
+	if len(key) == 0 || len(keyID) == 0 {
+		return errors.New("key ID and key must not be empty")
+	}
+
+	keyDecoded, err := base64.RawURLEncoding.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 URL encoded key %q: %s", key, err)
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	if _, ok := m.externalAccountKeysByID[keyID]; ok {
+		return fmt.Errorf("key ID %q is already present", keyID)
+	}
+
+	m.externalAccountKeysByID[keyID] = keyDecoded
+
+	return nil
+}
+
+// GetExternalAccountKeyByID will return the raw, base64 URL unencoded key
+// value by its key ID pair.
+func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
+	m.RLock()
+	defer m.RUnlock()
+	key, ok := m.externalAccountKeysByID[keyID]
+	return key, ok
+}
+
+// AddBlockedDomain will add the domain name to the block list
+func (m *MemoryStore) AddBlockedDomain(name string) error {
+	if len(name) == 0 {
+		return errors.New("domain name must not be empty")
+	}
+
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	m.blockListByDomain = append(m.blockListByDomain, domainParts)
+
+	return nil
+}
+
+// IsDomainBlocked will return true if a domain is on the block list
+func (m *MemoryStore) IsDomainBlocked(name string) bool {
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+	for _, blockedParts := range m.blockListByDomain {
+		isMatch := true
+		for i := range blockedParts {
+			if blockedParts[i] != domainParts[i] {
+				isMatch = false
+				break
+			}
+		}
+		if isMatch {
+			return true
+		}
+	}
+
+	return false
 }
