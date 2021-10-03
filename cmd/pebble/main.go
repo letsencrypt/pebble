@@ -30,6 +30,7 @@ type config struct {
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
+<<<<<<< HEAD
 		// if this is false mail related remote clients are disabled
 		Emailenabed bool
 		Smtpserver  struct {
@@ -45,6 +46,10 @@ type config struct {
 			Password   string
 			Verifydkim bool
 		}
+=======
+
+		CertificateValidityPeriod uint
+>>>>>>> mybranch/master
 	}
 }
 
@@ -99,7 +104,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
 	va := va.New(logger, imapclient, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

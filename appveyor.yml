@@ -6,6 +6,7 @@ hosts:
 
 environment:
   PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+  PEBBLE_WFE_NONCEREJECT: 0
 
 # Declare artifacts that can become release assets on GitHub
 artifacts:
