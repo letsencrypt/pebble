@@ -1,10 +1,32 @@
+# github.com/emersion/go-imap v1.1.0
+## explicit
+github.com/emersion/go-imap
+github.com/emersion/go-imap/client
+github.com/emersion/go-imap/commands
+github.com/emersion/go-imap/responses
+github.com/emersion/go-imap/utf7
+# github.com/emersion/go-message v0.14.1
+## explicit
+github.com/emersion/go-message
+github.com/emersion/go-message/textproto
+# github.com/emersion/go-msgauth v0.6.5
+## explicit
+github.com/emersion/go-msgauth/dkim
+# github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21
+## explicit
+github.com/emersion/go-sasl
+# github.com/emersion/go-smtp v0.15.0
+## explicit
+github.com/emersion/go-smtp
+# github.com/emersion/go-textwrapper v0.0.0-20200911093747-65d896831594
+github.com/emersion/go-textwrapper
 # github.com/letsencrypt/challtestsrv v1.2.0
 ## explicit
 github.com/letsencrypt/challtestsrv
 # github.com/miekg/dns v1.1.25
 ## explicit
 github.com/miekg/dns
-# golang.org/x/crypto v0.0.0-20190923035154-9ee001bba392
+# golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/pbkdf2
@@ -14,9 +36,13 @@ golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
-# golang.org/x/sys v0.0.0-20190924154521-2837fb4f24fe
+# golang.org/x/sys v0.0.0-20191026070338-33540a1f6037
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/text v0.3.6
+golang.org/x/text/encoding
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/transform
 # gopkg.in/square/go-jose.v2 v2.1.9
 ## explicit
 gopkg.in/square/go-jose.v2

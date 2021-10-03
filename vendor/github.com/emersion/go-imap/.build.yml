@@ -1,0 +1,17 @@
+image: alpine/edge
+packages:
+  - go
+sources:
+  - https://github.com/emersion/go-imap
+artifacts:
+  - coverage.html
+tasks:
+  - build: |
+      cd go-imap
+      go build -race -v ./...
+  - test: |
+      cd go-imap
+      go test -coverprofile=coverage.txt -covermode=atomic ./...
+  - coverage: |
+      cd go-imap
+      go tool cover -html=coverage.txt -o ~/coverage.html
