@@ -34,12 +34,6 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-var signalToName = map[os.Signal]string{
-	syscall.SIGTERM: "SIGTERM",
-	syscall.SIGINT:  "SIGINT",
-	syscall.SIGHUP:  "SIGHUP",
-}
-
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
 // method before exiting
 func CatchSignals(callback func()) {
