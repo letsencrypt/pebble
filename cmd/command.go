@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -49,13 +48,10 @@ func CatchSignals(callback func()) {
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
-	sig := <-sigChan
-	log.Printf("Caught %s", signalToName[sig])
-
+	<-sigChan
 	if callback != nil {
 		callback()
 	}
 
-	log.Printf("Exiting")
 	os.Exit(0)
 }
