@@ -13,6 +13,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeAAAA:       func() RR { return new(AAAA) },
 	TypeAFSDB:      func() RR { return new(AFSDB) },
 	TypeANY:        func() RR { return new(ANY) },
+	TypeAPL:        func() RR { return new(APL) },
 	TypeAVC:        func() RR { return new(AVC) },
 	TypeCAA:        func() RR { return new(CAA) },
 	TypeCDNSKEY:    func() RR { return new(CDNSKEY) },
@@ -32,6 +33,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeGPOS:       func() RR { return new(GPOS) },
 	TypeHINFO:      func() RR { return new(HINFO) },
 	TypeHIP:        func() RR { return new(HIP) },
+	TypeHTTPS:      func() RR { return new(HTTPS) },
 	TypeKEY:        func() RR { return new(KEY) },
 	TypeKX:         func() RR { return new(KX) },
 	TypeL32:        func() RR { return new(L32) },
@@ -54,6 +56,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeNSEC:       func() RR { return new(NSEC) },
 	TypeNSEC3:      func() RR { return new(NSEC3) },
 	TypeNSEC3PARAM: func() RR { return new(NSEC3PARAM) },
+	TypeNULL:       func() RR { return new(NULL) },
 	TypeOPENPGPKEY: func() RR { return new(OPENPGPKEY) },
 	TypeOPT:        func() RR { return new(OPT) },
 	TypePTR:        func() RR { return new(PTR) },
@@ -68,6 +71,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeSPF:        func() RR { return new(SPF) },
 	TypeSRV:        func() RR { return new(SRV) },
 	TypeSSHFP:      func() RR { return new(SSHFP) },
+	TypeSVCB:       func() RR { return new(SVCB) },
 	TypeTA:         func() RR { return new(TA) },
 	TypeTALINK:     func() RR { return new(TALINK) },
 	TypeTKEY:       func() RR { return new(TKEY) },
@@ -78,6 +82,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeUINFO:      func() RR { return new(UINFO) },
 	TypeURI:        func() RR { return new(URI) },
 	TypeX25:        func() RR { return new(X25) },
+	TypeZONEMD:     func() RR { return new(ZONEMD) },
 }
 
 // TypeToString is a map of strings for each RR type.
@@ -86,6 +91,7 @@ var TypeToString = map[uint16]string{
 	TypeAAAA:       "AAAA",
 	TypeAFSDB:      "AFSDB",
 	TypeANY:        "ANY",
+	TypeAPL:        "APL",
 	TypeATMA:       "ATMA",
 	TypeAVC:        "AVC",
 	TypeAXFR:       "AXFR",
@@ -107,6 +113,7 @@ var TypeToString = map[uint16]string{
 	TypeGPOS:       "GPOS",
 	TypeHINFO:      "HINFO",
 	TypeHIP:        "HIP",
+	TypeHTTPS:      "HTTPS",
 	TypeISDN:       "ISDN",
 	TypeIXFR:       "IXFR",
 	TypeKEY:        "KEY",
@@ -150,6 +157,7 @@ var TypeToString = map[uint16]string{
 	TypeSPF:        "SPF",
 	TypeSRV:        "SRV",
 	TypeSSHFP:      "SSHFP",
+	TypeSVCB:       "SVCB",
 	TypeTA:         "TA",
 	TypeTALINK:     "TALINK",
 	TypeTKEY:       "TKEY",
@@ -161,6 +169,7 @@ var TypeToString = map[uint16]string{
 	TypeUNSPEC:     "UNSPEC",
 	TypeURI:        "URI",
 	TypeX25:        "X25",
+	TypeZONEMD:     "ZONEMD",
 	TypeNSAPPTR:    "NSAP-PTR",
 }
 
@@ -168,6 +177,7 @@ func (rr *A) Header() *RR_Header          { return &rr.Hdr }
 func (rr *AAAA) Header() *RR_Header       { return &rr.Hdr }
 func (rr *AFSDB) Header() *RR_Header      { return &rr.Hdr }
 func (rr *ANY) Header() *RR_Header        { return &rr.Hdr }
+func (rr *APL) Header() *RR_Header        { return &rr.Hdr }
 func (rr *AVC) Header() *RR_Header        { return &rr.Hdr }
 func (rr *CAA) Header() *RR_Header        { return &rr.Hdr }
 func (rr *CDNSKEY) Header() *RR_Header    { return &rr.Hdr }
@@ -187,6 +197,7 @@ func (rr *GID) Header() *RR_Header        { return &rr.Hdr }
 func (rr *GPOS) Header() *RR_Header       { return &rr.Hdr }
 func (rr *HINFO) Header() *RR_Header      { return &rr.Hdr }
 func (rr *HIP) Header() *RR_Header        { return &rr.Hdr }
+func (rr *HTTPS) Header() *RR_Header      { return &rr.Hdr }
 func (rr *KEY) Header() *RR_Header        { return &rr.Hdr }
 func (rr *KX) Header() *RR_Header         { return &rr.Hdr }
 func (rr *L32) Header() *RR_Header        { return &rr.Hdr }
@@ -209,6 +220,7 @@ func (rr *NSAPPTR) Header() *RR_Header    { return &rr.Hdr }
 func (rr *NSEC) Header() *RR_Header       { return &rr.Hdr }
 func (rr *NSEC3) Header() *RR_Header      { return &rr.Hdr }
 func (rr *NSEC3PARAM) Header() *RR_Header { return &rr.Hdr }
+func (rr *NULL) Header() *RR_Header       { return &rr.Hdr }
 func (rr *OPENPGPKEY) Header() *RR_Header { return &rr.Hdr }
 func (rr *OPT) Header() *RR_Header        { return &rr.Hdr }
 func (rr *PTR) Header() *RR_Header        { return &rr.Hdr }
@@ -224,6 +236,7 @@ func (rr *SOA) Header() *RR_Header        { return &rr.Hdr }
 func (rr *SPF) Header() *RR_Header        { return &rr.Hdr }
 func (rr *SRV) Header() *RR_Header        { return &rr.Hdr }
 func (rr *SSHFP) Header() *RR_Header      { return &rr.Hdr }
+func (rr *SVCB) Header() *RR_Header       { return &rr.Hdr }
 func (rr *TA) Header() *RR_Header         { return &rr.Hdr }
 func (rr *TALINK) Header() *RR_Header     { return &rr.Hdr }
 func (rr *TKEY) Header() *RR_Header       { return &rr.Hdr }
@@ -234,16 +247,21 @@ func (rr *UID) Header() *RR_Header        { return &rr.Hdr }
 func (rr *UINFO) Header() *RR_Header      { return &rr.Hdr }
 func (rr *URI) Header() *RR_Header        { return &rr.Hdr }
 func (rr *X25) Header() *RR_Header        { return &rr.Hdr }
+func (rr *ZONEMD) Header() *RR_Header     { return &rr.Hdr }
 
 // len() functions
 func (rr *A) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += net.IPv4len // A
+	if len(rr.A) != 0 {
+		l += net.IPv4len
+	}
 	return l
 }
 func (rr *AAAA) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += net.IPv6len // AAAA
+	if len(rr.AAAA) != 0 {
+		l += net.IPv6len
+	}
 	return l
 }
 func (rr *AFSDB) len(off int, compression map[string]struct{}) int {
@@ -254,6 +272,13 @@ func (rr *AFSDB) len(off int, compression map[string]struct{}) int {
 }
 func (rr *ANY) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
+	return l
+}
+func (rr *APL) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
+	for _, x := range rr.Prefixes {
+		l += x.len()
+	}
 	return l
 }
 func (rr *AVC) len(off int, compression map[string]struct{}) int {
@@ -306,12 +331,12 @@ func (rr *DS) len(off int, compression map[string]struct{}) int {
 	l += 2 // KeyTag
 	l++    // Algorithm
 	l++    // DigestType
-	l += len(rr.Digest)/2 + 1
+	l += len(rr.Digest) / 2
 	return l
 }
 func (rr *EID) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += len(rr.Endpoint)/2 + 1
+	l += len(rr.Endpoint) / 2
 	return l
 }
 func (rr *EUI48) len(off int, compression map[string]struct{}) int {
@@ -362,8 +387,10 @@ func (rr *KX) len(off int, compression map[string]struct{}) int {
 }
 func (rr *L32) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += 2           // Preference
-	l += net.IPv4len // Locator32
+	l += 2 // Preference
+	if len(rr.Locator32) != 0 {
+		l += net.IPv4len
+	}
 	return l
 }
 func (rr *L64) len(off int, compression map[string]struct{}) int {
@@ -444,7 +471,7 @@ func (rr *NID) len(off int, compression map[string]struct{}) int {
 }
 func (rr *NIMLOC) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += len(rr.Locator)/2 + 1
+	l += len(rr.Locator) / 2
 	return l
 }
 func (rr *NINFO) len(off int, compression map[string]struct{}) int {
@@ -473,6 +500,11 @@ func (rr *NSEC3PARAM) len(off int, compression map[string]struct{}) int {
 	l += len(rr.Salt) / 2
 	return l
 }
+func (rr *NULL) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
+	l += len(rr.Data)
+	return l
+}
 func (rr *OPENPGPKEY) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
 	l += base64.StdEncoding.DecodedLen(len(rr.PublicKey))
@@ -492,7 +524,7 @@ func (rr *PX) len(off int, compression map[string]struct{}) int {
 }
 func (rr *RFC3597) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
-	l += len(rr.Rdata)/2 + 1
+	l += len(rr.Rdata) / 2
 	return l
 }
 func (rr *RKEY) len(off int, compression map[string]struct{}) int {
@@ -533,7 +565,7 @@ func (rr *SMIMEA) len(off int, compression map[string]struct{}) int {
 	l++ // Usage
 	l++ // Selector
 	l++ // MatchingType
-	l += len(rr.Certificate)/2 + 1
+	l += len(rr.Certificate) / 2
 	return l
 }
 func (rr *SOA) len(off int, compression map[string]struct{}) int {
@@ -566,7 +598,16 @@ func (rr *SSHFP) len(off int, compression map[string]struct{}) int {
 	l := rr.Hdr.len(off, compression)
 	l++ // Algorithm
 	l++ // Type
-	l += len(rr.FingerPrint)/2 + 1
+	l += len(rr.FingerPrint) / 2
+	return l
+}
+func (rr *SVCB) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
+	l += 2 // Priority
+	l += domainNameLen(rr.Target, off+l, compression, false)
+	for _, x := range rr.Value {
+		l += 4 + int(x.len())
+	}
 	return l
 }
 func (rr *TA) len(off int, compression map[string]struct{}) int {
@@ -574,7 +615,7 @@ func (rr *TA) len(off int, compression map[string]struct{}) int {
 	l += 2 // KeyTag
 	l++    // Algorithm
 	l++    // DigestType
-	l += len(rr.Digest)/2 + 1
+	l += len(rr.Digest) / 2
 	return l
 }
 func (rr *TALINK) len(off int, compression map[string]struct{}) int {
@@ -601,7 +642,7 @@ func (rr *TLSA) len(off int, compression map[string]struct{}) int {
 	l++ // Usage
 	l++ // Selector
 	l++ // MatchingType
-	l += len(rr.Certificate)/2 + 1
+	l += len(rr.Certificate) / 2
 	return l
 }
 func (rr *TSIG) len(off int, compression map[string]struct{}) int {
@@ -646,6 +687,14 @@ func (rr *X25) len(off int, compression map[string]struct{}) int {
 	l += len(rr.PSDNAddress) + 1
 	return l
 }
+func (rr *ZONEMD) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
+	l += 4 // Serial
+	l++    // Scheme
+	l++    // Hash
+	l += len(rr.Digest) / 2
+	return l
+}
 
 // copy() functions
 func (rr *A) copy() RR {
@@ -660,6 +709,13 @@ func (rr *AFSDB) copy() RR {
 func (rr *ANY) copy() RR {
 	return &ANY{rr.Hdr}
 }
+func (rr *APL) copy() RR {
+	Prefixes := make([]APLPrefix, len(rr.Prefixes))
+	for i, e := range rr.Prefixes {
+		Prefixes[i] = e.copy()
+	}
+	return &APL{rr.Hdr, Prefixes}
+}
 func (rr *AVC) copy() RR {
 	Txt := make([]string, len(rr.Txt))
 	copy(Txt, rr.Txt)
@@ -667,6 +723,12 @@ func (rr *AVC) copy() RR {
 }
 func (rr *CAA) copy() RR {
 	return &CAA{rr.Hdr, rr.Flag, rr.Tag, rr.Value}
+}
+func (rr *CDNSKEY) copy() RR {
+	return &CDNSKEY{*rr.DNSKEY.copy().(*DNSKEY)}
+}
+func (rr *CDS) copy() RR {
+	return &CDS{*rr.DS.copy().(*DS)}
 }
 func (rr *CERT) copy() RR {
 	return &CERT{rr.Hdr, rr.Type, rr.KeyTag, rr.Algorithm, rr.Certificate}
@@ -681,6 +743,9 @@ func (rr *CSYNC) copy() RR {
 }
 func (rr *DHCID) copy() RR {
 	return &DHCID{rr.Hdr, rr.Digest}
+}
+func (rr *DLV) copy() RR {
+	return &DLV{*rr.DS.copy().(*DS)}
 }
 func (rr *DNAME) copy() RR {
 	return &DNAME{rr.Hdr, rr.Target}
@@ -713,6 +778,12 @@ func (rr *HIP) copy() RR {
 	RendezvousServers := make([]string, len(rr.RendezvousServers))
 	copy(RendezvousServers, rr.RendezvousServers)
 	return &HIP{rr.Hdr, rr.HitLength, rr.PublicKeyAlgorithm, rr.PublicKeyLength, rr.Hit, rr.PublicKey, RendezvousServers}
+}
+func (rr *HTTPS) copy() RR {
+	return &HTTPS{*rr.SVCB.copy().(*SVCB)}
+}
+func (rr *KEY) copy() RR {
+	return &KEY{*rr.DNSKEY.copy().(*DNSKEY)}
 }
 func (rr *KX) copy() RR {
 	return &KX{rr.Hdr, rr.Preference, rr.Exchanger}
@@ -783,12 +854,17 @@ func (rr *NSEC3) copy() RR {
 func (rr *NSEC3PARAM) copy() RR {
 	return &NSEC3PARAM{rr.Hdr, rr.Hash, rr.Flags, rr.Iterations, rr.SaltLength, rr.Salt}
 }
+func (rr *NULL) copy() RR {
+	return &NULL{rr.Hdr, rr.Data}
+}
 func (rr *OPENPGPKEY) copy() RR {
 	return &OPENPGPKEY{rr.Hdr, rr.PublicKey}
 }
 func (rr *OPT) copy() RR {
 	Option := make([]EDNS0, len(rr.Option))
-	copy(Option, rr.Option)
+	for i, e := range rr.Option {
+		Option[i] = e.copy()
+	}
 	return &OPT{rr.Hdr, Option}
 }
 func (rr *PTR) copy() RR {
@@ -812,6 +888,9 @@ func (rr *RRSIG) copy() RR {
 func (rr *RT) copy() RR {
 	return &RT{rr.Hdr, rr.Preference, rr.Host}
 }
+func (rr *SIG) copy() RR {
+	return &SIG{*rr.RRSIG.copy().(*RRSIG)}
+}
 func (rr *SMIMEA) copy() RR {
 	return &SMIMEA{rr.Hdr, rr.Usage, rr.Selector, rr.MatchingType, rr.Certificate}
 }
@@ -828,6 +907,13 @@ func (rr *SRV) copy() RR {
 }
 func (rr *SSHFP) copy() RR {
 	return &SSHFP{rr.Hdr, rr.Algorithm, rr.Type, rr.FingerPrint}
+}
+func (rr *SVCB) copy() RR {
+	Value := make([]SVCBKeyValue, len(rr.Value))
+	for i, e := range rr.Value {
+		Value[i] = e.copy()
+	}
+	return &SVCB{rr.Hdr, rr.Priority, rr.Target, Value}
 }
 func (rr *TA) copy() RR {
 	return &TA{rr.Hdr, rr.KeyTag, rr.Algorithm, rr.DigestType, rr.Digest}
@@ -860,4 +946,7 @@ func (rr *URI) copy() RR {
 }
 func (rr *X25) copy() RR {
 	return &X25{rr.Hdr, rr.PSDNAddress}
+}
+func (rr *ZONEMD) copy() RR {
+	return &ZONEMD{rr.Hdr, rr.Serial, rr.Scheme, rr.Hash, rr.Digest}
 }
