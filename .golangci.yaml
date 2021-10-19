@@ -22,6 +22,8 @@ linters:
     - gochecknoglobals
     - gomnd
     - wsl
+    - goerr113
+    - godot
 
 issues:
   exclude-use-default: true
