@@ -43,6 +43,7 @@ install:
   - go mod vendor
   - git diff --exit-code vendor/
   - go install -v -race -mod=vendor ./...
+  - GOOS=darwin GOARCH=arm64 go install -v -mod=vendor ./...
 
 before_script:
   - GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
@@ -66,6 +67,8 @@ before_deploy:
   - mkdir -p deploy
   - cp $(go env GOPATH)/bin/pebble deploy/pebble_linux-amd64
   - cp $(go env GOPATH)/bin/pebble-challtestsrv deploy/pebble-challtestsrv_linux-amd64
+  - cp $(go env GOPATH)/bin/darwin_arm64/pebble deploy/pebble_darwin-arm64
+  - cp $(go env GOPATH)/bin/darwin_arm64/pebble-challtestsrv deploy/pebble-challtestsrv_darwin-arm64
 
 deploy:
   - provider: script
