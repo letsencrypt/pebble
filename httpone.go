@@ -188,6 +188,11 @@ func httpOneServer(address string, handler http.Handler, https bool) challengeSe
 	if https {
 		tlsConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			// Only accept TLS 1.0 and TLS 1.1. This is a temporary restriction, to
+			// make it possible to test Boulder features that log when validation hits
+			// an HTTPS URL that doesn't support TLS >1.2. Once Let's Encrypt turns
+			// off TLS 1.0 and TLS 1.1 support in validations, remove this line.
+			MaxVersion: tls.VersionTLS11,
 		}
 	}
 	// Create an HTTP Server for HTTP-01 challenges
