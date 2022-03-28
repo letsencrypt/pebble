@@ -324,7 +324,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	if len(txts) == 0 {
-		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		msg := fmt.Sprintf("No TXT records found for DNS challenge :%q", task.Identifier.Value)
 		result.Error = acme.UnauthorizedProblem(msg)
 		return result
 	}
@@ -341,7 +341,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		}
 	}
 
-	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	msg := fmt.Sprintf("Correct value not found for DNS challenge :%q", task.Identifier.Value)
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
@@ -516,7 +516,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 		result.Error = acme.MalformedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
 	}
 	if parsedCSR.CheckSignature() != nil {
-		result.Error = acme.MalformedProblem(fmt.Sprintf("Sign of CSR wasn't valid for %s:", result.URL))
+		result.Error = acme.MalformedProblem(fmt.Sprintf("Sign of challange CSR for %s wasn't valid", result.URL))
 	}
 	if len(parsedCSR.DNSNames) != 1 {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challenge CSR must have exsectly one DNSNames SNI for it %s caused this error", result.URL))
@@ -526,12 +526,12 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	}
 	//key signing algorithm for onionv3 is ed25519
 	if parsedCSR.PublicKeyAlgorithm != x509.Ed25519 {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q has wrong PublicKey algorithm", result.URL))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challange CSR for %q has wrong algorithm", result.URL))
 	}
 	//check csr's signing key matches with key deprived from domain name
 	publickey, ok := parsedCSR.PublicKey.(ed25519.PublicKey)
 	if !ok {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q has wrong signing algorithm", result.URL))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q doesn't match with domain requested", result.URL))
 		return result
 	}
 	i := append([]byte(".onion checksum"), []byte(publickey)...)
@@ -550,12 +550,10 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	return result
 }
 
-// OnionNonceCheck does checks Onion related attribute nonces
+// OnionNonceCheck checks CaNonce in challange csr
 func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.ProblemDetails {
-	//oid should-be constant
+	//oid should-be constant, but golang doesn't support that
 	CaNonceOid := asn1.ObjectIdentifier([]int{2, 23, 140, 41})
-	//from where?
-	applicantNonceOid := asn1.ObjectIdentifier([]int{2, 23, 140, 42})
 
 	var tbsCsr struct {
 		Raw           asn1.RawContent
@@ -587,17 +585,8 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 			}
 			return nil
 		}
-		if attr.ID.Equal(applicantNonceOid) {
-			csrClientNonce, err := asn1.Unmarshal(attr.Value.Bytes, &onionVal)
-			if err != nil {
-				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing Clientnonce from CSR : %q", csr.DNSNames[0]))
-			}
-			if len(csrClientNonce) < 9 {
-				return acme.UnauthorizedProblem(fmt.Sprintf("applicantNonce too short : %q", csr.DNSNames[0]))
-			}
-		}
 	}
-	return acme.UnauthorizedProblem(fmt.Sprintf("onion oid was not found in CSR attributes"))
+	return acme.UnauthorizedProblem(fmt.Sprintf("onion oid was not found in CSR attributes: %q", csr.DNSNames[0]))
 }
 
 // NOTE(@cpu): fetchHTTP only fetches the ACME HTTP-01 challenge path for
