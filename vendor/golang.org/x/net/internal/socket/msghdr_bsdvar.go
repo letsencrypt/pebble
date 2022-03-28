@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin dragonfly freebsd netbsd
+//go:build aix || darwin || dragonfly || freebsd || netbsd
+// +build aix darwin dragonfly freebsd netbsd
 
 package socket
 

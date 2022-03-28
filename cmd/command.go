@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,12 +34,6 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-var signalToName = map[os.Signal]string{
-	syscall.SIGTERM: "SIGTERM",
-	syscall.SIGINT:  "SIGINT",
-	syscall.SIGHUP:  "SIGHUP",
-}
-
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
 // method before exiting
 func CatchSignals(callback func()) {
@@ -49,13 +42,10 @@ func CatchSignals(callback func()) {
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
-	sig := <-sigChan
-	log.Printf("Caught %s", signalToName[sig])
-
+	<-sigChan
 	if callback != nil {
 		callback()
 	}
 
-	log.Printf("Exiting")
 	os.Exit(0)
 }
