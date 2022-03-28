@@ -6,6 +6,7 @@ hosts:
 
 environment:
   PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+  PEBBLE_WFE_NONCEREJECT: 0
 
 # Declare artifacts that can become release assets on GitHub
 artifacts:
@@ -17,8 +18,8 @@ artifacts:
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
-  - python tools\venv3.py
-  - venv3\Scripts\activate.bat
+  - python tools\venv.py
+  - venv\Scripts\activate.bat
   - cd ..
 
 before_build:

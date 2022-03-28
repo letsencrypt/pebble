@@ -30,14 +30,13 @@ func (srv *managementServer) Run() {
 	// Start the HTTP server in its own dedicated Go routine
 	go func() {
 		err := srv.ListenAndServe()
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "Server closed") {
 			srv.log.Print(err)
 		}
 	}()
 }
 
 func (srv *managementServer) Shutdown() {
-	srv.log.Printf("Shutting down management server")
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
 		srv.log.Printf("Err shutting down management server")
 	}
@@ -151,9 +150,7 @@ func main() {
 	go oobSrv.Run()
 
 	cmd.CatchSignals(func() {
-		logger.Printf("Caught signals. Shutting down")
 		srv.Shutdown()
 		oobSrv.Shutdown()
-		logger.Printf("Goodbye!")
 	})
 }
