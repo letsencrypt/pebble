@@ -500,6 +500,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	result := &core.ValidationRecord{
 		URL:         task.Identifier.Value,
 		ValidatedAt: time.Now(),
+		Error:       nil,
 	}
 	if task.Identifier.Type != acme.IdentifierONION {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("no onion address can't use this challgene. triggered by %s: ", result.URL))
@@ -573,14 +574,17 @@ func OnionNonceCheck(csr *x509.CertificateRequest, caNonce []byte) *acme.Problem
 		if _, err := asn1.Unmarshal(rawAttr.FullBytes, &attr); err != nil {
 			return acme.UnauthorizedProblem(fmt.Sprintf("couldn't unmarshal attribute in csr: %q", csr.DNSNames[0]))
 		}
-		var onionVal []byte
+		var csrCaNonce []byte
 		if attr.ID.Equal(CaNonceOid) {
-			csrCaNonce, err := asn1.Unmarshal(attr.Value.Bytes, &onionVal)
+			rest, err := asn1.Unmarshal(attr.Value.Bytes, &csrCaNonce)
 			if err != nil {
 				return acme.UnauthorizedProblem(fmt.Sprintf("error parsing canonce from CSR : %q", csr.DNSNames[0]))
 			}
+			if len(rest) != 0 {
+				return acme.UnauthorizedProblem(fmt.Sprintf("excess value left in onion CSR : %q, %b", csr.DNSNames[0], rest))
+			}
 			if !bytes.Equal(caNonce, csrCaNonce) {
-				return acme.UnauthorizedProblem(fmt.Sprintf("CANonce doesn't match %q", csr.DNSNames[0]))
+				return acme.UnauthorizedProblem(fmt.Sprintf("CANonce doesn't match for %q, expect %b, got %b", csr.DNSNames[0], caNonce, csrCaNonce))
 
 			}
 			return nil

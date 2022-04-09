@@ -1,6 +1,9 @@
 package va
 
 import (
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
 	"log"
 	"os"
 	"sync"
@@ -50,4 +53,34 @@ func TestAuthzRace(t *testing.T) {
 	}()
 	va.setAuthzInvalid(authz, &core.Challenge{}, nil)
 	wg.Wait()
+}
+
+func TestOnionCSRPasrse(t *testing.T) {
+
+	const testpem = `
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBDzCBwgIBADAAMCowBQYDK2VwAyEAAJhHmOIxin7dZvKd6aiZGCNrl2ngSbR1
+1Ei727ydOEaggY4wFAYEZ4EMKjEMBAosNiTQxXU35ZAqMBoGBGeBDCkxEgQQYpVw
+QRzcyq72eWGTw8flMjBaBgkqhkiG9w0BCQ4xTTBLMEkGA1UdEQRCMECCPmFjbWVw
+Z2hjZ2dmaDV4bGc2a282dGtlemRhcnd4ZjNqNGJlM2k1b3VqYzU1eHBlNWhiZGph
+dXFkLm9uaW9uMAUGAytlcANBACfTi2BHuRhWP+UHJ75zz/Vh2HNj7A97Jeq/JDyN
+EMSC/YZWhP+vFEdveAzWgi3IBDNCkJpp09HbDhyJNgfNvw8=
+-----END CERTIFICATE REQUEST-----`
+	Noncehex, err := hex.DecodeString("629570411cdccaaef6796193c3c7e532")
+	if err != nil {
+		panic("failed to parse hex")
+	}
+	// testonionaddress := "acmepghcggfh5xlg6ko6tkezdarwxf3j4be3i5oujc55xpe5hbdjauqd.onion"
+	decodedpem, rest := pem.Decode([]byte(testpem))
+	if decodedpem == nil {
+		panic(rest)
+	}
+	onioncsr, err := x509.ParseCertificateRequest(decodedpem.Bytes)
+	if err != nil {
+		panic(err)
+	}
+	testresult := OnionNonceCheck(onioncsr, Noncehex)
+	if testresult != nil {
+		panic(testresult)
+	}
 }
