@@ -543,7 +543,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	byteaddress = append(byteaddress, '\x03')
 	address := base32.StdEncoding.EncodeToString(byteaddress)
 	address = address + ".onion"
-	if address != parsedCSR.DNSNames[0] {
+	if !strings.EqualFold(address, parsedCSR.DNSNames[0]) {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q didn't match with onion address's key", result.URL))
 	}
 	//check nonce
