@@ -7,11 +7,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/letsencrypt/pebble/ca"
-	"github.com/letsencrypt/pebble/cmd"
-	"github.com/letsencrypt/pebble/db"
-	"github.com/letsencrypt/pebble/va"
-	"github.com/letsencrypt/pebble/wfe"
+	"github.com/letsencrypt/pebble/v2/ca"
+	"github.com/letsencrypt/pebble/v2/cmd"
+	"github.com/letsencrypt/pebble/v2/db"
+	"github.com/letsencrypt/pebble/v2/va"
+	"github.com/letsencrypt/pebble/v2/wfe"
 )
 
 type config struct {

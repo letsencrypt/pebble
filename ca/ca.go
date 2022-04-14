@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/core"
-	"github.com/letsencrypt/pebble/db"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/core"
+	"github.com/letsencrypt/pebble/v2/db"
 )
 
 const (
