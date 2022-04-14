@@ -1,6 +1,6 @@
-FROM golang:1.12-nanoserver-sac2016 as builder
+FROM golang:1.18-nanoserver-sac2016 as builder
 
-ENV CGO_ENABLED=0 GOFLAGS=-mod=vendor
+ENV CGO_ENABLED=0
 
 WORKDIR /pebble-src
 COPY . .
