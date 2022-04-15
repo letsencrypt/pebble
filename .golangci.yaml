@@ -25,6 +25,11 @@ linters:
     - wsl
     - whitespace
     - gomnd
+    - typecheck
+    - godot
+    - errname
+    - nlreturn
+    - wrapcheck
 
 issues:
   exclude-use-default: true

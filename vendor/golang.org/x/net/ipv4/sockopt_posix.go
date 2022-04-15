@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin dragonfly freebsd linux netbsd openbsd solaris windows
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || windows || zos
+// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris windows zos
 
 package ipv4
 
@@ -39,7 +40,7 @@ func (so *sockOpt) getICMPFilter(c *socket.Conn) (*ICMPFilter, error) {
 		return nil, err
 	}
 	if n != sizeofICMPFilter {
-		return nil, errOpNoSupport
+		return nil, errNotImplemented
 	}
 	return (*ICMPFilter)(unsafe.Pointer(&b[0])), nil
 }
@@ -58,7 +59,7 @@ func (so *sockOpt) setGroup(c *socket.Conn, ifi *net.Interface, grp net.IP) erro
 	case ssoTypeGroupReq:
 		return so.setGroupReq(c, ifi, grp)
 	default:
-		return errOpNoSupport
+		return errNotImplemented
 	}
 }
 

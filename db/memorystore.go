@@ -9,15 +9,17 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/core"
 )
 
 // ExistingAccountError is an error type indicating when an operation fails
@@ -36,7 +38,7 @@ func (e ExistingAccountError) Error() string {
 type MemoryStore struct {
 	sync.RWMutex
 
-	accountIDCounter int
+	accountRand *rand.Rand
 
 	accountsByID map[string]*core.Account
 
@@ -55,11 +57,13 @@ type MemoryStore struct {
 	revokedCertificatesByID map[string]*core.RevokedCertificate
 
 	externalAccountKeysByID map[string][]byte
+
+	blockListByDomain [][]string
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		accountIDCounter:        1,
+		accountRand:             rand.New(rand.NewSource(time.Now().UnixNano())),
 		accountsByID:            make(map[string]*core.Account),
 		accountsByKeyID:         make(map[string]*core.Account),
 		ordersByID:              make(map[string]*core.Order),
@@ -69,6 +73,7 @@ func NewMemoryStore() *MemoryStore {
 		certificatesByID:        make(map[string]*core.Certificate),
 		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
 		externalAccountKeysByID: make(map[string][]byte),
+		blockListByDomain:       make([][]string, 0),
 	}
 }
 
@@ -111,9 +116,6 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	acctID := strconv.Itoa(m.accountIDCounter)
-	m.accountIDCounter++
-
 	if acct.Key == nil {
 		return 0, fmt.Errorf("account must not have a nil Key")
 	}
@@ -123,8 +125,12 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 		return 0, err
 	}
 
-	if _, present := m.accountsByID[acctID]; present {
-		return 0, fmt.Errorf("account %q already exists", acctID)
+	var acctID string
+	for {
+		acctID = strconv.FormatInt(m.accountRand.Int63(), 16)
+		if _, present := m.accountsByID[acctID]; !present {
+			break
+		}
 	}
 
 	if _, present := m.accountsByKeyID[keyID]; present {
@@ -256,11 +262,17 @@ func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.I
 	m.RLock()
 	defer m.RUnlock()
 	for _, authz := range m.authorizationsByID {
+		// Lock is needed as Authorizations can be mutated outside the scope of the MemoryStore lock.
+		// Racey code path is exercised through the test in va/va_test.go, which should be considered
+		// for removal in the event that there's a by-value refactoring of MemoryStore.
+		authz.RLock()
 		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
 			authz.Order != nil && authz.Order.AccountID == accountID &&
 			authz.ExpiresDate.After(time.Now()) {
+			authz.RUnlock()
 			return authz
 		}
+		authz.RUnlock()
 	}
 	return nil
 }
@@ -436,4 +448,51 @@ func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
 	defer m.RUnlock()
 	key, ok := m.externalAccountKeysByID[keyID]
 	return key, ok
+}
+
+// AddBlockedDomain will add the domain name to the block list
+func (m *MemoryStore) AddBlockedDomain(name string) error {
+	if len(name) == 0 {
+		return errors.New("domain name must not be empty")
+	}
+
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	m.blockListByDomain = append(m.blockListByDomain, domainParts)
+
+	return nil
+}
+
+// IsDomainBlocked will return true if a domain is on the block list
+func (m *MemoryStore) IsDomainBlocked(name string) bool {
+	domainParts := strings.Split(name, ".")
+
+	// reversing the order
+	for i, j := 0, len(domainParts)-1; i < j; i, j = i+1, j-1 {
+		domainParts[i], domainParts[j] = domainParts[j], domainParts[i]
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+	for _, blockedParts := range m.blockListByDomain {
+		isMatch := true
+		for i := range blockedParts {
+			if blockedParts[i] != domainParts[i] {
+				isMatch = false
+				break
+			}
+		}
+		if isMatch {
+			return true
+		}
+	}
+
+	return false
 }

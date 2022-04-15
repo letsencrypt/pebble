@@ -6,6 +6,7 @@ hosts:
 
 environment:
   PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+  PEBBLE_WFE_NONCEREJECT: 0
 
 # Declare artifacts that can become release assets on GitHub
 artifacts:
@@ -17,13 +18,9 @@ artifacts:
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
-  - python tools\venv3.py
-  - venv3\Scripts\activate.bat
+  - python tools\venv.py
+  - venv\Scripts\activate.bat
   - cd ..
-
-before_build:
-  # Install `golangci-lint` using go get (installer not available for Windows)
-  - go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.23.3
 
 build_script:
   - go install -v -mod=vendor ./...
@@ -36,8 +33,6 @@ after_build:
   - copy %USERPROFILE%\go\bin\pebble-challtestsrv.exe deploy\pebble-challtestsrv_windows-amd64.exe
 
 test_script:
-  # Vet Go source code using the linter config (see .golang-ci.yml)
-  - golangci-lint run
   # Run project unit tests (with the race detector enabled)
   - go test -mod=vendor -v -race ./...
   # Perform a test issuance with chisel2.py

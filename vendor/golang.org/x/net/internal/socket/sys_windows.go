@@ -5,9 +5,10 @@
 package socket
 
 import (
-	"errors"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func probeProtocolStack() int {
@@ -16,30 +17,13 @@ func probeProtocolStack() int {
 }
 
 const (
-	sysAF_UNSPEC = 0x0
-	sysAF_INET   = 0x2
-	sysAF_INET6  = 0x17
+	sysAF_UNSPEC = windows.AF_UNSPEC
+	sysAF_INET   = windows.AF_INET
+	sysAF_INET6  = windows.AF_INET6
 
-	sysSOCK_RAW = 0x3
-)
+	sysSOCK_RAW = windows.SOCK_RAW
 
-type sockaddrInet struct {
-	Family uint16
-	Port   uint16
-	Addr   [4]byte /* in_addr */
-	Zero   [8]uint8
-}
-
-type sockaddrInet6 struct {
-	Family   uint16
-	Port     uint16
-	Flowinfo uint32
-	Addr     [16]byte /* in6_addr */
-	Scope_id uint32
-}
-
-const (
-	sizeofSockaddrInet  = 0x10
+	sizeofSockaddrInet4 = 0x10
 	sizeofSockaddrInet6 = 0x1c
 )
 
@@ -54,17 +38,17 @@ func setsockopt(s uintptr, level, name int, b []byte) error {
 }
 
 func recvmsg(s uintptr, h *msghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }
 
 func sendmsg(s uintptr, h *msghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }
 
 func recvmmsg(s uintptr, hs []mmsghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }
 
 func sendmmsg(s uintptr, hs []mmsghdr, flags int) (int, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }

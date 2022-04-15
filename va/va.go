@@ -24,8 +24,8 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/challtestsrv"
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/core"
 )
 
 const (
@@ -379,7 +379,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 		return result
 	}
 
-	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != acme.ACMETLS1Protocol {
+	if cs.NegotiatedProtocol != acme.ACMETLS1Protocol {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf(
 			"Cannot negotiate ALPN protocol %q for %s challenge",
 			acme.ACMETLS1Protocol,

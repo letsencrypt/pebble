@@ -28,11 +28,11 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/ca"
-	"github.com/letsencrypt/pebble/core"
-	"github.com/letsencrypt/pebble/db"
-	"github.com/letsencrypt/pebble/va"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/ca"
+	"github.com/letsencrypt/pebble/v2/core"
+	"github.com/letsencrypt/pebble/v2/db"
+	"github.com/letsencrypt/pebble/v2/va"
 )
 
 const (
@@ -165,6 +165,10 @@ func New(
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool) WebFrontEndImpl {
+	// Seed rand from the current time so test environments don't always have
+	// the same nonce rejection and sleep time patterns.
+	rand.Seed(time.Now().UnixNano())
+
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
@@ -245,6 +249,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	defaultHandler := http.StripPrefix(pattern,
 		&topHandler{
 			wfe: wfeHandlerFunc(func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+				// Process CORS as necessary. If it's a CORS preflight, no further processing may occur.
+				if wfe.processCORS(request, response, methodsMap) {
+					return
+				}
+
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
@@ -278,6 +287,46 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 			},
 			)})
 	mux.Handle(pattern, defaultHandler)
+}
+
+// processCORS reads and writes all necessary request and response headers in order to
+// enable use by CORS-aware user agents. If the request is a CORS preflight request, the
+// function returns true, in which case no further data may be written to the response.
+func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.ResponseWriter,
+	allowedMethodsMap map[string]bool) bool {
+	// 6.1.1, 6.2.1. No Origin header means CORS is not relevant.
+	// 6.1.2, 6.2.2. Origin's value is not processed because it always matches.
+	if request.Header.Get("Origin") == "" {
+		return false
+	}
+
+	// 6.2. Request is a CORS preflight
+	if request.Method == http.MethodOptions {
+		// 6.2.3, 6.2.5. -Request-Method must be present and must be a match for one of the allowed methods
+		method := request.Header.Get("Access-Control-Request-Method")
+		if _, allowed := allowedMethodsMap[method]; method == "" || !allowed {
+			return false
+		}
+		// 6.2.4, 6.2.6. -Request-Headers i not processed because it always matches.
+		// 6.2.7. Send -Allow-Origin, without -Allow-Credentials support.
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+		// 6.2.8. Send -Max-Age.
+		response.Header().Set("Access-Control-Max-Age", "5")
+		// 6.2.9. -Allow-Methods is not sent because ACME only uses simple methods.
+		// 6.2.10. -Allow-Headers required for "Content-Type: application/jose+json"
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// Terminate the request
+		response.WriteHeader(http.StatusNoContent)
+		return true
+	}
+
+	// 6.1. Otherwise, request is a CORS simple or actual request.
+	// 6.1.3. Send -Allow-Origin, without Allow-Credentials support.
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	// 6.1.4. Send -Expose-Headers for the response headers ACME uses.
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce, Location")
+	// Continue processing the request
+	return false
 }
 
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
@@ -598,7 +647,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
@@ -617,7 +666,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 	parsedJWS, err := jose.ParseSigned(body)
 	if err != nil {
-		return nil, errors.New("Parse error reading JWS")
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
@@ -1334,8 +1383,7 @@ func isDNSCharacter(ch byte) bool {
  * compared to Boulder. We should consider adding:
  * 1) Checks for the # of labels, and the size of each label
  * 2) Checks against the Public Suffix List
- * 3) Checks against a configured domain blocklist
- * 4) Checks for malformed IDN, RLDH, etc
+ * 3) Checks for malformed IDN, RLDH, etc
  */
 // verifyOrder checks that a new order is considered well formed. Light
 // validation is done on the order identifiers.
@@ -1369,56 +1417,69 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 				ident.Type, ident.Value))
 		}
 
-		rawDomain := ident.Value
-		if rawDomain == "" {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier with empty value"))
-		}
-
-		for _, ch := range []byte(rawDomain) {
-			if !isDNSCharacter(ch) {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS identifier with a value containing an illegal character: %q",
-					ch))
-			}
-		}
-
-		if len(rawDomain) > maxDNSIdentifierLength {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS identifier that was longer than %d characters",
-				maxDNSIdentifierLength))
-		}
-
-		if ip := net.ParseIP(rawDomain); ip != nil {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with an IP address value: %q\n",
-				rawDomain))
-		}
-
-		if strings.HasSuffix(rawDomain, ".") {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included a DNS identifier with a value ending in a period: %q\n",
-				rawDomain))
-		}
-
-		// If there is a wildcard character in the ident value there should be only
-		// *one* instance
-		if strings.Count(rawDomain, "*") > 1 {
-			return acme.MalformedProblem(fmt.Sprintf(
-				"Order included DNS type identifier with illegal wildcard value: "+
-					"too many wildcards %q",
-				rawDomain))
-		} else if strings.Count(rawDomain, "*") == 1 {
-			// If there is one wildcard character it should be the only character in
-			// the leftmost label.
-			if !strings.HasPrefix(rawDomain, "*.") {
-				return acme.MalformedProblem(fmt.Sprintf(
-					"Order included DNS type identifier with illegal wildcard value: "+
-						"wildcard isn't leftmost prefix %q",
-					rawDomain))
-			}
+		if problem := wfe.validateDNSName(ident.Value); problem != nil {
+			return problem
 		}
 	}
+	return nil
+}
+
+func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
+	if rawDomain == "" {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier with empty value"))
+	}
+
+	for _, ch := range []byte(rawDomain) {
+		if !isDNSCharacter(ch) {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS identifier with a value containing an illegal character: %q",
+				ch))
+		}
+	}
+
+	if len(rawDomain) > maxDNSIdentifierLength {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier that was longer than %d characters",
+			maxDNSIdentifierLength))
+	}
+
+	if ip := net.ParseIP(rawDomain); ip != nil {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with an IP address value: %q\n",
+			rawDomain))
+	}
+
+	if strings.HasSuffix(rawDomain, ".") {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included a DNS identifier with a value ending in a period: %q\n",
+			rawDomain))
+	}
+
+	// If there is a wildcard character in the ident value there should be only
+	// *one* instance
+	if strings.Count(rawDomain, "*") > 1 {
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS type identifier with illegal wildcard value: "+
+				"too many wildcards %q",
+			rawDomain))
+	} else if strings.Count(rawDomain, "*") == 1 {
+		// If there is one wildcard character it should be the only character in
+		// the leftmost label.
+		if !strings.HasPrefix(rawDomain, "*.") {
+			return acme.MalformedProblem(fmt.Sprintf(
+				"Order included DNS type identifier with illegal wildcard value: "+
+					"wildcard isn't leftmost prefix %q",
+				rawDomain))
+		}
+	}
+
+	if wfe.db.IsDomainBlocked(rawDomain) {
+		return acme.RejectedIdentifierProblem(fmt.Sprintf(
+			"Order included an identifier for which issuance is forbidden by policy: %q",
+			rawDomain))
+	}
+
 	return nil
 }
 
@@ -1721,7 +1782,6 @@ func (wfe *WebFrontEndImpl) Order(
 	// authenticated account owns the order being requested
 	if account != nil {
 		if orderAccountID != account.ID {
-			response.WriteHeader(http.StatusForbidden)
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account that authenticated the request does not own the specified order"), response)
 			return
@@ -1760,7 +1820,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderID := strings.TrimPrefix(request.URL.Path, orderFinalizePath)
 	existingOrder := wfe.db.GetOrderByID(orderID)
 	if existingOrder == nil {
-		response.WriteHeader(http.StatusNotFound)
 		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
 			"No order %q found for account ID %q", orderID, existingAcct.ID)), response)
 		return
@@ -1778,7 +1837,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	existingOrder.RUnlock()
 
 	if orderAccountID != existingAcct.ID {
-		response.WriteHeader(http.StatusForbidden)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account that authenticated the request does not own the specified order"), response)
 		return
@@ -2016,7 +2074,6 @@ func (wfe *WebFrontEndImpl) Authz(
 		}
 
 		if orderAcctID != account.ID {
-			response.WriteHeader(http.StatusForbidden)
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account authorizing the request is not the owner of the authorization"),
 				response)
@@ -2073,7 +2130,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	defer chal.RUnlock()
 
 	if chal.Authz.Order.AccountID != account.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
 		return
@@ -2226,7 +2282,6 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	authz.RUnlock()
 
 	if orderAcctID != existingAcct.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
 		return
@@ -2347,20 +2402,19 @@ func (wfe *WebFrontEndImpl) Certificate(
 	}
 
 	if cert.AccountID != acct.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request does not own certificate"), response)
 		return
 	}
 
-	if no >= len(cert.Issuers) {
+	if no >= len(cert.IssuerChains) {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	// Add links to alternate roots
 	basePath := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", certPath, serial))
-	addAlternateLinks(response, basePath, no, len(cert.Issuers))
+	addAlternateLinks(response, basePath, no, len(cert.IssuerChains))
 
 	response.Header().Set("Content-Type", "application/pem-certificate-chain; charset=utf-8")
 	response.WriteHeader(http.StatusOK)

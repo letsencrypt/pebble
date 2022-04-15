@@ -1,0 +1,29 @@
+.TH PEBBLE 1
+.SH NAME
+pebble \- ACME (RFC 8555) test server
+.SH SYNOPSIS
+.B pebble
+[\fB\-config\fR \fIstring\fR]
+[\fB\-dnsserver\fR \fIstring\fR]
+[\fB\-strict\fR]
+.SH DESCRIPTION
+.B pebble
+is a miniature version of Boulder that can assist in the
+development and testing of ACME clients against the standard without
+having to setup a full production-capable ACME server.
+.PP
+pebble is NOT designed for production use and is for testing only.  By
+design, it will drop all of its state between invocations and will
+randomize keys and certificates used for issuance!
+.SH OPTIONS
+.TP
+.BR \-config\ \fIstring\fR
+File path to the Pebble configuration file (default
+"test/config/pebble-config.json")
+.TP
+.BR \-dnsserver\ \fIstring\fR
+Define a custom DNS server address (ex: 192.168.0.56:5053 or
+8.8.8.8:53).
+.TP
+.BR \-strict
+Enable strict mode to test upcoming API breaking changes
