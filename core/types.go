@@ -61,7 +61,7 @@ func (o *Order) GetStatus() (string, error) {
 		return acme.StatusInvalid, nil
 	}
 
-	// Otherwise, an order is pending if **any** of its authzs are pending
+	// Otherwise, an order is pending if ANY of its authzs are pending.
 	if authzStatuses[acme.StatusPending] > 0 {
 		return acme.StatusPending, nil
 	}
