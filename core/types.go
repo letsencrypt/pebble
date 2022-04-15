@@ -53,9 +53,8 @@ func (o *Order) GetStatus() (string, error) {
 		}
 	}
 
-	// An order is invalid if **any** of its authzs are invalid,
-	// deactivated, or expired
-	// https://tools.ietf.org/html/rfc8555#page-32
+	// An order is invalid if ANY of its authzs are invalid, deactivated, or
+	// expired per: https://tools.ietf.org/html/rfc8555#page-32
 	if authzStatuses[acme.StatusInvalid] > 0 ||
 		authzStatuses[acme.StatusDeactivated] > 0 ||
 		authzStatuses[acme.StatusExpired] > 0 {
