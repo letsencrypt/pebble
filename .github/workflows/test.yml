@@ -1,0 +1,83 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: apt install
+      run: sudo apt-get install snapd python3-acme python3-josepy
+
+    - name: snap install
+      run: sudo snap install core && sudo snap refresh core
+
+    - name: snap install certbot
+      run: sudo snap --classic certbot && sudo ln -s /snap/bin/certbot /usr/bin/certbot
+
+    - name: go install tools
+      run: go install golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/letsencrypt/boulder/test/load-generator
+
+    - name: go install
+      run: go install -v -race ./...
+
+    - name: go install darwin
+      run: GOOS=darwin GOARCH=arm64 go install -v ./...
+
+    - name: launch pebble
+      run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
+
+    # Run project unit tests (with the race detector enabled and atomic
+    # coverage profile collection)
+    - name: unittests
+      run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+
+    # Upload collected coverage profile to goveralls
+    - name: goveralls
+      run: goveralls -coverprofile=coverage.out -service=travis-ci
+
+    # Perform a test issuance with chisel2.py
+    - name: chisel
+      run: REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+
+    # Run the load-generator briefly - note, because Pebble isn't using the
+    # load-generator's mock DNS server none of the issuances will succeed. This
+    # step is performed just to shake out data races with concurrent requests.
+    - name: load-generator
+      run: load-generator -config ./test/config/load-generator-config.json > /dev/null
+
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.18
+
+    - name: tidy
+      run: go mod tidy
+
+    - name: diff
+      run: git diff --exit-code go.mod
+
+    - name: diff
+      run: git diff --exit-code go.sum
+
+    - name: vendoring
+      run: go mod vendor
+
+    - name: vendoring diff
+      run: git diff --exit-code vendor/
