@@ -48,7 +48,7 @@ jobs:
 
     # Upload collected coverage profile to goveralls
     - name: goveralls
-      run: goveralls -coverprofile=coverage.out -service=travis-ci
+      run: goveralls -coverprofile=coverage.out -service=github
 
     # Perform a test issuance with chisel2.py
     - name: chisel
