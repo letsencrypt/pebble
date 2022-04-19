@@ -27,7 +27,13 @@ jobs:
       run: sudo snap install --classic certbot && sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
     - name: go install tools
-      run: go install golang.org/x/tools/cmd/cover github.com/mattn/goveralls github.com/letsencrypt/boulder/test/load-generator
+      run: go install golang.org/x/tools/cmd/cover@latest
+
+    - name: go install goveralls
+      run: go install github.com/mattn/goveralls@latest
+
+    - name: go install load-generator
+      run: go install github.com/letsencrypt/boulder/test/load-generator@latest
 
     - name: go install
       run: go install -v -race ./...
