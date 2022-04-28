@@ -539,7 +539,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	//mergeing this to to same state cause slice of unaddressable value error
 	j := sha3.Sum256(append(i, '\x03'))
 	checksum := j[:2]
-	byteaddress := append(publickey, checksum...)
+	byteaddress := append([]byte(publickey), checksum...)
 	byteaddress = append(byteaddress, '\x03')
 	address := base32.StdEncoding.EncodeToString(byteaddress)
 	address = address + ".onion"
