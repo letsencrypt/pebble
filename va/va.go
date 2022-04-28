@@ -637,18 +637,23 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CAnonce didn't match expect : %s, got %s", task.Challenge.Token, csrNonce))
 		return result
 	}
-
+	va.log.Println("l640")
+	va.log.Println(sha3.Sum256(parsedCSR.Raw))
 	address := OnionAddrFromkey(publickey)
+	va.log.Println("l643")
+	va.log.Println(sha3.Sum256(parsedCSR.Raw))
 	if !strings.EqualFold(address, parsedCSR.DNSNames[0]) {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Pulickey for CSR of %q doesn't match with domain requested", result.URL))
 		return result
 	}
-
 	return result
 }
 
 // cast publickey to onionv3 address
-func OnionAddrFromkey(pubkey ed25519.PublicKey) string {
+func OnionAddrFromkey(pubkeyout ed25519.PublicKey) string {
+	//do a deep copy so CSR won't change
+	var pubkey ed25519.PublicKey
+	copy(pubkey, pubkeyout)
 	i := append([]byte(".onion checksum"), []byte(pubkey)...)
 	//mergeing this to to same state cause slice of unaddressable value error
 	j := sha3.Sum256(append(i, '\x03'))
