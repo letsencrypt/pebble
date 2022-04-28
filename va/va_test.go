@@ -2,7 +2,7 @@ package va
 
 import (
 	"crypto/x509"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/pem"
 	"log"
 	"os"
@@ -55,9 +55,7 @@ func TestAuthzRace(t *testing.T) {
 	wg.Wait()
 }
 
-func TestOnionCSRPasrse(t *testing.T) {
-
-	const testpem = `
+const testpem1 = `
 -----BEGIN CERTIFICATE REQUEST-----
 MIIBDzCBwgIBADAAMCowBQYDK2VwAyEAAJhHmOIxin7dZvKd6aiZGCNrl2ngSbR1
 1Ei727ydOEaggY4wFAYEZ4EMKjEMBAosNiTQxXU35ZAqMBoGBGeBDCkxEgQQYpVw
@@ -66,23 +64,52 @@ Z2hjZ2dmaDV4bGc2a282dGtlemRhcnd4ZjNqNGJlM2k1b3VqYzU1eHBlNWhiZGph
 dXFkLm9uaW9uMAUGAytlcANBACfTi2BHuRhWP+UHJ75zz/Vh2HNj7A97Jeq/JDyN
 EMSC/YZWhP+vFEdveAzWgi3IBDNCkJpp09HbDhyJNgfNvw8=
 -----END CERTIFICATE REQUEST-----`
-	Noncehex, err := hex.DecodeString("629570411cdccaaef6796193c3c7e532")
-	if err != nil {
-		panic("failed to parse hex")
-	}
+const testnonce1 = "629570411cdccaaef6796193c3c7e532"
+const testpem2 = `
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBZTCCARcCAQAwSTFHMEUGA1UEAww+cDRlcnlzYWdmbmFqNjdsdzM2bnhhNTJw
+NHpsNmdnYm5qbXM1YjVvdWN1M3R5cW5mbGpiZHhwYWQub25pb24wKjAFBgMrZXAD
+IQB/CRxIBitAn31235twd0/mV+MYLUsl0PXUFTc8QaVaQqCBmjAaBgRngQwqMRIE
+EB+SJmsKEym4YvIVmE0TvkUwIAYEZ4EMKTEYBBZBQUFBQUFBQUFBQUFBQUFBQUFB
+QUFBMFoGCSqGSIb3DQEJDjFNMEswSQYDVR0RBEIwQII+cDRlcnlzYWdmbmFqNjds
+dzM2bnhhNTJwNHpsNmdnYm5qbXM1YjVvdWN1M3R5cW5mbGpiZHhwYWQub25pb24w
+BQYDK2VwA0EAy3OwkUqOwn0f4RJYQubT6bT7XxSblfoVMf/GU8KZWCgrINCPs+II
+I7owLXMkZl2ubqH2RnDGELbYTmNu8sPVBQ==
+-----END CERTIFICATE REQUEST-----
+`
+const testpem3 = `
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBZTCCARcCAQAwSTFHMEUGA1UEAww+cWR6anFtajM1bnB0eTQ0a3BxNXR2bzZh
+dTJudWFuZ2M1Mnlpam1kNnNoZWJmMnFiZnpyajdoeWQub25pb24wKjAFBgMrZXAD
+IQCA8pgxO+tfPHOKfDs6u8Cmm0A0wu6whLB+kcgS6gEuYqCBmjAaBgRngQwqMRIE
+ELwrCMgcgOwdZoJyvCoSQCwwIAYEZ4EMKTEYBBZBQUFBQUFBQUFBQUFBQUFBQUFB
+QUFBMFoGCSqGSIb3DQEJDjFNMEswSQYDVR0RBEIwQII+cWR6anFtajM1bnB0eTQ0
+a3BxNXR2bzZhdTJudWFuZ2M1Mnlpam1kNnNoZWJmMnFiZnpyajdoeWQub25pb24w
+BQYDK2VwA0EAigobub8B+wWRbnVTFe6rh67wQ9uHJ12860nCdwUE2NPCBdetjoHj
+QQC2tybGFFKOgOKEG7oeyUh9aRpt1SLXAw==
+-----END CERTIFICATE REQUEST-----
+`
+
+func TestOnionCSRPasrse(t *testing.T) {
+
 	// testonionaddress := "acmepghcggfh5xlg6ko6tkezdarwxf3j4be3i5oujc55xpe5hbdjauqd.onion"
-	decodedpem, rest := pem.Decode([]byte(testpem))
+	decodedpem, rest := pem.Decode([]byte(testpem3))
 	if decodedpem == nil {
 		panic(rest)
 	}
-	onioncsr, err := x509.ParseCertificateRequest(decodedpem.Bytes)
+	dercert, err := base64.RawURLEncoding.DecodeString("MIIBejCCASwCAQAwSTFHMEUGA1UEAww-YWNtZXBnaGNnZ2ZoNXhsZzZrbzZ0a2V6ZGFyd3hmM2o0YmUzaTVvdWpjNTV4cGU1aGJkamF1cWQub25pb24wKjAFBgMrZXADIQAAmEeY4jGKft1m8p3pqJkYI2uXaeBJtHXUSLvbvJ04RqCBrzAaBgRngQwqMRIEEOQBIW4cN20UtlQl19r_-XAwNQYEZ4EMKTEtBCtoNnZoX1lCbF9nQWtHdDBja203V2J2Q1Q4Z3NKNFQ4WURqejkwazdxQjZBMFoGCSqGSIb3DQEJDjFNMEswSQYDVR0RBEIwQII-YWNtZXBnaGNnZ2ZoNXhsZzZrbzZ0a2V6ZGFyd3hmM2o0YmUzaTVvdWpjNTV4cGU1aGJkamF1cWQub25pb24wBQYDK2VwA0EAc8dKAVeF2sVbkCsPcO0YPDVeY1d1OSvFOYIRIL-akCHPiFGu0y02NW5aH1oweLG4gzl5UlFtVEPInE_Bciw-Bw")
+	onioncsr, err := x509.ParseCertificateRequest(dercert)
 	if err != nil {
 		panic(err)
 	}
 	err = onioncsr.CheckSignature()
+	if err != nil {
+		panic(err)
+	}
 	print(err)
-	testresult := OnionNonceCheck(onioncsr, Noncehex)
-	if testresult != nil {
-		panic(testresult)
+	csrNonce, err1 := ExtractNonce(onioncsr)
+	print(csrNonce)
+	if err1 != nil {
+		panic(err1)
 	}
 }
