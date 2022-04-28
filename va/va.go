@@ -508,26 +508,35 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	}
 
 	// used base64url-encoded DER as same with finallizion*/
-	csrBytes, err := base64.RawURLEncoding.DecodeString(task.Challenge.Payload)
-	if err != nil {
+	csrBytes, errdecode := base64.RawURLEncoding.DecodeString(task.Challenge.Payload)
+	if errdecode != nil {
 		result.Error = acme.MalformedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
+		return result
 	}
-	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
-	if err != nil {
-		result.Error = acme.MalformedProblem(fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s: ", result.URL))
+	parsedCSR, errparse := x509.ParseCertificateRequest(csrBytes)
+	if errparse != nil {
+		result.Error = acme.MalformedProblem(
+			fmt.Sprintf("Error parsing Base64url-encoded challenge CSR for %s, %s: ", result.URL, errparse),
+		)
+		return result
 	}
+
 	if parsedCSR.CheckSignature() != nil {
 		result.Error = acme.MalformedProblem(fmt.Sprintf("Sign of challange CSR for %s wasn't valid", result.URL))
+		return result
 	}
 	if len(parsedCSR.DNSNames) != 1 {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challenge CSR must have exsectly one DNSNames SNI for it %s caused this error", result.URL))
+		return result
 	}
 	if !strings.EqualFold(parsedCSR.DNSNames[0], task.Identifier.Value) {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Wrong CSR for challenge, Challenge was for %s, but CSR had name %s", result.URL, parsedCSR.DNSNames[0]))
+		return result
 	}
 	//key signing algorithm for onionv3 is ed25519
 	if parsedCSR.PublicKeyAlgorithm != x509.Ed25519 {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Onion challange CSR for %q has wrong algorithm", result.URL))
+		return result
 	}
 	//check csr's signing key matches with key deprived from domain name
 	publickey, ok := parsedCSR.PublicKey.(ed25519.PublicKey)
@@ -545,6 +554,7 @@ func (va VAImpl) validateONIONV3CSR(task *vaTask) *core.ValidationRecord {
 	address = address + ".onion"
 	if !strings.EqualFold(address, parsedCSR.DNSNames[0]) {
 		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("CSR for %q didn't match with onion address's key", result.URL))
+		return result
 	}
 	//check nonce
 	result.Error = OnionNonceCheck(parsedCSR, []byte(task.Challenge.Challenge.Token))

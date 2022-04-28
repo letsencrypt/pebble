@@ -79,6 +79,8 @@ EMSC/YZWhP+vFEdveAzWgi3IBDNCkJpp09HbDhyJNgfNvw8=
 	if err != nil {
 		panic(err)
 	}
+	err = onioncsr.CheckSignature()
+	print(err)
 	testresult := OnionNonceCheck(onioncsr, Noncehex)
 	if testresult != nil {
 		panic(testresult)
