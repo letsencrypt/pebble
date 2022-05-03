@@ -16,7 +16,6 @@ import (
 	"net"
 	"strings"
 	"time"
-	mathrand "math/rand"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/core"
@@ -404,9 +403,6 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		}
 		authz.RUnlock()
 	}
-
-	// In actual CAs, certificate issuance is not expected to be completed immediately
-	time.Sleep(time.Second * time.Duration(mathrand.Intn(10) + 1))
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
