@@ -155,6 +155,8 @@ type WebFrontEndImpl struct {
 	ca                *ca.CAImpl
 	strict            bool
 	requireEAB        bool
+	retryAfterAuthz   int
+	retryAfterOrder   int
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -164,7 +166,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict, requireEAB bool) WebFrontEndImpl {
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
 	// Seed rand from the current time so test environments don't always have
 	// the same nonce rejection and sleep time patterns.
 	rand.Seed(time.Now().UnixNano())
@@ -225,6 +227,8 @@ func New(
 		ca:                ca,
 		strict:            strict,
 		requireEAB:        requireEAB,
+		retryAfterAuthz:   retryAfterAuthz,
+		retryAfterOrder:   retryAfterOrder,
 	}
 }
 
@@ -1788,6 +1792,8 @@ func (wfe *WebFrontEndImpl) Order(
 		}
 	}
 
+	response.Header().Add("Retry-After", strconv.Itoa(wfe.retryAfterOrder))
+
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
@@ -2079,6 +2085,8 @@ func (wfe *WebFrontEndImpl) Authz(
 				response)
 			return
 		}
+
+		response.Header().Add("Retry-After", strconv.Itoa(wfe.retryAfterAuthz))
 	}
 
 	err := wfe.writeJSONResponse(
