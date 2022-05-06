@@ -1792,7 +1792,7 @@ func (wfe *WebFrontEndImpl) Order(
 		}
 	}
 
-	if order.Status == acme.StatusProcessing{
+	if order.Status == acme.StatusProcessing {
 		addRetryAfterHeader(response, wfe.retryAfterOrder)
 	}
 
@@ -2091,17 +2091,13 @@ func (wfe *WebFrontEndImpl) Authz(
 		}
 
 		if authz.Status == acme.StatusPending {
-			// Check for the existence of a challenge which state is processing
-			processingChallenge := false
+			// Check for the existence of a challenge which state is processing, and add the
+			// Retry-After header if there is one.
 			for _, c := range authz.Challenges {
-				if (c.Status == acme.StatusProcessing) {
-					processingChallenge = true
+				if c.Status == acme.StatusProcessing {
+					addRetryAfterHeader(response, wfe.retryAfterAuthz)
 					break
 				}
-			}
-			// if exist, then add header
-			if processingChallenge {
-				addRetryAfterHeader(response, wfe.retryAfterAuthz)
 			}
 		}
 	}
@@ -2466,10 +2462,10 @@ func addNoCacheHeader(response http.ResponseWriter) {
 }
 
 func addRetryAfterHeader(response http.ResponseWriter, second int) {
-	if (second > 0){
-		if (rand.Intn(2) == 0){
+	if second > 0 {
+		if rand.Intn(2) == 0 {
 			response.Header().Add("Retry-After", strconv.Itoa(second))
-		}else{
+		} else {
 			// IMF-fixdate
 			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
 			gmt, _ := time.LoadLocation("GMT")
