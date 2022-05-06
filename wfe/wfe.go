@@ -28,11 +28,11 @@ import (
 
 	"gopkg.in/square/go-jose.v2"
 
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/ca"
-	"github.com/letsencrypt/pebble/core"
-	"github.com/letsencrypt/pebble/db"
-	"github.com/letsencrypt/pebble/va"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/ca"
+	"github.com/letsencrypt/pebble/v2/core"
+	"github.com/letsencrypt/pebble/v2/db"
+	"github.com/letsencrypt/pebble/v2/va"
 )
 
 const (
@@ -1815,7 +1815,6 @@ func (wfe *WebFrontEndImpl) Order(
 	// authenticated account owns the order being requested
 	if account != nil {
 		if orderAccountID != account.ID {
-			response.WriteHeader(http.StatusForbidden)
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account that authenticated the request does not own the specified order"), response)
 			return
@@ -1854,7 +1853,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderID := strings.TrimPrefix(request.URL.Path, orderFinalizePath)
 	existingOrder := wfe.db.GetOrderByID(orderID)
 	if existingOrder == nil {
-		response.WriteHeader(http.StatusNotFound)
 		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
 			"No order %q found for account ID %q", orderID, existingAcct.ID)), response)
 		return
@@ -1872,7 +1870,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	existingOrder.RUnlock()
 
 	if orderAccountID != existingAcct.ID {
-		response.WriteHeader(http.StatusForbidden)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account that authenticated the request does not own the specified order"), response)
 		return
@@ -2113,7 +2110,6 @@ func (wfe *WebFrontEndImpl) Authz(
 		}
 
 		if orderAcctID != account.ID {
-			response.WriteHeader(http.StatusForbidden)
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account authorizing the request is not the owner of the authorization"),
 				response)
@@ -2170,7 +2166,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	defer chal.RUnlock()
 
 	if chal.Authz.Order.AccountID != account.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
 		return
@@ -2330,7 +2325,6 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	authz.RUnlock()
 
 	if orderAcctID != existingAcct.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request is not the owner of the challenge"), response)
 		return
@@ -2458,7 +2452,6 @@ func (wfe *WebFrontEndImpl) Certificate(
 	}
 
 	if cert.AccountID != acct.ID {
-		response.WriteHeader(http.StatusUnauthorized)
 		wfe.sendError(acme.UnauthorizedProblem(
 			"Account authenticating request does not own certificate"), response)
 		return

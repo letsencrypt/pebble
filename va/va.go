@@ -28,8 +28,8 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"github.com/letsencrypt/challtestsrv"
-	"github.com/letsencrypt/pebble/acme"
-	"github.com/letsencrypt/pebble/core"
+	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/core"
 )
 
 const (
