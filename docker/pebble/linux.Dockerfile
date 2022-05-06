@@ -1,20 +1,14 @@
-FROM golang:1.12-alpine as builder
+FROM golang:1.18-alpine as builder
 
-RUN apk --update upgrade \
-&& apk --no-cache --no-progress add git bash curl \
-&& rm -rf /var/cache/apk/*
-
-ENV CGO_ENABLED=0 GOFLAGS=-mod=vendor
+ENV CGO_ENABLED=0
 
 WORKDIR /pebble-src
 COPY . .
 
-RUN go install -v ./cmd/pebble/...
+RUN go build -o /go/bin/pebble ./cmd/pebble
 
 ## main
-FROM alpine:3.8
-
-RUN apk update && apk add --no-cache --virtual ca-certificates
+FROM alpine:3.15.4
 
 COPY --from=builder /go/bin/pebble /usr/bin/pebble
 COPY --from=builder /pebble-src/test/ /test/

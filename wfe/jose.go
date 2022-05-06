@@ -9,7 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/letsencrypt/pebble/acme"
+	"github.com/letsencrypt/pebble/v2/acme"
 
 	"gopkg.in/square/go-jose.v2"
 )
