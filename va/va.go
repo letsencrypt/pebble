@@ -26,6 +26,7 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/proxy"
 
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/v2/acme"
@@ -500,6 +501,8 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 // NOTE(@cpu): fetchHTTP only fetches the ACME HTTP-01 challenge path for
 // a given challenge & identifier domain. It is not a challenge agnostic general
 // purpose HTTP function
+// for onion address it will try local tor deamon's default port on 9050,
+// although keep mind tor browser will use port 9150
 func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *acme.ProblemDetails) {
 	path := fmt.Sprintf("%s%s", acme.HTTP01BaseURL, token)
 	portString := strconv.Itoa(va.httpPort)
@@ -536,8 +539,16 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 			if err != nil {
 				return nil, err
 			}
-			dialer := &net.Dialer{}
-
+			var dialer proxy.ContextDialer
+			if strings.HasSuffix(identifier, ".onion") {
+				pdialer, err := proxy.SOCKS5("tcp", "localhost:9050", nil, proxy.Direct)
+				if err != nil {
+					return nil, err
+				}
+				dialer = pdialer.(proxy.ContextDialer)
+			} else {
+				dialer = proxy.Direct
+			}
 			// Control specifically which IP will be used for this request
 			addrs, err := va.resolveIP(host)
 			if err != nil {
@@ -546,7 +557,6 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 			if len(addrs) == 0 {
 				return nil, fmt.Errorf("could not resolve URL %q", url.String())
 			}
-
 			return dialer.DialContext(ctx, network, net.JoinHostPort(addrs[0], port))
 		},
 	}
