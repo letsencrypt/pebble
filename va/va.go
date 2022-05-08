@@ -157,6 +157,10 @@ func New(
 }
 
 func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
+	chal.Lock()
+	chal.Status = acme.StatusProcessing
+	chal.Unlock()
+
 	task := &vaTask{
 		Identifier: ident,
 		Challenge:  chal,
