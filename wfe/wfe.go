@@ -2094,7 +2094,10 @@ func (wfe *WebFrontEndImpl) Authz(
 			// Check for the existence of a challenge which state is processing, and add the
 			// Retry-After header if there is one.
 			for _, c := range authz.Challenges {
-				if c.Status == acme.StatusProcessing {
+				c.RLock()
+				challengeStatus := c.Status
+				c.RUnlock()
+				if challengeStatus == acme.StatusProcessing {
 					addRetryAfterHeader(response, wfe.retryAfterAuthz)
 					break
 				}
