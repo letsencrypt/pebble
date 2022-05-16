@@ -7,6 +7,7 @@
     "httpPort": 5002,
     "tlsPort": 5001,
     "ocspResponderURL": "",
-    "externalAccountBindingRequired": false
+    "externalAccountBindingRequired": false,
+    "domainBlocklist": ["blocked-domain.example"]
   }
 }
