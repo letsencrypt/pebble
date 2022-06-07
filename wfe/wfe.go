@@ -116,6 +116,15 @@ const (
 	defaultOrdersPerPage = 3
 )
 
+var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.SHA256WithRSA:   true,
+	x509.SHA384WithRSA:   true,
+	x509.SHA512WithRSA:   true,
+	x509.ECDSAWithSHA256: true,
+	x509.ECDSAWithSHA384: true,
+	x509.ECDSAWithSHA512: true,
+}
+
 // newAccountRequest is the ACME account information submitted by the client
 type newAccountRequest struct {
 	Contact            []string `json:"contact"`
@@ -1879,6 +1888,18 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	if err != nil {
 		wfe.sendError(
 			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
+		return
+	}
+
+	// Ensure the signature on the CSR is good
+	if err := parsedCSR.CheckSignature(); err != nil {
+		wfe.sendError(acme.BadCSRProblem("Bad signature on CSR: "+err.Error()), response)
+		return
+	}
+
+	// Ensure a supported CSR algorithm is used
+	if good := goodSignatureAlgorithms[parsedCSR.SignatureAlgorithm]; !good {
+		wfe.sendError(acme.BadCSRProblem("CSR signature algorithm not supported: "+parsedCSR.SignatureAlgorithm.String()), response)
 		return
 	}
 
