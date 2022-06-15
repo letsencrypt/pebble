@@ -1637,7 +1637,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err := json.Unmarshal(postData.body, &newOrder)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON: "+err.Error()), response)
+			acme.MalformedProblem(fmt.Sprintf("Error unmarshalling body JSON: %s", err.Error())), response)
 		return
 	}
 
@@ -1872,34 +1872,36 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 	err := json.Unmarshal(postData.body, &finalizeMessage)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
-			"Error unmarshaling finalize order request body: %s", err.Error())), response)
+		detail := fmt.Sprintf("Error unmarshaling finalize order request body: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	csrBytes, err := base64.RawURLEncoding.DecodeString(finalizeMessage.CSR)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error decoding Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error parsing Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	// Ensure the signature on the CSR is good
-	if err := parsedCSR.CheckSignature(); err != nil {
-		wfe.sendError(acme.BadCSRProblem("Bad signature on CSR: "+err.Error()), response)
+	err = parsedCSR.CheckSignature()
+	if err != nil {
+		wfe.sendError(acme.BadCSRProblem(fmt.Sprintf("Bad signature on CSR: %s", err.Error())), response)
 		return
 	}
 
 	// Ensure a supported CSR algorithm is used
 	if good := goodSignatureAlgorithms[parsedCSR.SignatureAlgorithm]; !good {
-		wfe.sendError(acme.BadCSRProblem("CSR signature algorithm not supported: "+parsedCSR.SignatureAlgorithm.String()), response)
+		detail := fmt.Sprintf("CSR signature algorithm %s is not supported", parsedCSR.SignatureAlgorithm)
+		wfe.sendError(acme.BadCSRProblem(detail), response)
 		return
 	}
 
