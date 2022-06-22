@@ -29,7 +29,7 @@ type config struct {
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
 
-		CertificateValidityPeriod uint
+		CertificateValidityPeriod uint64
 	}
 }
 

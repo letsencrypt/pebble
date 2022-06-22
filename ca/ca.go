@@ -35,7 +35,7 @@ type CAImpl struct {
 
 	chains []*chain
 
-	certValidityPeriod uint
+	certValidityPeriod uint64
 }
 
 type chain struct {
@@ -347,7 +347,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
 	ca := &CAImpl{
 		log:                log,
 		db:                 db,
