@@ -2318,6 +2318,21 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 	}
 
+	// Confirm challenge status again and update it immediately before sending it to the VA
+	prob = nil
+	existingChal.Lock()
+	if existingChal.Status != acme.StatusPending {
+		prob = acme.MalformedProblem(
+			fmt.Sprintf("Challenge in %s status cannot be updated", existingChal.Status))
+	} else {
+		existingChal.Status = acme.StatusProcessing
+	}
+	existingChal.Unlock()
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	// Submit a validation job to the VA, this will be processed asynchronously
 	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
 
