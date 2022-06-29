@@ -116,6 +116,15 @@ const (
 	defaultOrdersPerPage = 3
 )
 
+var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.SHA256WithRSA:   true,
+	x509.SHA384WithRSA:   true,
+	x509.SHA512WithRSA:   true,
+	x509.ECDSAWithSHA256: true,
+	x509.ECDSAWithSHA384: true,
+	x509.ECDSAWithSHA512: true,
+}
+
 // newAccountRequest is the ACME account information submitted by the client
 type newAccountRequest struct {
 	Contact            []string `json:"contact"`
@@ -1632,7 +1641,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err := json.Unmarshal(postData.body, &newOrder)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON: "+err.Error()), response)
+			acme.MalformedProblem(fmt.Sprintf("Error unmarshalling body JSON: %s", err.Error())), response)
 		return
 	}
 
@@ -1871,22 +1880,36 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 	err := json.Unmarshal(postData.body, &finalizeMessage)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
-			"Error unmarshaling finalize order request body: %s", err.Error())), response)
+		detail := fmt.Sprintf("Error unmarshaling finalize order request body: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	csrBytes, err := base64.RawURLEncoding.DecodeString(finalizeMessage.CSR)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error decoding Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error parsing Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
+		return
+	}
+
+	// Ensure the signature on the CSR is good
+	err = parsedCSR.CheckSignature()
+	if err != nil {
+		wfe.sendError(acme.BadCSRProblem(fmt.Sprintf("Bad signature on CSR: %s", err.Error())), response)
+		return
+	}
+
+	// Ensure a supported CSR algorithm is used
+	if good := goodSignatureAlgorithms[parsedCSR.SignatureAlgorithm]; !good {
+		detail := fmt.Sprintf("CSR signature algorithm %s is not supported", parsedCSR.SignatureAlgorithm)
+		wfe.sendError(acme.BadCSRProblem(detail), response)
 		return
 	}
 
@@ -2340,6 +2363,21 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// validated.
 	if strings.HasPrefix(ident.Value, "*.") {
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	}
+
+	// Confirm challenge status again and update it immediately before sending it to the VA
+	prob = nil
+	existingChal.Lock()
+	if existingChal.Status != acme.StatusPending {
+		prob = acme.MalformedProblem(
+			fmt.Sprintf("Challenge in %s status cannot be updated", existingChal.Status))
+	} else {
+		existingChal.Status = acme.StatusProcessing
+	}
+	existingChal.Unlock()
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
