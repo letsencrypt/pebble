@@ -164,6 +164,8 @@ type WebFrontEndImpl struct {
 	ca                *ca.CAImpl
 	strict            bool
 	requireEAB        bool
+	retryAfterAuthz   int
+	retryAfterOrder   int
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -173,7 +175,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict, requireEAB bool) WebFrontEndImpl {
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
 	// Seed rand from the current time so test environments don't always have
 	// the same nonce rejection and sleep time patterns.
 	rand.Seed(time.Now().UnixNano())
@@ -234,6 +236,8 @@ func New(
 		ca:                ca,
 		strict:            strict,
 		requireEAB:        requireEAB,
+		retryAfterAuthz:   retryAfterAuthz,
+		retryAfterOrder:   retryAfterOrder,
 	}
 }
 
@@ -1797,6 +1801,10 @@ func (wfe *WebFrontEndImpl) Order(
 		}
 	}
 
+	if order.Status == acme.StatusProcessing {
+		addRetryAfterHeader(response, wfe.retryAfterOrder)
+	}
+
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
@@ -1977,6 +1985,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Set the existingOrder to processing before displaying to the user
 	existingOrder.Status = acme.StatusProcessing
 
+	addRetryAfterHeader(response, wfe.retryAfterOrder)
+
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
 	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, existingOrder.ID))
@@ -2101,6 +2111,20 @@ func (wfe *WebFrontEndImpl) Authz(
 				"Account authorizing the request is not the owner of the authorization"),
 				response)
 			return
+		}
+
+		if authz.Status == acme.StatusPending {
+			// Check for the existence of a challenge which state is processing, and add the
+			// Retry-After header if there is one.
+			for _, c := range authz.Challenges {
+				c.RLock()
+				challengeStatus := c.Status
+				c.RUnlock()
+				if challengeStatus == acme.StatusProcessing {
+					addRetryAfterHeader(response, wfe.retryAfterAuthz)
+					break
+				}
+			}
 		}
 	}
 
@@ -2476,6 +2500,21 @@ func (wfe *WebFrontEndImpl) writeJSONResponse(response http.ResponseWriter, stat
 
 func addNoCacheHeader(response http.ResponseWriter) {
 	response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
+}
+
+func addRetryAfterHeader(response http.ResponseWriter, second int) {
+	if second > 0 {
+		if rand.Intn(2) == 0 {
+			response.Header().Add("Retry-After", strconv.Itoa(second))
+		} else {
+			// IMF-fixdate
+			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
+			gmt, _ := time.LoadLocation("GMT")
+			currentTime := time.Now().In(gmt)
+			retryAfter := currentTime.Add(time.Second * time.Duration(second))
+			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
+		}
+	}
 }
 
 func marshalIndent(v interface{}) ([]byte, error) {

@@ -30,6 +30,10 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
+		RetryAfter struct {
+			Authz int
+			Order int
+		}
 	}
 }
 
@@ -85,7 +89,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired)
+	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {
