@@ -66,14 +66,17 @@ correctly.
 
 ## Install
 
-1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
-2. `go get -u github.com/letsencrypt/pebble/...`
-3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
-4. `pebble -h`
+1. [Set up Go](https://golang.org/doc/install). Add ~/go/bin to your $PATH, or
+   set GOBIN to a directory that is in your $PATH already.
+2. git clone github.com/letsencrypt/pebble/
+3. cd pebble
+4. go install ./cmd/pebble
 
 ## Usage
 
 ### Binary
+
+Assuming pebble is in your $PATH:
 
 ```bash
 pebble -config ./test/config/pebble-config.json
