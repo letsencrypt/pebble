@@ -134,7 +134,7 @@ func New(
 		case "TLS", "Tls", "tls":
 			va.log.Print("Sending ACME DNS-01 challenges via TLS, skipping certificate verification")
 			va.dnsClient.Net = "tcp-tls"
-            va.dnsClient.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+			va.dnsClient.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 		case "TLS-CA", "Tls-CA", "tls-ca", "Tls-Ca":
 			va.log.Print("Sending ACME DNS-01 challenges via TLS, verifying certificates")
 			va.dnsClient.Net = "tcp-tls"
