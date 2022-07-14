@@ -53,11 +53,12 @@ func main() {
 	resolverProtocol := flag.String(
 		"dnsprotocol",
 		"UDP",
-        "Define a protocol for the custom DNS server: UDP, TCP or TLS")
+		"Define a protocol for the custom DNS server: UDP, TCP or TLS")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
-		os.Exit(1) }
+		os.Exit(1)
+	}
 
 	// Log to stdout
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
