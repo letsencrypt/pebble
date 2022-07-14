@@ -198,6 +198,21 @@ will let you easily mock DNS data for Pebble. See the included
 README](https://github.com/letsencrypt/pebble/blob/master/cmd/pebble-challtestsrv/README.md)
 for more information.
 
+### DNS Protocol
+
+In addition to defining a custom DNS resolver with `-dnsserver` you can also
+specify a protocol to use for the DNS-01 challenge. Options are
+* UDP (default)
+* TCP
+* TLS
+This option is not case-sensitive.
+
+```
+pebble -dnsserver 10.10.10.10:5053 -dnsprotocol tcp
+pebble -dnsserver 8.8.8.8:53 -dnsprotocol tls
+pebble -dnsserver :5053 -dnsprotocol TCP 
+```
+
 ### Testing at full speed
 
 By default Pebble will sleep a random number of seconds (from 0 to 15) between

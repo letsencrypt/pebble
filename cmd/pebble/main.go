@@ -30,7 +30,7 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
-		RetryAfter struct {
+		RetryAfter                struct {
 			Authz int
 			Order int
 		}
@@ -50,11 +50,14 @@ func main() {
 		"dnsserver",
 		"",
 		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53).")
+	resolverProtocol := flag.String(
+		"dnsprotocol",
+		"UDP",
+        "Define a protocol for the custom DNS server: UDP, TCP or TLS")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
-		os.Exit(1)
-	}
+		os.Exit(1) }
 
 	// Log to stdout
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
@@ -77,7 +80,7 @@ func main() {
 
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
+	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, *resolverProtocol)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)

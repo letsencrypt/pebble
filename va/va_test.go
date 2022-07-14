@@ -31,7 +31,7 @@ func TestAuthzRace(t *testing.T) {
 
 	// This whole test can be removed if/when the MemoryStore becomes 100% by value
 	ms := db.NewMemoryStore()
-	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "")
+	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "", "UDP")
 
 	authz := &core.Authorization{
 		ID: "auth-id",

@@ -95,36 +95,46 @@ type vaTask struct {
 }
 
 type VAImpl struct {
-	log                *log.Logger
-	httpPort           int
-	tlsPort            int
-	tasks              chan *vaTask
-	sleep              bool
-	sleepTime          int
-	alwaysValid        bool
-	strict             bool
-	customResolverAddr string
-	dnsClient          *dns.Client
+	log                    *log.Logger
+	httpPort               int
+	tlsPort                int
+	tasks                  chan *vaTask
+	sleep                  bool
+	sleepTime              int
+	alwaysValid            bool
+	strict                 bool
+	customResolverAddr     string
+	customResolverProtocol string
+	dnsClient              *dns.Client
 }
 
 func New(
 	log *log.Logger,
 	httpPort, tlsPort int,
-	strict bool, customResolverAddr string) *VAImpl {
+	strict bool, customResolverAddr string, customResolverProtocol string) *VAImpl {
 	va := &VAImpl{
-		log:                log,
-		httpPort:           httpPort,
-		tlsPort:            tlsPort,
-		tasks:              make(chan *vaTask, taskQueueSize),
-		sleep:              true,
-		sleepTime:          defaultSleepTime,
-		strict:             strict,
-		customResolverAddr: customResolverAddr,
+		log:                    log,
+		httpPort:               httpPort,
+		tlsPort:                tlsPort,
+		tasks:                  make(chan *vaTask, taskQueueSize),
+		sleep:                  true,
+		sleepTime:              defaultSleepTime,
+		strict:                 strict,
+		customResolverAddr:     customResolverAddr,
+		customResolverProtocol: customResolverProtocol,
 	}
 
 	if customResolverAddr != "" {
 		va.log.Printf("Using custom DNS resolver for ACME challenges: %s", customResolverAddr)
 		va.dnsClient = new(dns.Client)
+        switch customResolverProtocol {
+        case "TCP", "Tcp", "tcp":
+			va.log.Print("Sending ACME DNS-01 challenges via TCP")
+			va.dnsClient.Net = "tcp"
+        case "TLS", "Tls", "tls":
+			va.log.Print("Sending ACME DNS-01 challenges via TLS")
+			va.dnsClient.Net = "tcp-tls"
+        }
 	} else {
 		va.log.Print("Using system DNS resolver for ACME challenges")
 	}
