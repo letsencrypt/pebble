@@ -204,7 +204,8 @@ In addition to defining a custom DNS resolver with `-dnsserver` you can also
 specify a protocol to use for the DNS-01 challenge. Options are
 * UDP (default)
 * TCP
-* TLS
+* TLS (no certificate verification)
+* TLS-CA (certificate verification)
 This option is not case-sensitive.
 
 ```
