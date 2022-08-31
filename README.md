@@ -281,9 +281,9 @@ Pebble does not currently reuse Pending Authorizations across Orders, however ot
 
 ### Avoiding Client HTTPS Errors
 
-By default Pebble is accessible over HTTPS-only and uses a [test
+Pebble is accessible over HTTPS only and uses a [test
 certificate](test/certs/localhost/cert.pem) generated using a [test
-CA](test/certs/pebble.minica.pem) (See [the`test/certs/`
+CA](test/certs/pebble.minica.pem) (See [the `test/certs/`
 directory](test/certs/README.md) for more information).
 
 Since the Pebble test CA isn't part of any default CA trust stores you must add
