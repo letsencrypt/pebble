@@ -7,6 +7,10 @@
     "httpPort": 5002,
     "tlsPort": 5001,
     "ocspResponderURL": "",
-    "externalAccountBindingRequired": false
+    "externalAccountBindingRequired": false,
+    "retryAfter": {
+        "authz": 3,
+        "order": 5
+    }
   }
 }

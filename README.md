@@ -66,14 +66,17 @@ correctly.
 
 ## Install
 
-1. [Set up Go](https://golang.org/doc/install) and your `$GOPATH`
-2. `go get -u github.com/letsencrypt/pebble/...`
-3. `cd $GOPATH/src/github.com/letsencrypt/pebble && go install ./...`
-4. `pebble -h`
+1. [Set up Go](https://golang.org/doc/install). Add ~/go/bin to your $PATH, or
+   set GOBIN to a directory that is in your $PATH already.
+2. git clone github.com/letsencrypt/pebble/
+3. cd pebble
+4. go install ./cmd/pebble
 
 ## Usage
 
 ### Binary
+
+Assuming pebble is in your $PATH:
 
 ```bash
 pebble -config ./test/config/pebble-config.json
@@ -278,9 +281,9 @@ Pebble does not currently reuse Pending Authorizations across Orders, however ot
 
 ### Avoiding Client HTTPS Errors
 
-By default Pebble is accessible over HTTPS-only and uses a [test
+Pebble is accessible over HTTPS only and uses a [test
 certificate](test/certs/localhost/cert.pem) generated using a [test
-CA](test/certs/pebble.minica.pem) (See [the`test/certs/`
+CA](test/certs/pebble.minica.pem) (See [the `test/certs/`
 directory](test/certs/README.md) for more information).
 
 Since the Pebble test CA isn't part of any default CA trust stores you must add
