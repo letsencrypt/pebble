@@ -8,6 +8,7 @@
     "tlsPort": 5001,
     "ocspResponderURL": "",
     "externalAccountBindingRequired": false,
+    "domainBlocklist": ["blocked-domain.example"],
     "retryAfter": {
         "authz": 3,
         "order": 5

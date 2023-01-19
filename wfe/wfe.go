@@ -1430,14 +1430,15 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 				ident.Type, ident.Value))
 		}
 
-		if problem := wfe.validateDNSName(ident.Value); problem != nil {
+		if problem := wfe.validateDNSName(ident); problem != nil {
 			return problem
 		}
 	}
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetails {
+func (wfe *WebFrontEndImpl) validateDNSName(ident acme.Identifier) *acme.ProblemDetails {
+	rawDomain := ident.Value
 	if rawDomain == "" {
 		return acme.MalformedProblem(fmt.Sprintf(
 			"Order included DNS identifier with empty value"))
@@ -1488,7 +1489,7 @@ func (wfe *WebFrontEndImpl) validateDNSName(rawDomain string) *acme.ProblemDetai
 	}
 
 	if wfe.db.IsDomainBlocked(rawDomain) {
-		return acme.RejectedIdentifierProblem(fmt.Sprintf(
+		return acme.RejectedIdentifierProblem(ident, fmt.Sprintf(
 			"Order included an identifier for which issuance is forbidden by policy: %q",
 			rawDomain))
 	}

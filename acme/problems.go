@@ -26,9 +26,11 @@ const (
 )
 
 type ProblemDetails struct {
-	Type       string `json:"type,omitempty"`
-	Detail     string `json:"detail,omitempty"`
-	HTTPStatus int    `json:"status,omitempty"`
+	Type        string           `json:"type,omitempty"`
+	Detail      string           `json:"detail,omitempty"`
+	HTTPStatus  int              `json:"status,omitempty"`
+	Identifier  *Identifier      `json:"identifier,omitempty"`
+	Subproblems []ProblemDetails `json:"subproblems,omitempty"`
 }
 
 func (pd *ProblemDetails) Error() string {
@@ -187,10 +189,17 @@ func BadPublicKeyProblem(detail string) *ProblemDetails {
 	}
 }
 
-func RejectedIdentifierProblem(detail string) *ProblemDetails {
+func RejectedIdentifierProblem(ident Identifier, detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       rejectedIdentifierErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+		Subproblems: []ProblemDetails{
+			{
+				Type:       rejectedIdentifierErr,
+				Identifier: &ident,
+				Detail:     fmt.Sprintf("%s is a forbidden domain", ident.Value),
+			},
+		},
 	}
 }
