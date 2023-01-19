@@ -116,6 +116,15 @@ const (
 	defaultOrdersPerPage = 3
 )
 
+var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.SHA256WithRSA:   true,
+	x509.SHA384WithRSA:   true,
+	x509.SHA512WithRSA:   true,
+	x509.ECDSAWithSHA256: true,
+	x509.ECDSAWithSHA384: true,
+	x509.ECDSAWithSHA512: true,
+}
+
 // newAccountRequest is the ACME account information submitted by the client
 type newAccountRequest struct {
 	Contact            []string `json:"contact"`
@@ -155,6 +164,8 @@ type WebFrontEndImpl struct {
 	ca                *ca.CAImpl
 	strict            bool
 	requireEAB        bool
+	retryAfterAuthz   int
+	retryAfterOrder   int
 }
 
 const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
@@ -164,7 +175,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict, requireEAB bool) WebFrontEndImpl {
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
 	// Seed rand from the current time so test environments don't always have
 	// the same nonce rejection and sleep time patterns.
 	rand.Seed(time.Now().UnixNano())
@@ -225,6 +236,8 @@ func New(
 		ca:                ca,
 		strict:            strict,
 		requireEAB:        requireEAB,
+		retryAfterAuthz:   retryAfterAuthz,
+		retryAfterOrder:   retryAfterOrder,
 	}
 }
 
@@ -1629,7 +1642,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err := json.Unmarshal(postData.body, &newOrder)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem("Error unmarshaling body JSON: "+err.Error()), response)
+			acme.MalformedProblem(fmt.Sprintf("Error unmarshalling body JSON: %s", err.Error())), response)
 		return
 	}
 
@@ -1789,6 +1802,10 @@ func (wfe *WebFrontEndImpl) Order(
 		}
 	}
 
+	if order.Status == acme.StatusProcessing {
+		addRetryAfterHeader(response, wfe.retryAfterOrder)
+	}
+
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(order, request)
 	err := wfe.writeJSONResponse(response, http.StatusOK, orderReq)
@@ -1864,22 +1881,36 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 	err := json.Unmarshal(postData.body, &finalizeMessage)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf(
-			"Error unmarshaling finalize order request body: %s", err.Error())), response)
+		detail := fmt.Sprintf("Error unmarshaling finalize order request body: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	csrBytes, err := base64.RawURLEncoding.DecodeString(finalizeMessage.CSR)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error decoding Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error decoding Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
 		return
 	}
 
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem("Error parsing Base64url-encoded CSR: "+err.Error()), response)
+		detail := fmt.Sprintf("Error parsing Base64url-encoded CSR: %s", err.Error())
+		wfe.sendError(acme.MalformedProblem(detail), response)
+		return
+	}
+
+	// Ensure the signature on the CSR is good
+	err = parsedCSR.CheckSignature()
+	if err != nil {
+		wfe.sendError(acme.BadCSRProblem(fmt.Sprintf("Bad signature on CSR: %s", err.Error())), response)
+		return
+	}
+
+	// Ensure a supported CSR algorithm is used
+	if good := goodSignatureAlgorithms[parsedCSR.SignatureAlgorithm]; !good {
+		detail := fmt.Sprintf("CSR signature algorithm %s is not supported", parsedCSR.SignatureAlgorithm)
+		wfe.sendError(acme.BadCSRProblem(detail), response)
 		return
 	}
 
@@ -1954,6 +1985,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 
 	// Set the existingOrder to processing before displaying to the user
 	existingOrder.Status = acme.StatusProcessing
+
+	addRetryAfterHeader(response, wfe.retryAfterOrder)
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
@@ -2079,6 +2112,20 @@ func (wfe *WebFrontEndImpl) Authz(
 				"Account authorizing the request is not the owner of the authorization"),
 				response)
 			return
+		}
+
+		if authz.Status == acme.StatusPending {
+			// Check for the existence of a challenge which state is processing, and add the
+			// Retry-After header if there is one.
+			for _, c := range authz.Challenges {
+				c.RLock()
+				challengeStatus := c.Status
+				c.RUnlock()
+				if challengeStatus == acme.StatusProcessing {
+					addRetryAfterHeader(response, wfe.retryAfterAuthz)
+					break
+				}
+			}
 		}
 	}
 
@@ -2319,6 +2366,21 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 	}
 
+	// Confirm challenge status again and update it immediately before sending it to the VA
+	prob = nil
+	existingChal.Lock()
+	if existingChal.Status != acme.StatusPending {
+		prob = acme.MalformedProblem(
+			fmt.Sprintf("Challenge in %s status cannot be updated", existingChal.Status))
+	} else {
+		existingChal.Status = acme.StatusProcessing
+	}
+	existingChal.Unlock()
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	// Submit a validation job to the VA, this will be processed asynchronously
 	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
 
@@ -2439,6 +2501,21 @@ func (wfe *WebFrontEndImpl) writeJSONResponse(response http.ResponseWriter, stat
 
 func addNoCacheHeader(response http.ResponseWriter) {
 	response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
+}
+
+func addRetryAfterHeader(response http.ResponseWriter, second int) {
+	if second > 0 {
+		if rand.Intn(2) == 0 {
+			response.Header().Add("Retry-After", strconv.Itoa(second))
+		} else {
+			// IMF-fixdate
+			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
+			gmt, _ := time.LoadLocation("GMT")
+			currentTime := time.Now().In(gmt)
+			retryAfter := currentTime.Add(time.Second * time.Duration(second))
+			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
+		}
+	}
 }
 
 func marshalIndent(v interface{}) ([]byte, error) {

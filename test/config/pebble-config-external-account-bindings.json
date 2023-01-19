@@ -7,6 +7,10 @@
     "httpPort": 5002,
     "tlsPort": 5001,
     "ocspResponderURL": "",
+    "retryAfter": {
+        "authz": 3,
+        "order": 5
+    }
     "externalAccountBindingRequired": true,
     "externalAccountMACKeys": {
       "kid-1": "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W",
