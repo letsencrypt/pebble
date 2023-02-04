@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math/big"
@@ -23,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -61,6 +63,7 @@ const (
 	intermediateCertPath = "/intermediates/"
 	intermediateKeyPath  = "/intermediate-keys/"
 	certStatusBySerial   = "/cert-status-by-serial/"
+	runtimeConfig        = "/runtimeConfig"
 
 	// How long do pending authorizations last before expiring?
 	pendingAuthzExpire = time.Hour
@@ -104,7 +107,7 @@ const (
 
 	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
 	// and reuse valid authorizations.
-	defaultAuthzReuse = 50
+	defaultAuthzReuse = int32(50)
 
 	// ordersPerPageEnvVar defines the environment variable name used to provide
 	// the number of orders to show per page. To have the WFE show 15 orders per
@@ -157,8 +160,8 @@ type WebFrontEndImpl struct {
 	log               *log.Logger
 	db                *db.MemoryStore
 	nonce             *nonceMap
-	nonceErrPercent   int
-	authzReusePercent int
+	nonceErrPercent   int32
+	authzReusePercent int32
 	ordersPerPage     int
 	va                *va.VAImpl
 	ca                *ca.CAImpl
@@ -183,12 +186,12 @@ func New(
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
-	var nonceErrPercent int
+	var nonceErrPercent int32
 
 	// Parse the env var value as a base 10 int - if there isn't an error, use it
 	// as the wfe nonceErrPercent
 	if val, err := strconv.ParseInt(nonceErrPercentVal, 10, 0); err == nil {
-		nonceErrPercent = int(val)
+		nonceErrPercent = int32(val)
 	} else {
 		// Otherwise just use the default
 		nonceErrPercent = defaultNonceReject
@@ -206,7 +209,7 @@ func New(
 	authzReusePercent := defaultAuthzReuse
 	if val, err := strconv.ParseInt(os.Getenv(authzReuseEnvVar), 10, 0); err == nil &&
 		val >= 0 && val <= 100 {
-		authzReusePercent = int(val)
+		authzReusePercent = int32(val)
 	}
 	log.Printf("Configured to attempt authz reuse for each identifier %d%% of the time",
 		authzReusePercent)
@@ -501,6 +504,42 @@ func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
 	}
 }
 
+func (wfe *WebFrontEndImpl) updateRuntimeConfig(
+	ctx context.Context,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	type requestSchema struct {
+		AuthzReusePercent *uint8 `json:",omitempty"`
+		NonceErrPercent   *uint8 `json:",omitempty"`
+	}
+
+	if request.Body == nil {
+		response.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
+
+	var maxBodyBytes int64 = 2048
+	d := json.NewDecoder(io.LimitReader(request.Body, maxBodyBytes))
+	requestObj := &requestSchema{}
+	err := d.Decode(requestObj)
+	if err != nil {
+		response.WriteHeader(http.StatusBadRequest)
+		_, _ = response.Write([]byte(err.Error()))
+		return
+	}
+
+	if requestObj.AuthzReusePercent != nil {
+		atomic.StoreInt32(&wfe.authzReusePercent, int32(*requestObj.AuthzReusePercent))
+	}
+	if requestObj.NonceErrPercent != nil {
+		atomic.StoreInt32(&wfe.nonceErrPercent, int32(*requestObj.NonceErrPercent))
+	}
+
+	response.WriteHeader(http.StatusAccepted)
+}
+
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET & POST handlers
@@ -534,6 +573,7 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	wfe.HandleManagementFunc(m, intermediateCertPath, wfe.handleCert(wfe.ca.GetIntermediateCert, intermediateCertPath))
 	wfe.HandleManagementFunc(m, intermediateKeyPath, wfe.handleKey(wfe.ca.GetIntermediateKey, intermediateKeyPath))
 	wfe.HandleManagementFunc(m, certStatusBySerial, wfe.handleCertStatusBySerial)
+	wfe.HandleManagementFunc(m, runtimeConfig, wfe.updateRuntimeConfig)
 	return m
 }
 
@@ -906,10 +946,10 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	}
 
 	// Roll a random number between 0 and 100.
-	nonceRoll := rand.Intn(100)
+	nonceRoll := rand.Int31n(100)
 	// If the nonce is not valid OR if the nonceRoll was less than the
 	// nonceErrPercent, fail with an error
-	if !wfe.nonce.validNonce(nonce) || nonceRoll < wfe.nonceErrPercent {
+	if !wfe.nonce.validNonce(nonce) || nonceRoll < atomic.LoadInt32(&wfe.nonceErrPercent) {
 		return nil, acme.BadNonceProblem(fmt.Sprintf(
 			"JWS has an invalid anti-replay nonce: %s", nonce))
 	}
@@ -1516,7 +1556,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 		// If there is an existing valid authz for this identifier, we can reuse it
 		authz := wfe.db.FindValidAuthorization(order.AccountID, ident)
 		// Otherwise create a new pending authz (and randomly not)
-		if authz == nil || rand.Intn(100) > wfe.authzReusePercent {
+		if authz == nil || rand.Int31n(100) > atomic.LoadInt32(&wfe.authzReusePercent) {
 			authz = &core.Authorization{
 				ID:          newToken(),
 				ExpiresDate: expires,
