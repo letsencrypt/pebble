@@ -9,7 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -558,7 +558,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	// NOTE: This is *not* using a `io.LimitedReader` and isn't suitable for
 	// production because a very large response will bog down the server. Don't
 	// use Pebble anywhere that isn't a testing rig!!!
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, url.String(), acme.InternalErrorProblem(err.Error())
 	}

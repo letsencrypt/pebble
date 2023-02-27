@@ -11,7 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/big"
 	"math/rand"
@@ -835,7 +835,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, prob
 	}
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, acme.InternalErrorProblem("unable to read request body")
 	}
@@ -2578,7 +2578,7 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	// a JWS with an embedded key ID, handling each case differently in terms of
 	// which certificates are authorized to be revoked by the requester
 
-	bodyBytes, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
 		wfe.sendError(
 			acme.InternalErrorProblem("unable to read request body"), response)
