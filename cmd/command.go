@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,9 +13,10 @@ import (
 // configuration of a Pebble component.
 //
 // Lifted from
-//   https://raw.githubusercontent.com/letsencrypt/boulder/master/cmd/shell.go
+//
+//	https://raw.githubusercontent.com/letsencrypt/boulder/master/cmd/shell.go
 func ReadConfigFile(filename string, out interface{}) error {
-	configData, err := ioutil.ReadFile(filename)
+	configData, err := os.ReadFile(filename)
 	if err != nil {
 		return err
 	}
@@ -26,7 +26,8 @@ func ReadConfigFile(filename string, out interface{}) error {
 // FailOnError exits and prints an error message if we encountered a problem
 //
 // Lifted from
-//   https://raw.githubusercontent.com/letsencrypt/boulder/master/cmd/shell.go
+//
+//	https://raw.githubusercontent.com/letsencrypt/boulder/master/cmd/shell.go
 func FailOnError(err error, msg string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
