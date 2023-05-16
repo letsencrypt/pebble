@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/jmhodges/clock"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/pebble/v2/acme"
@@ -37,6 +37,8 @@ func (e ExistingAccountError) Error() string {
 // "database"
 type MemoryStore struct {
 	sync.RWMutex
+
+	clockSource clock.Clock
 
 	accountRand *rand.Rand
 
@@ -61,9 +63,13 @@ type MemoryStore struct {
 	blockListByDomain [][]string
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(clockSource clock.Clock) *MemoryStore {
+	if clockSource == nil {
+		clockSource = clock.New()
+	}
 	return &MemoryStore{
-		accountRand:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		clockSource:             clockSource,
+		accountRand:             rand.New(rand.NewSource(clockSource.Now().UnixNano())),
 		accountsByID:            make(map[string]*core.Account),
 		accountsByKeyID:         make(map[string]*core.Account),
 		ordersByID:              make(map[string]*core.Order),
@@ -200,7 +206,7 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	defer m.RUnlock()
 
 	if order, ok := m.ordersByID[id]; ok {
-		orderStatus, err := order.GetStatus()
+		orderStatus, err := order.GetStatus(m.clockSource.Now())
 		if err != nil {
 			panic(err)
 		}
@@ -218,7 +224,7 @@ func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
 
 	if orders, ok := m.ordersByAccountID[accountID]; ok {
 		for _, order := range orders {
-			orderStatus, err := order.GetStatus()
+			orderStatus, err := order.GetStatus(m.clockSource.Now())
 			if err != nil {
 				panic(err)
 			}
@@ -268,7 +274,7 @@ func (m *MemoryStore) FindValidAuthorization(accountID string, identifier acme.I
 		authz.RLock()
 		if authz.Status == acme.StatusValid && identifier.Equals(authz.Identifier) &&
 			authz.Order != nil && authz.Order.AccountID == accountID &&
-			authz.ExpiresDate.After(time.Now()) {
+			authz.ExpiresDate.After(m.clockSource.Now()) {
 			authz.RUnlock()
 			return authz
 		}

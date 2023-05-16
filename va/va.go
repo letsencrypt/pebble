@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/challtestsrv"
@@ -95,6 +96,7 @@ type vaTask struct {
 }
 
 type VAImpl struct {
+	clockSource        clock.Clock
 	log                *log.Logger
 	httpPort           int
 	tlsPort            int
@@ -109,10 +111,12 @@ type VAImpl struct {
 
 func New(
 	log *log.Logger,
+	clockSource clock.Clock,
 	httpPort, tlsPort int,
 	strict bool, customResolverAddr string) *VAImpl {
 	va := &VAImpl{
 		log:                log,
+		clockSource:        clockSource,
 		httpPort:           httpPort,
 		tlsPort:            tlsPort,
 		tasks:              make(chan *vaTask, taskQueueSize),
@@ -120,6 +124,10 @@ func New(
 		sleepTime:          defaultSleepTime,
 		strict:             strict,
 		customResolverAddr: customResolverAddr,
+	}
+
+	if clockSource == nil {
+		va.clockSource = clock.New()
 	}
 
 	if customResolverAddr != "" {
@@ -189,7 +197,7 @@ func (va VAImpl) setAuthzValid(authz *core.Authorization, chal *core.Challenge) 
 	authz.Lock()
 	defer authz.Unlock()
 	// Update the authz expiry for the new validity period
-	now := time.Now().UTC()
+	now := va.clockSource.Now().UTC()
 	authz.ExpiresDate = now.Add(validAuthzExpire)
 	authz.Expires = authz.ExpiresDate.Format(time.RFC3339)
 	// Update the authz status
@@ -237,7 +245,7 @@ func (va VAImpl) process(task *vaTask) {
 	chal := task.Challenge
 	chal.Lock()
 	// Update the validated date for the challenge
-	now := time.Now().UTC()
+	now := va.clockSource.Now().UTC()
 	chal.ValidatedDate = now
 	chal.Validated = chal.ValidatedDate.Format(time.RFC3339)
 	authz := chal.Authz
@@ -285,7 +293,7 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		// the URL to the `_acme-challenge` subdomain.
 		results <- &core.ValidationRecord{
 			URL:         task.Identifier.Value,
-			ValidatedAt: time.Now(),
+			ValidatedAt: va.clockSource.Now(),
 		}
 		return
 	}
@@ -308,7 +316,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
-		ValidatedAt: time.Now(),
+		ValidatedAt: va.clockSource.Now(),
 	}
 
 	txts, err := va.getTXTEntry(challengeSubdomain)
@@ -352,7 +360,7 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	}
 	result := &core.ValidationRecord{
 		URL:         net.JoinHostPort(task.Identifier.Value, portString),
-		ValidatedAt: time.Now(),
+		ValidatedAt: va.clockSource.Now(),
 	}
 
 	addrs, err := va.resolveIP(task.Identifier.Value)
@@ -472,7 +480,7 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 
 	result := &core.ValidationRecord{
 		URL:         url,
-		ValidatedAt: time.Now(),
+		ValidatedAt: va.clockSource.Now(),
 		Error:       err,
 	}
 	if result.Error != nil {
