@@ -311,7 +311,7 @@ interface will listen on. Set `managementListenAddress` to an empty string or `n
 to disable it.
 
 The default configuration for this management interface as defined in
-`test/config/pebble-config.yml` is to listen on any address on port 15000:
+`test/config/pebble-config.json` is to listen on any address on port 15000:
 
 ```
   "managementListenAddress": "0.0.0.0:15000",
