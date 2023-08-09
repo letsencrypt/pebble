@@ -2787,7 +2787,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 
 	//3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
-	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
+	key, ok := wfe.db.GetExternalAccountKeyByID(keyID)
 	if !ok {
 		return nil, acme.UnauthorizedProblem(
 			"the field 'kid' references a key that is not known to the ACME server")

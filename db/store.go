@@ -71,7 +71,7 @@ type Store interface {
 	GetCertificateBySerial(serialNumber *big.Int) *core.Certificate
 	GetRevokedCertificateBySerial(serialNumber *big.Int) *core.RevokedCertificate
 	AddExternalAccountKeyByID(keyID, key string) error
-	GetExtenalAccountKeyByID(keyID string) ([]byte, bool)
+	GetExternalAccountKeyByID(keyID string) ([]byte, bool)
 	AddBlockedDomain(name string) error
 	IsDomainBlocked(name string) bool
 }

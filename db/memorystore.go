@@ -408,7 +408,7 @@ func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
 
 // GetExternalAccountKeyByID will return the raw, base64 URL unencoded key
 // value by its key ID pair.
-func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
+func (m *MemoryStore) GetExternalAccountKeyByID(keyID string) ([]byte, bool) {
 	m.RLock()
 	defer m.RUnlock()
 	key, ok := m.externalAccountKeysByID[keyID]
