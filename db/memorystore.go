@@ -2,10 +2,7 @@ package db
 
 import (
 	"crypto"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -22,15 +19,7 @@ import (
 	"github.com/letsencrypt/pebble/v2/core"
 )
 
-// ExistingAccountError is an error type indicating when an operation fails
-// because the MatchingAccount has a key conflict.
-type ExistingAccountError struct {
-	MatchingAccount *core.Account
-}
-
-func (e ExistingAccountError) Error() string {
-	return fmt.Sprintf("New public key is already in use by account %s", e.MatchingAccount.ID)
-}
+var _ Store = (*MemoryStore)(nil)
 
 // Pebble keeps all of its various objects (accounts, orders, etc)
 // in-memory, not persisted anywhere. MemoryStore implements this in-memory
@@ -84,7 +73,7 @@ func (m *MemoryStore) GetAccountByID(id string) *core.Account {
 }
 
 func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, error) {
-	keyID, err := keyToID(key)
+	keyID, err := KeyToID(key)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +92,7 @@ func (m *MemoryStore) UpdateAccountByID(id string, acct *core.Account) error {
 	if m.accountsByID[id] == nil {
 		return fmt.Errorf("account with ID %q does not exist", id)
 	}
-	keyID, err := keyToID(acct.Key)
+	keyID, err := KeyToID(acct.Key)
 	if err != nil {
 		return err
 	}
@@ -120,7 +109,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 		return 0, fmt.Errorf("account must not have a nil Key")
 	}
 
-	keyID, err := keyToID(acct.Key)
+	keyID, err := KeyToID(acct.Key)
 	if err != nil {
 		return 0, err
 	}
@@ -147,12 +136,12 @@ func (m *MemoryStore) ChangeAccountKey(acct *core.Account, newKey *jose.JSONWebK
 	m.Lock()
 	defer m.Unlock()
 
-	oldKeyID, err := keyToID(acct.Key)
+	oldKeyID, err := KeyToID(acct.Key)
 	if err != nil {
 		return err
 	}
 
-	newKeyID, err := keyToID(newKey)
+	newKeyID, err := KeyToID(newKey)
 	if err != nil {
 		return err
 	}
@@ -361,30 +350,6 @@ func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) {
 	defer m.Unlock()
 	m.revokedCertificatesByID[cert.Certificate.ID] = cert
 	delete(m.certificatesByID, cert.Certificate.ID)
-}
-
-/*
- * keyToID produces a string with the hex representation of the SHA256 digest
- * over a provided public key. We use this to associate public keys to
- * acme.Account objects, and to ensure every account has a unique public key.
- */
-func keyToID(key crypto.PublicKey) (string, error) {
-	switch t := key.(type) {
-	case *jose.JSONWebKey:
-		if t == nil {
-			return "", fmt.Errorf("Cannot compute ID of nil key")
-		}
-		return keyToID(t.Key)
-	case jose.JSONWebKey:
-		return keyToID(t.Key)
-	default:
-		keyDER, err := x509.MarshalPKIXPublicKey(key)
-		if err != nil {
-			return "", err
-		}
-		spkiDigest := sha256.Sum256(keyDER)
-		return hex.EncodeToString(spkiDigest[:]), nil
-	}
 }
 
 // GetCertificateBySerial loops over all certificates to find the one that matches the provided

@@ -30,7 +30,7 @@ const (
 
 type CAImpl struct {
 	log              *log.Logger
-	db               *db.MemoryStore
+	db               db.Store
 	ocspResponderURL string
 
 	chains []*chain
@@ -347,7 +347,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
+func New(log *log.Logger, db db.Store, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
 	ca := &CAImpl{
 		log:                log,
 		db:                 db,

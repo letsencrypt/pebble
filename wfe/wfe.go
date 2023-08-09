@@ -155,7 +155,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	log               *log.Logger
-	db                *db.MemoryStore
+	db                db.Store
 	nonce             *nonceMap
 	nonceErrPercent   int
 	authzReusePercent int
@@ -172,7 +172,7 @@ const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
 func New(
 	log *log.Logger,
-	db *db.MemoryStore,
+	db db.Store,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
