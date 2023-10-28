@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pebble/v2/ca"
 	"github.com/letsencrypt/pebble/v2/cmd"
 	"github.com/letsencrypt/pebble/v2/db"
@@ -30,7 +31,7 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
-		RetryAfter struct {
+		RetryAfter                struct {
 			Authz int
 			Order int
 		}
@@ -75,9 +76,10 @@ func main() {
 		chainLength = int(val)
 	}
 
-	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
+	clockSource := clock.New()
+	db := db.NewMemoryStore(clockSource)
+	ca := ca.New(logger, clockSource, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
+	va := va.New(logger, clockSource, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)
@@ -89,7 +91,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
+	wfeImpl := wfe.New(logger, clockSource, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {
