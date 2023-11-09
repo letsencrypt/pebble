@@ -252,12 +252,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
-	var cn string
-	if len(domains) > 0 {
-		cn = domains[0]
-	} else if len(ips) > 0 {
-		cn = ips[0].String()
-	} else {
+	if len(domains) == 0 || len(ips) == 0 {
 		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
@@ -294,11 +289,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 	serial := makeSerial()
 	template := &x509.Certificate{
-		DNSNames:    domains,
-		IPAddresses: ips,
-		Subject: pkix.Name{
-			CommonName: cn,
-		},
+		DNSNames:     domains,
+		IPAddresses:  ips,
 		SerialNumber: serial,
 		NotBefore:    certNotBefore,
 		NotAfter:     certNotAfter,
