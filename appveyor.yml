@@ -21,7 +21,7 @@ install:
   - python -m venv venv
   - ls venv
   - ls venv\bin
-  - venv\bin\activate.bat
+  - venv\bin\activate
   - cd ..
 
 build_script:
