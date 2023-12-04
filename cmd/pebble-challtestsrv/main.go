@@ -58,6 +58,10 @@ func main() {
 		"Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable.")
 	httpsOneBind := flag.String("https01", ":5003",
 		"Comma separated bind addresses/ports for HTTPS HTTP-01 challenges. Set empty to disable.")
+	dohBind := flag.String("doh", ":8443",
+		"Comma separated bind addresses/ports for DoH queries. Set empty to disable.")
+	dohCert := flag.String("doh-cert", "", "Path to certificate file for DoH server.")
+	dohCertKey := flag.String("doh-cert-key", "", "Path to certificate key file for DoH server.")
 	dnsOneBind := flag.String("dns01", ":8053",
 		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
 	tlsAlpnOneBind := flag.String("tlsalpn01", ":5001",
@@ -73,6 +77,7 @@ func main() {
 
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	httpsOneAddresses := filterEmpty(strings.Split(*httpsOneBind, ","))
+	dohAddresses := filterEmpty(strings.Split(*dohBind, ","))
 	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
 	tlsAlpnOneAddresses := filterEmpty(strings.Split(*tlsAlpnOneBind, ","))
 
@@ -82,6 +87,9 @@ func main() {
 	srv, err := challtestsrv.New(challtestsrv.Config{
 		HTTPOneAddrs:    httpOneAddresses,
 		HTTPSOneAddrs:   httpsOneAddresses,
+		DOHAddrs:        dohAddresses,
+		DOHCert:         *dohCert,
+		DOHCertKey:      *dohCertKey,
 		DNSOneAddrs:     dnsOneAddresses,
 		TLSALPNOneAddrs: tlsAlpnOneAddresses,
 		Log:             logger,
