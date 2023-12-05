@@ -8,6 +8,8 @@ github.com/letsencrypt/challtestsrv v1.2.2-0.20231204231752-478f4c9a0ddd h1:7Tpx
 github.com/letsencrypt/challtestsrv v1.2.2-0.20231204231752-478f4c9a0ddd/go.mod h1:Ur4e4FvELUXLGhkMztHOsPIsvGxD/kzSJninOrkM+zc=
 github.com/letsencrypt/challtestsrv v1.3.0 h1:hiUy4hBzU0dWRYdRYpXs7x37AI4ZHBHKMH52z1euOsk=
 github.com/letsencrypt/challtestsrv v1.3.0/go.mod h1:Ur4e4FvELUXLGhkMztHOsPIsvGxD/kzSJninOrkM+zc=
+github.com/letsencrypt/challtestsrv v1.3.1 h1:4/MqwUWRvdtQhnZdgfQMVsYxAz2nbipuPsEz7SABv7s=
+github.com/letsencrypt/challtestsrv v1.3.1/go.mod h1:Ur4e4FvELUXLGhkMztHOsPIsvGxD/kzSJninOrkM+zc=
 github.com/miekg/dns v1.1.43/go.mod h1:+evo5L0630/F6ca/Z9+GAqzhjGyn8/c+TBaOyfEl0V4=
 github.com/miekg/dns v1.1.48 h1:Ucfr7IIVyMBz4lRE8qmGUuZ4Wt3/ZGu9hmcMT3Uu4tQ=
 github.com/miekg/dns v1.1.48/go.mod h1:e3IlAVfNqAllflbibAZEWOXOQ+Ynzk/dDozDxY7XnME=

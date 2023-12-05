@@ -161,6 +161,21 @@ type writeMsg interface {
 	WriteMsg(*dns.Msg) error
 }
 
+type dnsToHTTPWriter struct {
+	http.ResponseWriter
+}
+
+func (d *dnsToHTTPWriter) WriteMsg(m *dns.Msg) error {
+	d.Header().Set("Content-Type", "application/dns-message")
+	d.WriteHeader(http.StatusOK)
+	b, err := m.Pack()
+	if err != nil {
+		return err
+	}
+	_, err = d.Write(b)
+	return err
+}
+
 // dohHandler handles a DoH request by POST only.
 func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -180,8 +195,7 @@ func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dnsResponseWriter dns.ResponseWriter
-	s.dnsHandler(dnsResponseWriter, msg)
+	s.dnsHandlerInner(&dnsToHTTPWriter{w}, msg)
 }
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
