@@ -66,21 +66,25 @@ correctly.
 
 ## Install
 
-1. [Set up Go](https://golang.org/doc/install). Add ~/go/bin to your $PATH, or
-   set GOBIN to a directory that is in your $PATH already.
-2. git clone github.com/letsencrypt/pebble/
-3. cd pebble
-4. go install ./cmd/pebble
+1. [Set up Go](https://golang.org/doc/install)
+2. Add `~/go/bin` to your $PATH, or set `GOBIN` to a directory that is in your
+   $PATH already, so that `pebble` will be in your $PATH for easy execution.
+   - One way to do this is to add `export PATH=$PATH:$HOME/go/bin` to your `~/.profile`
+4. git clone https://github.com/letsencrypt/pebble/
+5. cd pebble
+6. go install ./cmd/pebble
 
 ## Usage
 
 ### Binary
 
-Assuming pebble is in your $PATH:
+Assuming pebble is easily accessible in your $PATH:
 
 ```bash
 pebble -config ./test/config/pebble-config.json
 ```
+
+(otherwise replace `pebble` with `~/go/bin/pebble` or `$GOBIN/pebble`)
 
 Afterwards you can access the Pebble server's ACME directory
 at `https://localhost:14000/dir`.
