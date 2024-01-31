@@ -2382,7 +2382,8 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct, acctURL)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()
