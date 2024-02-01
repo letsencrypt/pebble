@@ -1585,31 +1585,26 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 // is required to make the challenge URL's absolute based on the request host
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
-
-	// Authorizations for a wildcard identifier only get a DNS-01 challenges to
+	var enabledChallenges []string
+	// Authorizations for a wildcard identifier only get a DNS baseed challenges to
 	// match Boulder/Let's Encrypt wildcard issuance policy
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
-		chal, err := wfe.makeChallenge(acme.ChallengeDNS01, authz, request)
-		if err != nil {
-			return err
-		}
-		chals = []*core.Challenge{chal}
+		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSACCOUNT01}
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
-		var enabledChallenges []string
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSACCOUNT01}
 		}
-		for _, chalType := range enabledChallenges {
-			chal, err := wfe.makeChallenge(chalType, authz, request)
-			if err != nil {
-				return err
-			}
-			chals = append(chals, chal)
+	}
+	for _, chalType := range enabledChallenges {
+		chal, err := wfe.makeChallenge(chalType, authz, request)
+		if err != nil {
+			return err
 		}
+		chals = append(chals, chal)
 	}
 
 	// Lock the authorization for writing to update the challenges
