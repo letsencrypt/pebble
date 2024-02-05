@@ -115,6 +115,8 @@ def auth_and_issue(domains, chall_type="http-01", email=None, cert_output=None, 
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "dns-account-01":
+        cleanup = do_dns_account_challenges(client, authzs)
     else:
         raise Exception("invalid challenge type %s" % chall_type)
 
@@ -130,6 +132,25 @@ def do_dns_challenges(client, authzs):
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
+            c.validation(client.net.key))
+        cleanup_hosts.append(name)
+        requests.post(SET_TXT, json={
+            "host": name + ".",
+            "value": value
+        }).raise_for_status()
+        client.answer_challenge(c, c.response(client.net.key))
+    def cleanup():
+        for host in cleanup_hosts:
+            requests.post(CLEAR_TXT, json={
+                "host": host + "."
+            }).raise_for_status()
+    return cleanup
+
+def do_dns_account_challenges(client, authzs):
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.DNSACCOUNT01)
+        name, value = (c.validation_domain_name(client.net.account.uri, a.body.identifier.value),
             c.validation(client.net.key))
         cleanup_hosts.append(name)
         requests.post(SET_TXT, json={
