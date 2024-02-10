@@ -5,7 +5,7 @@ hosts:
   elpmaxe.letsencrypt.org: 127.0.0.1
 
 environment:
-  PATH: C:\Pythonn311-x64;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+  PATH: C:\Python39-x64;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
   PEBBLE_WFE_NONCEREJECT: 0
 
 # Declare artifacts that can become release assets on GitHub
@@ -18,11 +18,8 @@ artifacts:
 install:
   - git clone --single-branch --depth=1 -b master https://github.com/certbot/certbot
   - cd certbot
-  - python -m venv venv
-  - ls venv
-  - ls venv\bin
-  - venv\bin\activate
-  - cd ..
+  - python tools\venv.py
+  - venv\Scripts\activate.bat
 
 build_script:
   - go install -v -mod=vendor ./...
