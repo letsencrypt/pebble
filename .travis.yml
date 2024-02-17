@@ -33,7 +33,6 @@ install:
   # Install tools without `GO111MODULE` enabled so that we
   # don't download Pebble's deps and just put the tools in our
   # gobin.
-  - GO111MODULE=off go get golang.org/x/tools/cmd/cover
   - GO111MODULE=off go get github.com/mattn/goveralls
   - GO111MODULE=off go get github.com/letsencrypt/boulder/test/load-generator
   - go mod tidy
