@@ -1,4 +1,4 @@
-FROM golang:1.18-nanoserver-sac2016 as builder
+FROM golang:1.21-nanoserver-sac2016 as builder
 
 ENV CGO_ENABLED=0
 

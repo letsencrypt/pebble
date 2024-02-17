@@ -12,7 +12,7 @@ cache:
     - $GOPATH/pkg/mod
 
 go:
-  - "1.18.x"
+  - "1.21.x"
 
 services:
   - docker
