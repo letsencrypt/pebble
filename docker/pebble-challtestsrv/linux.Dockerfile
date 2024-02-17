@@ -8,7 +8,7 @@ COPY . .
 RUN go build -o /go/bin/pebble-challtestsrv ./cmd/pebble-challtestsrv
 
 ## main
-FROM alpine:3.15.4
+FROM alpine:3.16
 
 COPY --from=builder /go/bin/pebble-challtestsrv /usr/bin/pebble-challtestsrv
 

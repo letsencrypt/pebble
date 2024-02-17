@@ -8,7 +8,7 @@ COPY . .
 RUN go build -o /go/bin/pebble ./cmd/pebble
 
 ## main
-FROM alpine:3.15.4
+FROM alpine:3.16
 
 COPY --from=builder /go/bin/pebble /usr/bin/pebble
 COPY --from=builder /pebble-src/test/ /test/
