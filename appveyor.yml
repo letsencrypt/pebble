@@ -5,7 +5,7 @@ hosts:
   elpmaxe.letsencrypt.org: 127.0.0.1
 
 environment:
-  PATH: C:\Python37;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
+  PATH: C:\Python38;C:\msys64\mingw64\bin;%USERPROFILE%\go\bin;%PATH%
   PEBBLE_WFE_NONCEREJECT: 0
 
 # Declare artifacts that can become release assets on GitHub
