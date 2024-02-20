@@ -605,7 +605,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 		proto = "https"
 	}
 
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
+	// Allow upstream proxies to specify the forwarded protocol. Allow this value
 	// to override our own guess.
 	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
 		proto = specifiedProto
