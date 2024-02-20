@@ -2558,8 +2558,7 @@ func addRetryAfterHeader(response http.ResponseWriter, second int) {
 		} else {
 			// IMF-fixdate
 			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
-			gmt, _ := time.LoadLocation("GMT")
-			currentTime := time.Now().In(gmt)
+			currentTime := time.Now().In(time.UTC)
 			retryAfter := currentTime.Add(time.Second * time.Duration(second))
 			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
 		}
