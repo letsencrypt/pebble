@@ -1424,14 +1424,15 @@ func isDNSCharacter(ch byte) bool {
 // verifyOrder checks that a new order is considered well formed. Light
 // validation is done on the order identifiers.
 func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails {
-	// Lock the order for reading
-	order.RLock()
-	defer order.RUnlock()
-
 	// Shouldn't happen - defensive check
 	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
 	}
+
+	// Lock the order for reading
+	order.RLock()
+	defer order.RUnlock()
+
 	idents := order.Identifiers
 	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
