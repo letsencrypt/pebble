@@ -1,16 +1,28 @@
 name: CI
 on:
   push: # Triggered on every push to every branch
+
+permissions:
+  contents: read # Allow read access to the content for analysis.
+  pull-requests: read # Allow read access to pull request.
+  checks: write # Allow write access to checks to allow actions to annotate code in the PR.
+
 jobs:
-  t:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["oldstable", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v4
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Run t.sh
         run: chmod +x t.sh && ./t.sh
-  l:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run l.sh
-        run: chmod +x l.sh && ./l.sh
