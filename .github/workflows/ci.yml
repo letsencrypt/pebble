@@ -8,6 +8,23 @@ permissions:
   checks: write # Allow write access to checks to allow actions to annotate code in the PR.
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ["oldstable", "stable"]
+        go-arch: ["amd64", "arm64"]
+        go-os: ["darwin", "linux"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Run b.sh
+        env:
+          GOARCH: ${{ matrix.go-arch }}
+          GOOS: ${{ matrix.go-os }}
+        run: chmod +x b.sh && ./b.sh
   lint:
     runs-on: ubuntu-latest
     strategy:
