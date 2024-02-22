@@ -1,0 +1,16 @@
+name: CI
+on:
+  push: # Triggered on every push to every branch
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run t.sh
+        run: chmod +x t.sh && ./t.sh
+  l:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run l.sh
+        run: chmod +x l.sh && ./l.sh
