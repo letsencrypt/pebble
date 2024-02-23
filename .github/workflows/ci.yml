@@ -20,9 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        exclude:
-          - go-arch: arm64
-            go-os: windows
         go:
           - oldstable
           - stable
