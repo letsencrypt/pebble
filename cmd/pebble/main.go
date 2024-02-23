@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/letsencrypt/pebble/v2/ca"
 	"github.com/letsencrypt/pebble/v2/cmd"
@@ -30,7 +32,7 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
-		RetryAfter struct {
+		RetryAfter                struct {
 			Authz int
 			Order int
 		}
@@ -75,6 +77,11 @@ func main() {
 		chainLength = int(val)
 	}
 
+	// Initialize the randomness source
+	src := rand.NewSource(time.Now().UnixNano())
+	rnd := rand.New(src)
+
+	// Create the database, CA and VA instances
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
@@ -89,7 +96,8 @@ func main() {
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
+	// Create the WFE instance
+	wfeImpl := wfe.New(logger, db, va, ca, rnd, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {
