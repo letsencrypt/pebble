@@ -1,45 +1,60 @@
 name: CI
+# Workflow is triggered on:
+# - every pull request to every branch
+# - every push to every branch
+# - every workflow_dispatch event
 on:
-  push: # Triggered on every push to every branch
-
+  - pull_request
+  - push
+  - workflow_dispatch
+# Workflow permissions:
+# - write access to checks to allow actions to annotate code in the PR.
+# - read access to the content for analysis.
+# - read access to pull requests.
 permissions:
-  contents: read # Allow read access to the content for analysis.
-  pull-requests: read # Allow read access to pull request.
-  checks: write # Allow write access to checks to allow actions to annotate code in the PR.
-
+  checks: write
+  contents: read
+  pull-requests: read
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ["oldstable", "stable"]
-        go-arch: ["amd64", "arm64"]
-        go-os: ["darwin", "linux"]
+        exclude:
+          - go-arch: arm64
+            go-os: windows
+        go:
+          - oldstable
+          - stable
+        go-arch:
+          - amd64
+          - arm64
+        go-os:
+          - darwin
+          - linux
+          - windows
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-      - name: Run b.sh
+      - name: Build
         env:
           GOARCH: ${{ matrix.go-arch }}
           GOOS: ${{ matrix.go-os }}
         run: chmod +x b.sh && ./b.sh
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: ["oldstable", "stable"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go }}
+          go-version-file: go.mod
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run t.sh
+      - name: Test
         run: chmod +x t.sh && ./t.sh
