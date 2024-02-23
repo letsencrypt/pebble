@@ -14,7 +14,7 @@ export GOWORK=off
 go mod tidy -v -x
 git diff --exit-code go.mod
 git diff --exit-code go.sum
-go mod vendor -v
+go mod vendor
 git diff --exit-code vendor
 
 # Run golangci-lint
