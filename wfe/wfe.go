@@ -176,9 +176,6 @@ func New(
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
-	// Seed rand from the current time so test environments don't always have
-	// the same nonce rejection and sleep time patterns.
-	rand.Seed(time.Now().UnixNano())
 
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
@@ -550,10 +547,13 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  keyRolloverPath,
 	}
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// RFC 8555 §6.3 says the server's directory endpoint should support
 	// POST-as-GET as well as GET.
 	if request.Method == http.MethodPost {
-		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
@@ -631,10 +631,13 @@ func (wfe *WebFrontEndImpl) Nonce(
 		statusCode = http.StatusOK
 	}
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// RFC 8555 §6.3 says the server's nonce endpoint should support
 	// POST-as-GET as well as GET.
 	if request.Method == http.MethodPost {
-		postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+		postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 		if prob != nil {
 			wfe.sendError(prob, response)
 			return
@@ -824,10 +827,12 @@ type authenticatedPOST struct {
 	jwk       *jose.JSONWebKey
 }
 
+// verifyPOST verifies that a POST request is valid.
 // NOTE: Unlike `verifyPOST` from the Boulder WFE this version does not
 // presently handle the `regCheck` parameter or do any lookups for existing
 // accounts.
 func (wfe *WebFrontEndImpl) verifyPOST(
+	rnd *rand.Rand,
 	request *http.Request,
 	kx keyExtractor) (*authenticatedPOST, *acme.ProblemDetails) {
 
@@ -851,7 +856,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 		return nil, prob
 	}
 
-	result, prob := wfe.verifyJWS(pubKey, parsedJWS, request)
+	result, prob := wfe.verifyJWS(rnd, pubKey, parsedJWS, request)
 	if prob != nil {
 		return nil, prob
 	}
@@ -887,6 +892,7 @@ func (wfe *WebFrontEndImpl) extractJWSURL(
 }
 
 func (wfe *WebFrontEndImpl) verifyJWS(
+	rnd *rand.Rand,
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
 	request *http.Request) (*authenticatedPOST, *acme.ProblemDetails) {
@@ -906,7 +912,7 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	}
 
 	// Roll a random number between 0 and 100.
-	nonceRoll := rand.Intn(100)
+	nonceRoll := rnd.Intn(100)
 	// If the nonce is not valid OR if the nonceRoll was less than the
 	// nonceErrPercent, fail with an error
 	if !wfe.nonce.validNonce(nonce) || nonceRoll < wfe.nonceErrPercent {
@@ -1010,7 +1016,12 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Verify the request is valid
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1104,7 +1115,12 @@ func (wfe *WebFrontEndImpl) ListOrders(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Verify the request is valid
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1214,8 +1230,12 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// Extract and parse outer JWS, and retrieve account
-	outerPostData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	outerPostData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1285,10 +1305,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// We use extractJWK rather than lookupJWK here because the account is not yet
 	// created, so the user provides the full key in a JWS header rather than
 	// referring to an existing key.
-	postData, prob := wfe.verifyPOST(request, wfe.extractJWK)
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.extractJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1625,7 +1648,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	response http.ResponseWriter,
 	request *http.Request) {
 
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Verify the request is valid
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1771,7 +1798,12 @@ func (wfe *WebFrontEndImpl) Order(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Verify the request is valid
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -1820,8 +1852,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// Verify the POST request
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -2042,10 +2077,14 @@ func (wfe *WebFrontEndImpl) Authz(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// There are two types of requests we might get:
 	//   A) a POST to update the authorization
 	//   B) a POST-as-GET to get the authorization
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -2143,10 +2182,14 @@ func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	// There are two possibilities:
 	// A) request is a POST to begin a challenge
 	// B) request is a POST-as-GET to poll a challenge
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -2441,7 +2484,11 @@ func (wfe *WebFrontEndImpl) Certificate(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Verify the request
+	postData, prob := wfe.verifyPOST(rnd, request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
 		return
@@ -2626,12 +2673,15 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	jws *jose.JSONWebSignature,
 	request *http.Request) *acme.ProblemDetails {
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Extract the JWK from the JWS and verify the JWS
 	pubKey, prob := wfe.lookupJWK(request, jws)
 	if prob != nil {
 		return prob
 	}
-
-	postData, prob := wfe.verifyJWS(pubKey, jws, request)
+	postData, prob := wfe.verifyJWS(rnd, pubKey, jws, request)
 	if prob != nil {
 		return prob
 	}
@@ -2664,12 +2714,16 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	jws *jose.JSONWebSignature,
 	request *http.Request) *acme.ProblemDetails {
 
+	// Initialize local rnd
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// Extract the JWK from the JWS and verify the JWS
 	var requestKey *jose.JSONWebKey
 	pubKey, prob := wfe.extractJWK(request, jws)
 	if prob != nil {
 		return prob
 	}
-	postData, prob := wfe.verifyJWS(pubKey, jws, request)
+	postData, prob := wfe.verifyJWS(rnd, pubKey, jws, request)
 	if prob != nil {
 		return prob
 	}
