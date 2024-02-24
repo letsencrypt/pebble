@@ -162,7 +162,6 @@ type WebFrontEndImpl struct {
 	ordersPerPage     int
 	va                *va.VAImpl
 	ca                *ca.CAImpl
-	rnd               *rand.Rand
 	strict            bool
 	requireEAB        bool
 	retryAfterAuthz   int
@@ -176,11 +175,10 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	rnd *rand.Rand,
-	strict,
-	requireEAB bool,
-	retryAfterAuthz int,
-	retryAfterOrder int) WebFrontEndImpl {
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
+	// Seed rand from the current time so test environments don't always have
+	// the same nonce rejection and sleep time patterns.
+	rand.Seed(time.Now().UnixNano())
 
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
@@ -236,7 +234,6 @@ func New(
 		ordersPerPage:     ordersPerPage,
 		va:                va,
 		ca:                ca,
-		rnd:               rnd,
 		strict:            strict,
 		requireEAB:        requireEAB,
 		retryAfterAuthz:   retryAfterAuthz,
@@ -909,8 +906,7 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 	}
 
 	// Roll a random number between 0 and 100.
-	nonceRoll := wfe.rnd.Intn(100)
-
+	nonceRoll := rand.Intn(100)
 	// If the nonce is not valid OR if the nonceRoll was less than the
 	// nonceErrPercent, fail with an error
 	if !wfe.nonce.validNonce(nonce) || nonceRoll < wfe.nonceErrPercent {
@@ -1406,10 +1402,11 @@ func isDNSCharacter(ch byte) bool {
 // validation is done on the order identifiers.
 func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails {
 	// Lock the order for reading
-	if order != nil {
-		order.RLock()
-		defer order.RUnlock()
-	} else {
+	order.RLock()
+	defer order.RUnlock()
+
+	// Shouldn't happen - defensive check
+	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
 	}
 	idents := order.Identifiers
@@ -1443,7 +1440,8 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 func (wfe *WebFrontEndImpl) validateDNSName(ident acme.Identifier) *acme.ProblemDetails {
 	rawDomain := ident.Value
 	if rawDomain == "" {
-		return acme.MalformedProblem("Order included DNS identifier with empty value")
+		return acme.MalformedProblem(fmt.Sprintf(
+			"Order included DNS identifier with empty value"))
 	}
 
 	for _, ch := range []byte(rawDomain) {
@@ -1518,7 +1516,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 		// If there is an existing valid authz for this identifier, we can reuse it
 		authz := wfe.db.FindValidAuthorization(order.AccountID, ident)
 		// Otherwise create a new pending authz (and randomly not)
-		if authz == nil || wfe.rnd.Intn(100) > wfe.authzReusePercent {
+		if authz == nil || rand.Intn(100) > wfe.authzReusePercent {
 			authz = &core.Authorization{
 				ID:          newToken(),
 				ExpiresDate: expires,
@@ -1746,10 +1744,10 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	//   Clients SHOULD NOT make any assumptions about the sort order of
 	//   "identifiers" or "authorizations" elements in the returned order
 	//   object.
-	wfe.rnd.Shuffle(len(result.Authorizations), func(i, j int) {
+	rand.Shuffle(len(result.Authorizations), func(i, j int) {
 		result.Authorizations[i], result.Authorizations[j] = result.Authorizations[j], result.Authorizations[i]
 	})
-	wfe.rnd.Shuffle(len(result.Identifiers), func(i, j int) {
+	rand.Shuffle(len(result.Identifiers), func(i, j int) {
 		result.Identifiers[i], result.Identifiers[j] = result.Identifiers[j], result.Identifiers[i]
 	})
 
@@ -1805,7 +1803,7 @@ func (wfe *WebFrontEndImpl) Order(
 	}
 
 	if order.Status == acme.StatusProcessing {
-		addRetryAfterHeader(response, wfe.retryAfterOrder, wfe.rnd)
+		addRetryAfterHeader(response, wfe.retryAfterOrder)
 	}
 
 	// Prepare the order for display as JSON
@@ -1988,7 +1986,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Set the existingOrder to processing before displaying to the user
 	existingOrder.Status = acme.StatusProcessing
 
-	addRetryAfterHeader(response, wfe.retryAfterOrder, wfe.rnd)
+	addRetryAfterHeader(response, wfe.retryAfterOrder)
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
@@ -2004,7 +2002,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 // prepAuthorizationForDisplay prepares the provided acme.Authorization for
 // display to an ACME client. It assumes the `authz` is already locked for
 // reading by the caller.
-func prepAuthorizationForDisplay(authz *core.Authorization, rnd *rand.Rand) acme.Authorization {
+func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 	// Copy the authz to mutate and return
 	result := authz.Authorization
 	identVal := result.Identifier.Value
@@ -2033,7 +2031,7 @@ func prepAuthorizationForDisplay(authz *core.Authorization, rnd *rand.Rand) acme
 
 	// Randomize the order of the challenges in the returned authorization.
 	// Clients should not make any assumptions about the sort order.
-	rnd.Shuffle(len(result.Challenges), func(i, j int) {
+	rand.Shuffle(len(result.Challenges), func(i, j int) {
 		result.Challenges[i], result.Challenges[j] = result.Challenges[j], result.Challenges[i]
 	})
 
@@ -2124,7 +2122,7 @@ func (wfe *WebFrontEndImpl) Authz(
 				challengeStatus := c.Status
 				c.RUnlock()
 				if challengeStatus == acme.StatusProcessing {
-					addRetryAfterHeader(response, wfe.retryAfterAuthz, wfe.rnd)
+					addRetryAfterHeader(response, wfe.retryAfterAuthz)
 					break
 				}
 			}
@@ -2134,7 +2132,7 @@ func (wfe *WebFrontEndImpl) Authz(
 	err := wfe.writeJSONResponse(
 		response,
 		http.StatusOK,
-		prepAuthorizationForDisplay(authz, wfe.rnd))
+		prepAuthorizationForDisplay(authz))
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshaling authz"), response)
 		return
@@ -2364,7 +2362,9 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
 	// validated.
-	ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	if strings.HasPrefix(ident.Value, "*.") {
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	}
 
 	// Confirm challenge status again and update it immediately before sending it to the VA
 	prob = nil
@@ -2503,9 +2503,9 @@ func addNoCacheHeader(response http.ResponseWriter) {
 	response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 }
 
-func addRetryAfterHeader(response http.ResponseWriter, second int, rnd *rand.Rand) {
+func addRetryAfterHeader(response http.ResponseWriter, second int) {
 	if second > 0 {
-		if rnd.Intn(2) == 0 {
+		if rand.Intn(2) == 0 {
 			response.Header().Add("Retry-After", strconv.Itoa(second))
 		} else {
 			// IMF-fixdate
