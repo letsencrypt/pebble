@@ -2359,9 +2359,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
 	// validated.
-	if strings.HasPrefix(ident.Value, "*.") {
-		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-	}
+	ident.Value = strings.TrimPrefix(ident.Value, "*.")
 
 	// Confirm challenge status again and update it immediately before sending it to the VA
 	prob = nil
