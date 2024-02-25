@@ -1438,8 +1438,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 func (wfe *WebFrontEndImpl) validateDNSName(ident acme.Identifier) *acme.ProblemDetails {
 	rawDomain := ident.Value
 	if rawDomain == "" {
-		return acme.MalformedProblem(fmt.Sprintf(
-			"Order included DNS identifier with empty value"))
+		return acme.MalformedProblem("Order included DNS identifier with empty value")
 	}
 
 	for _, ch := range []byte(rawDomain) {
