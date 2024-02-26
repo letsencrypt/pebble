@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -374,6 +375,10 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	return ca
 }
 
+func isOCSPMustStapleExtension(ext pkix.Extension) bool {
+	return ext.Id.Equal(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}) && bytes.Equal(ext.Value, []byte{0x30, 0x03, 0x02, 0x01, 0x05})
+}
+
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	// Lock the order for reading
 	order.RLock()
@@ -398,9 +403,17 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		authz.RUnlock()
 	}
 
+	// Build a list of approved extensions to include in the certificate
+	var extensions []pkix.Extension
+	for _, ext := range order.ParsedCSR.Extensions {
+		if isOCSPMustStapleExtension(ext) {
+			extensions = append(extensions, ext)
+		}
+	}
+
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, csr.Extensions)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, extensions)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
