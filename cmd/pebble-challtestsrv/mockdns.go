@@ -14,7 +14,8 @@ import (
 //
 // The POST body is expected to have one parameter:
 // "ip" - the string representation of an IPv4 address to use for all A queries
-//        that do not match more specific mocks.
+//
+//	that do not match more specific mocks.
 //
 // Providing an empty string as the IP value will disable the default
 // A responses.
@@ -30,7 +31,7 @@ func (srv *managementServer) setDefaultDNSIPv4(w http.ResponseWriter, r *http.Re
 	}
 
 	// Set the challenge server's default IPv4 address - we allow request.IP to be
-	// the empty string so that the default can be be cleared using the same
+	// the empty string so that the default can be cleared using the same
 	// method.
 	srv.challSrv.SetDefaultDNSIPv4(request.IP)
 	srv.log.Printf("Set default IPv4 address for DNS A queries to %q\n", request.IP)
@@ -43,7 +44,8 @@ func (srv *managementServer) setDefaultDNSIPv4(w http.ResponseWriter, r *http.Re
 //
 // The POST body is expected to have one parameter:
 // "ip" - the string representation of an IPv6 address to use for all AAAA
-//        queries that do not match more specific mocks.
+//
+//	queries that do not match more specific mocks.
 //
 // Providing an empty string as the IP value will disable the default
 // A responses.
@@ -59,7 +61,7 @@ func (srv *managementServer) setDefaultDNSIPv6(w http.ResponseWriter, r *http.Re
 	}
 
 	// Set the challenge server's default IPv6 address - we allow request.IP to be
-	// the empty string so that the default can be be cleared using the same
+	// the empty string so that the default can be cleared using the same
 	// method.
 	srv.challSrv.SetDefaultDNSIPv6(request.IP)
 	srv.log.Printf("Set default IPv6 address for DNS AAAA queries to %q\n", request.IP)
