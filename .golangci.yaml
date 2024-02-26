@@ -1,6 +1,3 @@
-run:
-  timeout: 9m
-
 linters-settings:
   gocyclo:
     min-complexity: 25
@@ -36,7 +33,7 @@ linters:
 
 issues:
   exclude-use-default: true
-  max-per-linter: 0
+  max-issues-per-linter: 0
   max-same-issues: 0
   # The following excludes are considered false-positives/known-OK.
   exclude-rules:

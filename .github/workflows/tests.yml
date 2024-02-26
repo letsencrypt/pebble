@@ -55,7 +55,6 @@ jobs:
       # and so the load-generator cannot be installed with a simple `go install`
       - name: Checkout Boulder repository (load-generator)
         uses: actions/checkout@v4
-
         with:
           repository: letsencrypt/boulder
           path: boulder

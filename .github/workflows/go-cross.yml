@@ -12,7 +12,7 @@ permissions:
 jobs:
 
   cross:
-    name: Go
+    name: Build
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: 0
