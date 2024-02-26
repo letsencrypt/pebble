@@ -1589,14 +1589,14 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	// Authorizations for a wildcard identifier only get a DNS baseed challenges to
 	// match Boulder/Let's Encrypt wildcard issuance policy
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
-		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSACCOUNT01}
+		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNS02, acme.ChallengeDNSACCOUNT01}
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSACCOUNT01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNS02, acme.ChallengeDNSACCOUNT01}
 		}
 	}
 	for _, chalType := range enabledChallenges {

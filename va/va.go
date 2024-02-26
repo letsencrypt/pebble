@@ -300,6 +300,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
+	case acme.ChallengeDNS02:
+		results <- va.validateDNS02(task)
 	case acme.ChallengeDNSACCOUNT01:
 		results <- va.validateDNSACCOUNT01(task)
 	default:
@@ -341,6 +343,49 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	result.Error = acme.UnauthorizedProblem(msg)
+	return result
+}
+
+func (va VAImpl) validateDNS02(task *vaTask) *core.ValidationRecord {
+	var dns02Prefix string
+	if task.Challenge.Authz.Wildcard {
+		dns02Prefix = "_acme-wildcard-challenge"
+	} else {
+		dns02Prefix = "_acme-host-challenge"
+	}
+	challengeSubdomain := fmt.Sprintf("%s.%s", dns02Prefix, task.Identifier.Value)
+
+	result := &core.ValidationRecord{
+		URL:         challengeSubdomain,
+		ValidatedAt: time.Now(),
+	}
+
+	txts, err := va.getTXTEntry(challengeSubdomain)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS challenge (%q)", err))
+		return result
+	}
+
+	if len(txts) == 0 {
+		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		result.Error = acme.UnauthorizedProblem(msg)
+		return result
+	}
+
+	task.Challenge.RLock()
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
+	task.Challenge.RUnlock()
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
+
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+			return result
+		}
+	}
+
+	msg := fmt.Sprintf("Correct value not found for DNS-02 challenge")
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
