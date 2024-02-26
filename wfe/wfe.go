@@ -155,7 +155,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	log               *log.Logger
-	db                *db.MemoryStore
+	db                db.Store
 	nonce             *nonceMap
 	nonceErrPercent   int
 	authzReusePercent int
@@ -172,7 +172,7 @@ const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
 func New(
 	log *log.Logger,
-	db *db.MemoryStore,
+	db db.Store,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
 	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
@@ -2787,7 +2787,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 
 	//3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
-	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
+	key, ok := wfe.db.GetExternalAccountKeyByID(keyID)
 	if !ok {
 		return nil, acme.UnauthorizedProblem(
 			"the field 'kid' references a key that is not known to the ACME server")

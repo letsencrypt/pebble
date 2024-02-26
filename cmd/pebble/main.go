@@ -30,6 +30,7 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
+
 		RetryAfter struct {
 			Authz int
 			Order int
@@ -75,21 +76,22 @@ func main() {
 		chainLength = int(val)
 	}
 
-	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
+	var dbStore db.Store
+	dbStore = db.NewMemoryStore()
+	ca := ca.New(logger, dbStore, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
-		err := db.AddExternalAccountKeyByID(keyID, key)
+		err := dbStore.AddExternalAccountKeyByID(keyID, key)
 		cmd.FailOnError(err, "Failed to add key to external account bindings")
 	}
 
 	for _, domainName := range c.Pebble.DomainBlocklist {
-		err := db.AddBlockedDomain(domainName)
+		err := dbStore.AddBlockedDomain(domainName)
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
+	wfeImpl := wfe.New(logger, dbStore, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {
