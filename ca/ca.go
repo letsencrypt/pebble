@@ -252,7 +252,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
-	if len(domains) == 0 || len(ips) == 0 {
+	if len(domains) == 0 && len(ips) == 0 {
 		return nil, fmt.Errorf("must specify at least one domain name or IP address")
 	}
 
