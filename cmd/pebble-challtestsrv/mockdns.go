@@ -14,8 +14,7 @@ import (
 //
 // The POST body is expected to have one parameter:
 // "ip" - the string representation of an IPv4 address to use for all A queries
-//
-//	that do not match more specific mocks.
+// that do not match more specific mocks.
 //
 // Providing an empty string as the IP value will disable the default
 // A responses.
@@ -44,8 +43,7 @@ func (srv *managementServer) setDefaultDNSIPv4(w http.ResponseWriter, r *http.Re
 //
 // The POST body is expected to have one parameter:
 // "ip" - the string representation of an IPv6 address to use for all AAAA
-//
-//	queries that do not match more specific mocks.
+// queries that do not match more specific mocks.
 //
 // Providing an empty string as the IP value will disable the default
 // A responses.
