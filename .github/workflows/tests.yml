@@ -64,7 +64,7 @@ jobs:
         working-directory: ./boulder/test/load-generator
         run: go install
 
-      - name: go install
+      - name: go install pebble
         run: go install -v -race ./...
 
       - name: launch pebble
