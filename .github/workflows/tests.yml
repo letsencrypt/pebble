@@ -61,9 +61,8 @@ jobs:
           ref: release-2024-02-20
 
       - name: install load-generator
-        working-directory: $GITHUB_WORKSPACE/boulder/test/load-generator
-        run: |
-          go install
+        working-directory: ${GITHUB_WORKSPACE}/boulder/test/load-generator
+        run: go install
 
       - name: go install
         run: go install -v -race ./...
