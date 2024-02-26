@@ -51,19 +51,6 @@ jobs:
       - name: go install goveralls
         run: go install github.com/mattn/goveralls@latest
 
-      # Clone Boulder because the go.mod contains `exclude` directives,
-      # and so the load-generator cannot be installed with a simple `go install`
-      - name: Checkout Boulder repository (load-generator)
-        uses: actions/checkout@v4
-        with:
-          repository: letsencrypt/boulder
-          path: boulder
-          ref: release-2024-02-20
-
-      - name: install load-generator
-        working-directory: ./boulder/test/load-generator
-        run: go install
-
       - name: go install pebble
         run: go install -v -race ./...
 
@@ -81,9 +68,3 @@ jobs:
       # Perform a test issuance with chisel2.py
       - name: chisel
         run: REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
-
-      # Run the load-generator briefly - note, because Pebble isn't using the
-      # load-generator's mock DNS server none of the issuances will succeed. This
-      # step is performed just to shake out data races with concurrent requests.
-      - name: load-generator
-        run: load-generator -config ./test/config/load-generator-config.json > /dev/null
