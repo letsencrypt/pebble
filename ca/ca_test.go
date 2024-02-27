@@ -19,8 +19,10 @@ import (
 	"github.com/letsencrypt/pebble/v2/db"
 )
 
-var ocspId asn1.ObjectIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-var ocspValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+var (
+	ocspId    asn1.ObjectIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+	ocspValue                       = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+)
 
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
