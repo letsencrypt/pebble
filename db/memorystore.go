@@ -117,7 +117,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	defer m.Unlock()
 
 	if acct.Key == nil {
-		return 0, fmt.Errorf("account must not have a nil Key")
+		return 0, errors.New("account must not have a nil Key")
 	}
 
 	keyID, err := keyToID(acct.Key)
@@ -134,7 +134,7 @@ func (m *MemoryStore) AddAccount(acct *core.Account) (int, error) {
 	}
 
 	if _, present := m.accountsByKeyID[keyID]; present {
-		return 0, fmt.Errorf("account with key already exists")
+		return 0, errors.New("account with key already exists")
 	}
 
 	acct.ID = acctID
@@ -177,7 +177,7 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 	accountID := order.AccountID
 	order.RUnlock()
 	if len(orderID) == 0 {
-		return 0, fmt.Errorf("order must have a non-empty ID to add to MemoryStore")
+		return 0, errors.New("order must have a non-empty ID to add to MemoryStore")
 	}
 
 	if _, present := m.ordersByID[orderID]; present {
@@ -238,7 +238,7 @@ func (m *MemoryStore) AddAuthorization(authz *core.Authorization) (int, error) {
 	authz.RLock()
 	authzID := authz.ID
 	if len(authzID) == 0 {
-		return 0, fmt.Errorf("authz must have a non-empty ID to add to MemoryStore")
+		return 0, errors.New("authz must have a non-empty ID to add to MemoryStore")
 	}
 	authz.RUnlock()
 
@@ -285,7 +285,7 @@ func (m *MemoryStore) AddChallenge(chal *core.Challenge) (int, error) {
 	chalID := chal.ID
 	chal.RUnlock()
 	if len(chalID) == 0 {
-		return 0, fmt.Errorf("challenge must have a non-empty ID to add to MemoryStore")
+		return 0, errors.New("challenge must have a non-empty ID to add to MemoryStore")
 	}
 
 	if _, present := m.challengesByID[chalID]; present {
@@ -308,7 +308,7 @@ func (m *MemoryStore) AddCertificate(cert *core.Certificate) (int, error) {
 
 	certID := cert.ID
 	if len(certID) == 0 {
-		return 0, fmt.Errorf("cert must have a non-empty ID to add to MemoryStore")
+		return 0, errors.New("cert must have a non-empty ID to add to MemoryStore")
 	}
 
 	if _, present := m.certificatesByID[certID]; present {
@@ -372,7 +372,7 @@ func keyToID(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
-			return "", fmt.Errorf("Cannot compute ID of nil key")
+			return "", errors.New("cannot compute ID of nil key")
 		}
 		return keyToID(t.Key)
 	case jose.JSONWebKey:
@@ -426,7 +426,7 @@ func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
 
 	keyDecoded, err := base64.RawURLEncoding.DecodeString(key)
 	if err != nil {
-		return fmt.Errorf("failed to decode base64 URL encoded key %q: %s", key, err)
+		return fmt.Errorf("failed to decode base64 URL encoded key %q: %w", key, err)
 	}
 
 	m.Lock()

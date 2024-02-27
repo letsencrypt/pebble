@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
 	"github.com/letsencrypt/pebble/v2/acme"
@@ -61,7 +62,7 @@ func keyDigest(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
-			return "", fmt.Errorf("Cannot compute digest of nil key")
+			return "", errors.New("cannot compute digest of nil key")
 		}
 		return keyDigest(t.Key)
 	case jose.JSONWebKey:

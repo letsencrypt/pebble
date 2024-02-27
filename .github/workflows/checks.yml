@@ -1,0 +1,53 @@
+name: Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+
+  checks:
+    name: Check Process
+    runs-on: ubuntu-latest
+    env:
+      GO_VERSION: oldstable
+      GOLANGCI_LINT_VERSION: v1.56.2
+      CGO_ENABLED: 0
+
+    steps:
+
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check and get dependencies
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod
+          git diff --exit-code go.sum
+
+      - name: vendoring
+        run: go mod vendor
+
+      - name: vendoring diff
+        run: git diff --exit-code vendor/
+
+      # https://golangci-lint.run/usage/install#other-ci
+      - name: Install golangci-lint ${{ env.GOLANGCI_LINT_VERSION }}
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOLANGCI_LINT_VERSION}
+          golangci-lint run
+
+

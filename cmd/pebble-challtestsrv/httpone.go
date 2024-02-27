@@ -7,7 +7,8 @@ import "net/http"
 //
 // The POST body is expected to have two non-empty parameters:
 // "token" - the HTTP-01 challenge token to add the mock HTTP-01 response under
-//           in the `/.well-known/acme-challenge/` path.
+// in the `/.well-known/acme-challenge/` path.
+//
 // "content" - the key authorization value to return in the HTTP response.
 //
 // A successful POST will write http.StatusOK to the client.
@@ -40,7 +41,7 @@ func (srv *managementServer) addHTTP01(w http.ResponseWriter, r *http.Request) {
 //
 // The POST body is expected to have one non-empty parameter:
 // "token" - the HTTP-01 challenge token to remove the mock HTTP-01 response
-//           from.
+// from.
 //
 // A successful POST will write http.StatusOK to the client.
 func (srv *managementServer) delHTTP01(w http.ResponseWriter, r *http.Request) {
@@ -70,9 +71,10 @@ func (srv *managementServer) delHTTP01(w http.ResponseWriter, r *http.Request) {
 //
 // The POST body is expected to have two non-empty parameters:
 // "path" - the path that when matched in an HTTP request will return the
-//          redirect.
+// redirect.
+//
 // "targetURL" - the URL that the client will be redirected to when making HTTP
-//          requests for the redirected path.
+// requests for the redirected path.
 //
 // A successful POST will write http.StatusOK to the client.
 func (srv *managementServer) addHTTPRedirect(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -80,8 +81,8 @@ func (o *Order) GetStatus() (string, error) {
 	// early. Somehow we made it this far but also don't have the correct number
 	// of valid authzs.
 	if !fullyAuthorized {
-		return "", fmt.Errorf(
-			"Order has the incorrect number of valid authorizations & no pending, " +
+		return "", errors.New(
+			"order has the incorrect number of valid authorizations & no pending, " +
 				"deactivated or invalid authorizations")
 	}
 
@@ -104,7 +105,7 @@ func (o *Order) GetStatus() (string, error) {
 	}
 
 	// If none of the above cases match something weird & unexpected has happened.
-	return "", fmt.Errorf("Order is in an unknown state")
+	return "", errors.New("order is in an unknown state")
 }
 
 type Account struct {
