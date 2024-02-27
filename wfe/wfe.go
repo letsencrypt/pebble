@@ -175,8 +175,8 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
-
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int,
+) WebFrontEndImpl {
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
