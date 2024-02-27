@@ -20,7 +20,7 @@ import (
 )
 
 var ocspId asn1.ObjectIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-var ocspValue []byte = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+var ocspValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
 
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
@@ -127,7 +127,7 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 	numOCSPMustStapleExtensions := 0
 	for _, ext := range order.CertificateObject.Cert.Extensions {
 		if ext.Id.Equal(ocspId) && bytes.Equal(ext.Value, ocspValue) {
-			numOCSPMustStapleExtensions += 1
+			numOCSPMustStapleExtensions++
 		}
 	}
 	if numOCSPMustStapleExtensions != 1 {
