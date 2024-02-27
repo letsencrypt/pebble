@@ -177,10 +177,6 @@ func New(
 	ca *ca.CAImpl,
 	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int,
 ) WebFrontEndImpl {
-	// Seed rand from the current time so test environments don't always have
-	// the same nonce rejection and sleep time patterns.
-	rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
@@ -611,7 +607,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 		proto = "https"
 	}
 
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
+	// Allow upstream proxies to specify the forwarded protocol. Allow this value
 	// to override our own guess.
 	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
 		proto = specifiedProto
@@ -2529,8 +2525,7 @@ func addRetryAfterHeader(response http.ResponseWriter, second int) {
 		} else {
 			// IMF-fixdate
 			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
-			gmt, _ := time.LoadLocation("GMT")
-			currentTime := time.Now().In(gmt)
+			currentTime := time.Now().In(time.UTC)
 			retryAfter := currentTime.Add(time.Second * time.Duration(second))
 			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
 		}

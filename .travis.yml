@@ -29,7 +29,7 @@ before_install:
 # `-mod=vendor` to use the vendored dependencies
 install:
   # Install `golangci-lint` using their installer script
-  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.45.2
+  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.56.2
   # Install tools without `GO111MODULE` enabled so that we
   # don't download Pebble's deps and just put the tools in our
   # gobin.
@@ -56,6 +56,7 @@ script:
   # Upload collected coverage profile to goveralls
   - goveralls -coverprofile=coverage.out -service=travis-ci
   # Perform a test issuance with chisel2.py
+  - pip install -r test/requirements.txt
   - REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
   # Run the load-generator briefly - note, because Pebble isn't using the
   # load-generator's mock DNS server none of the issuances will succeed. This
