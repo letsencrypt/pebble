@@ -103,7 +103,8 @@ func requestHost(r *http.Request) (string, error) {
 // writeHistory writes the provided list of challtestsrv.RequestEvents to the
 // provided http.ResponseWriter in JSON form.
 func (srv *managementServer) writeHistory(
-	history []challtestsrv.RequestEvent, w http.ResponseWriter) {
+	history []challtestsrv.RequestEvent, w http.ResponseWriter,
+) {
 	// Always write an empty JSON list instead of `null`
 	if history == nil {
 		history = []challtestsrv.RequestEvent{}

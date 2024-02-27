@@ -30,7 +30,7 @@ type config struct {
 		DomainBlocklist []string
 
 		CertificateValidityPeriod uint64
-		RetryAfter struct {
+		RetryAfter                struct {
 			Authz int
 			Order int
 		}
