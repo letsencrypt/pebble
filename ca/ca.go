@@ -380,6 +380,17 @@ var ocspMustStapleExt = pkix.Extension{
 	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
+// Returns whether the given extensions array contains an OCSP Must-Staple
+// extension.
+func extensionsContainsOCSPMustStaple(extensions []pkix.Extension) bool {
+	for _, ext := range extensions {
+		if ext.Id.Equal(ocspMustStapleExt.Id) && bytes.Equal(ext.Value, ocspMustStapleExt.Value) {
+			return true
+		}
+	}
+	return false
+}
+
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	// Lock the order for reading
 	order.RLock()
@@ -425,15 +436,6 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Lock()
 	order.CertificateObject = cert
 	order.Unlock()
-}
-
-func extensionsContainsOCSPMustStaple(extensions []pkix.Extension) bool {
-	for _, ext := range extensions {
-		if ext.Id.Equal(ocspMustStapleExt.Id) && bytes.Equal(ext.Value, ocspMustStapleExt.Value) {
-			return true
-		}
-	}
-	return false
 }
 
 func (ca *CAImpl) GetNumberOfRootCerts() int {

@@ -109,7 +109,7 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 		t.Error("Expected foundOCSPExtension.Critical to be false, but it was true")
 	}
 
-	// Test w/ several extensions
+	// Test w/ duplicate extensions
 	ca = makeCa()
 	order = makeCertOrderWithExtensions([]pkix.Extension{
 		{
