@@ -375,8 +375,9 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	return ca
 }
 
-func isOCSPMustStapleExtension(ext pkix.Extension) bool {
-	return ext.Id.Equal(asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}) && bytes.Equal(ext.Value, []byte{0x30, 0x03, 0x02, 0x01, 0x05})
+var ocspMustStapleExt = pkix.Extension{
+	Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
@@ -405,10 +406,10 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// Build a list of approved extensions to include in the certificate
 	var extensions []pkix.Extension
-	for _, ext := range order.ParsedCSR.Extensions {
-		if isOCSPMustStapleExtension(ext) {
-			extensions = append(extensions, ext)
-		}
+	if extensionsContainsOCSPMustStaple(order.ParsedCSR.Extensions) {
+		// If the user requested an OCSP Must-Staple extension, use our
+		// pre-baked one to ensure a reasonable value for Critical
+		extensions = append(extensions, ocspMustStapleExt)
 	}
 
 	// issue a certificate for the csr
@@ -424,6 +425,15 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Lock()
 	order.CertificateObject = cert
 	order.Unlock()
+}
+
+func extensionsContainsOCSPMustStaple(extensions []pkix.Extension) bool {
+	for _, ext := range extensions {
+		if ext.Id.Equal(ocspMustStapleExt.Id) && bytes.Equal(ext.Value, ocspMustStapleExt.Value) {
+			return true
+		}
+	}
+	return false
 }
 
 func (ca *CAImpl) GetNumberOfRootCerts() int {
