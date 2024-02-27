@@ -26,7 +26,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gopkg.in/square/go-jose.v2/json"
+	"github.com/go-jose/go-jose/v4/json"
 )
 
 // Helper function to serialize known-good objects.
@@ -41,7 +41,7 @@ func mustSerializeJSON(value interface{}) []byte {
 	// MarshalJSON will happily serialize it as the top-level value "null". If
 	// that value is then embedded in another operation, for instance by being
 	// base64-encoded and fed as input to a signing algorithm
-	// (https://github.com/square/go-jose/issues/22), the result will be
+	// (https://github.com/go-jose/go-jose/issues/22), the result will be
 	// incorrect. Because this method is intended for known-good objects, and a nil
 	// pointer is not a known-good object, we are free to panic in this case.
 	// Note: It's not possible to directly check whether the data pointed at by an
@@ -127,7 +127,7 @@ func newBuffer(data []byte) *byteBuffer {
 
 func newFixedSizeBuffer(data []byte, length int) *byteBuffer {
 	if len(data) > length {
-		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
+		panic("go-jose/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
 	}
 	pad := make([]byte, length-len(data))
 	return newBuffer(append(pad, data...))
@@ -182,4 +182,37 @@ func (b byteBuffer) bigInt() *big.Int {
 
 func (b byteBuffer) toInt() int {
 	return int(b.bigInt().Int64())
+}
+
+func base64EncodeLen(sl []byte) int {
+	return base64.RawURLEncoding.EncodedLen(len(sl))
+}
+
+func base64JoinWithDots(inputs ...[]byte) string {
+	if len(inputs) == 0 {
+		return ""
+	}
+
+	// Count of dots.
+	totalCount := len(inputs) - 1
+
+	for _, input := range inputs {
+		totalCount += base64EncodeLen(input)
+	}
+
+	out := make([]byte, totalCount)
+	startEncode := 0
+	for i, input := range inputs {
+		base64.RawURLEncoding.Encode(out[startEncode:], input)
+
+		if i == len(inputs)-1 {
+			continue
+		}
+
+		startEncode += base64EncodeLen(input)
+		out[startEncode] = '.'
+		startEncode++
+	}
+
+	return string(out)
 }

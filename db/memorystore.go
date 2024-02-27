@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/square/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/core"
