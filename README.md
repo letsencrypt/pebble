@@ -1,7 +1,9 @@
 # Pebble
 
-[![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
-[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg?branch=cpu-goveralls)](https://coveralls.io/github/letsencrypt/pebble?branch=cpu-goveralls)
+[![Checks](https://github.com/letsencrypt/pebble/actions/workflows/checks.yml/badge.svg)](https://github.com/letsencrypt/pebble/actions/workflows/checks.yml)
+[![Tests](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml/badge.svg)](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml)
+
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg)](https://coveralls.io/github/letsencrypt/pebble)
 [![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
