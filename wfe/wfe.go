@@ -26,7 +26,7 @@ import (
 	"time"
 	"unicode"
 
-	"gopkg.in/square/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/ca"
@@ -684,7 +684,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
 	if err != nil {
 		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
@@ -2787,7 +2787,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 			fmt.Sprintf("failed to encode external account binding JSON structure: %s", err))
 	}
 
-	eab, err := jose.ParseSigned(string(eabBytes))
+	eab, err := jose.ParseSigned(string(eabBytes), goodJWSSignatureAlgorithms)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))

@@ -12,8 +12,12 @@ import (
 
 	"github.com/letsencrypt/pebble/v2/acme"
 
-	"gopkg.in/square/go-jose.v2"
+	jose "github.com/go-jose/go-jose/v4"
 )
+
+var goodJWSSignatureAlgorithms = []jose.SignatureAlgorithm{
+	jose.RS256, jose.ES256, jose.ES384, jose.ES512,
+}
 
 func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 	switch k := key.Key.(type) {

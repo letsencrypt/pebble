@@ -11,8 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/letsencrypt/pebble/v2/acme"
-	"gopkg.in/square/go-jose.v2"
 )
 
 type Order struct {
