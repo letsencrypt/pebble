@@ -1,4 +1,4 @@
-FROM golang:1.18-alpine as builder
+FROM golang:1.21-alpine as builder
 
 ENV CGO_ENABLED=0
 
@@ -8,7 +8,7 @@ COPY . .
 RUN go build -o /go/bin/pebble-challtestsrv ./cmd/pebble-challtestsrv
 
 ## main
-FROM alpine:3.15.4
+FROM alpine:3.16
 
 COPY --from=builder /go/bin/pebble-challtestsrv /usr/bin/pebble-challtestsrv
 

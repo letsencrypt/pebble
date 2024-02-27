@@ -1,4 +1,4 @@
-FROM golang:1.18-nanoserver-sac2016 as builder
+FROM golang:1.21-nanoserver-1809 as builder
 
 ENV CGO_ENABLED=0
 
@@ -8,7 +8,7 @@ COPY . .
 RUN go install -v ./cmd/pebble/...
 
 ## main
-FROM mcr.microsoft.com/windows/nanoserver:sac2016
+FROM mcr.microsoft.com/windows/nanoserver:1809
 
 COPY --from=builder /gopath/bin/pebble.exe /gopath/bin/pebble.exe
 COPY --from=builder /pebble-src/test/ /test/

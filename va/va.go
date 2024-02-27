@@ -112,7 +112,8 @@ type VAImpl struct {
 func New(
 	log *log.Logger,
 	httpPort, tlsPort int,
-	strict bool, customResolverAddr string) *VAImpl {
+	strict bool, customResolverAddr string,
+) *VAImpl {
 	va := &VAImpl{
 		log:                log,
 		httpPort:           httpPort,
@@ -218,7 +219,8 @@ func (va VAImpl) setOrderError(order *core.Order, err *acme.ProblemDetails) {
 func (va VAImpl) setAuthzInvalid(
 	authz *core.Authorization,
 	chal *core.Challenge,
-	err *acme.ProblemDetails) {
+	err *acme.ProblemDetails,
+) {
 	authz.Lock()
 	defer authz.Unlock()
 	// Update the authz status
@@ -271,9 +273,9 @@ func (va VAImpl) process(task *vaTask) {
 func (va VAImpl) performValidation(task *vaTask, results chan<- *core.ValidationRecord) {
 	if va.sleep {
 		// Sleep for a random amount of time between 0 and va.sleepTime seconds
-		len := time.Duration(rand.Intn(va.sleepTime))
-		va.log.Printf("Sleeping for %s seconds before validating", time.Second*len)
-		time.Sleep(time.Second * len)
+		length := time.Duration(rand.Intn(va.sleepTime)) * time.Second
+		va.log.Printf("Sleeping for %s seconds before validating", length)
+		time.Sleep(length)
 	}
 
 	// If `alwaysValid` is true then return a validation record immediately
@@ -325,7 +327,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	if len(txts) == 0 {
-		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		msg := "No TXT records found for DNS challenge"
 		result.Error = acme.UnauthorizedProblem(msg)
 		return result
 	}
@@ -342,7 +344,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 		}
 	}
 
-	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	msg := "Correct value not found for DNS challenge"
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
@@ -452,7 +454,6 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 	}
 
 	addrs, err := va.resolveIP(task.Identifier.Value)
-
 	if err != nil {
 		result.Error = acme.MalformedProblem(
 			fmt.Sprintf("Error occurred while resolving URL %q: %q", task.Identifier.Value, err))
@@ -547,7 +548,6 @@ func (va VAImpl) validateTLSALPN01(task *vaTask) *core.ValidationRecord {
 
 func (va VAImpl) fetchConnectionState(hostPort string, config *tls.Config) (*tls.ConnectionState, *acme.ProblemDetails) {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, config)
-
 	if err != nil {
 		// TODO(@cpu): Return better err - see parseHTTPConnError from boulder
 		return nil, acme.UnauthorizedProblem(
@@ -601,7 +601,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 	}
 
 	va.log.Printf("Attempting to validate w/ HTTP: %s\n", url)
-	httpRequest, err := http.NewRequest("GET", url.String(), nil)
+	httpRequest, err := http.NewRequest(http.MethodGet, url.String(), nil)
 	if err != nil {
 		return nil, url.String(), acme.MalformedProblem(
 			fmt.Sprintf("Invalid URL %q\n", url.String()))
@@ -631,7 +631,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 			// Control specifically which IP will be used for this request
 			addrs, err := va.resolveIP(host)
 			if err != nil {
-				return nil, fmt.Errorf("error occurred while resolving URL %q: %q", url.String(), err)
+				return nil, fmt.Errorf("error occurred while resolving URL %q: %w", url.String(), err)
 			}
 			if len(addrs) == 0 {
 				return nil, fmt.Errorf("could not resolve URL %q", url.String())
@@ -663,7 +663,7 @@ func (va VAImpl) fetchHTTP(identifier string, token string) ([]byte, string, *ac
 		return nil, url.String(), acme.InternalErrorProblem(err.Error())
 	}
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, url.String(), acme.UnauthorizedProblem(
 			fmt.Sprintf("Non-200 status code from HTTP: %s returned %d",
 				url.String(), resp.StatusCode))
@@ -686,7 +686,6 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	message := new(dns.Msg)
 	message.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
 	in, _, err := va.dnsClient.ExchangeContext(ctx, message, va.customResolverAddr)
-
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +724,6 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 	messageAAAA := new(dns.Msg)
 	messageAAAA.SetQuestion(dns.Fqdn(name), dns.TypeAAAA)
 	inAAAA, _, err := va.dnsClient.ExchangeContext(ctx, messageAAAA, va.customResolverAddr)
-
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +737,6 @@ func (va VAImpl) resolveIP(name string) ([]string, error) {
 	messageA := new(dns.Msg)
 	messageA.SetQuestion(dns.Fqdn(name), dns.TypeA)
 	inA, _, err := va.dnsClient.ExchangeContext(ctx, messageA, va.customResolverAddr)
-
 	if err != nil {
 		return nil, err
 	}

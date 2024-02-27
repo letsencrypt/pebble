@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -110,8 +111,8 @@ func (ca *CAImpl) makeRootCert(
 	subjectKey crypto.Signer,
 	subject pkix.Name,
 	subjectKeyID []byte,
-	signer *issuer) (*core.Certificate, error) {
-
+	signer *issuer,
+) (*core.Certificate, error) {
 	serial := makeSerial()
 	template := &x509.Certificate{
 		Subject:      subject,
@@ -187,7 +188,7 @@ func (ca *CAImpl) newRootIssuer(name string) (*issuer, error) {
 
 func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Signer, subject pkix.Name, subjectKeyID []byte) (*issuer, error) {
 	if root == nil {
-		return nil, fmt.Errorf("Internal error: root must not be nil")
+		return nil, errors.New("internal error: root must not be nil")
 	}
 	// Make an intermediate certificate with the root issuer
 	ic, err := ca.makeRootCert(intermediateKey, subject, subjectKeyID, root)
@@ -252,18 +253,13 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 }
 
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
-	var cn string
-	if len(domains) > 0 {
-		cn = domains[0]
-	} else if len(ips) > 0 {
-		cn = ips[0].String()
-	} else {
-		return nil, fmt.Errorf("must specify at least one domain name or IP address")
+	if len(domains) == 0 && len(ips) == 0 {
+		return nil, errors.New("must specify at least one domain name or IP address")
 	}
 
 	defaultChain := ca.chains[0].intermediates
 	if len(defaultChain) == 0 || defaultChain[0].cert == nil {
-		return nil, fmt.Errorf("cannot sign certificate - nil issuer")
+		return nil, errors.New("cannot sign certificate - nil issuer")
 	}
 	issuer := defaultChain[0]
 
@@ -294,11 +290,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 
 	serial := makeSerial()
 	template := &x509.Certificate{
-		DNSNames:    domains,
-		IPAddresses: ips,
-		Subject: pkix.Name{
-			CommonName: cn,
-		},
+		DNSNames:     domains,
+		IPAddresses:  ips,
 		SerialNumber: serial,
 		NotBefore:    certNotBefore,
 		NotAfter:     certNotAfter,
@@ -451,7 +444,7 @@ func (ca *CAImpl) GetRootKey(no int) *rsa.PrivateKey {
 	return nil
 }
 
-// GetIntermediateCert returns the first (closest the the leaf) issuer certificate
+// GetIntermediateCert returns the first (closest the leaf) issuer certificate
 // in the chain identified by `no`.
 func (ca *CAImpl) GetIntermediateCert(no int) *core.Certificate {
 	chain := ca.getChain(no)
