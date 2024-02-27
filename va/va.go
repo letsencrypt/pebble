@@ -368,7 +368,7 @@ func (va VAImpl) validateDNS02(task *vaTask) *core.ValidationRecord {
 	}
 
 	if len(txts) == 0 {
-		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		msg := fmt.Sprintf("No TXT records found for DNS-02 challenge")
 		result.Error = acme.UnauthorizedProblem(msg)
 		return result
 	}
@@ -391,11 +391,16 @@ func (va VAImpl) validateDNS02(task *vaTask) *core.ValidationRecord {
 }
 
 func (va VAImpl) validateDNSACCOUNT01(task *vaTask) *core.ValidationRecord {
-	const dnsacc01Prefix = "_acme-challenge_"
+	scope := "host"
+	if task.Challenge.Authz.Wildcard {
+		scope = "wildcard"
+	}
+	scopesubdomain := fmt.Sprintf("_acme-%s-challenge", scope)
+
 	hash := sha256.Sum256([]byte(task.AcctURL))
 	urlhash := strings.ToLower(base32.StdEncoding.EncodeToString(hash[0:10]))
 	//its 0 to 9th byte include both 0th and 9th so we end 10 here
-	challengeSubdomain := fmt.Sprintf("%s%s.%s", dnsacc01Prefix, urlhash, task.Identifier.Value)
+	challengeSubdomain := fmt.Sprintf("_%s.%s.%s", urlhash, scopesubdomain, task.Identifier.Value)
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
