@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -252,7 +253,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
-func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string, extensions []pkix.Extension) (*core.Certificate, error) {
 	if len(domains) == 0 && len(ips) == 0 {
 		return nil, errors.New("must specify at least one domain name or IP address")
 	}
@@ -299,6 +300,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		SubjectKeyId:          subjectKeyID,
+		ExtraExtensions:       extensions,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
@@ -373,6 +375,22 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	return ca
 }
 
+var ocspMustStapleExt = pkix.Extension{
+	Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
+}
+
+// Returns whether the given extensions array contains an OCSP Must-Staple
+// extension.
+func extensionsContainsOCSPMustStaple(extensions []pkix.Extension) bool {
+	for _, ext := range extensions {
+		if ext.Id.Equal(ocspMustStapleExt.Id) && bytes.Equal(ext.Value, ocspMustStapleExt.Value) {
+			return true
+		}
+	}
+	return false
+}
+
 func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	// Lock the order for reading
 	order.RLock()
@@ -397,9 +415,17 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		authz.RUnlock()
 	}
 
+	// Build a list of approved extensions to include in the certificate
+	var extensions []pkix.Extension
+	if extensionsContainsOCSPMustStaple(order.ParsedCSR.Extensions) {
+		// If the user requested an OCSP Must-Staple extension, use our
+		// pre-baked one to ensure a reasonable value for Critical
+		extensions = append(extensions, ocspMustStapleExt)
+	}
+
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, extensions)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
