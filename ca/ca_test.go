@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	ocspId    asn1.ObjectIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-	ocspValue                       = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+	ocspID    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+	ocspValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
 )
 
 func makeCa() *CAImpl {
@@ -59,7 +59,7 @@ func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
 
 func getOCSPMustStapleExtension(cert *x509.Certificate) *pkix.Extension {
 	for _, ext := range cert.Extensions {
-		if ext.Id.Equal(ocspId) && bytes.Equal(ext.Value, ocspValue) {
+		if ext.Id.Equal(ocspID) && bytes.Equal(ext.Value, ocspValue) {
 			return &ext
 		}
 	}
@@ -81,7 +81,7 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 	ca := makeCa()
 	order := makeCertOrderWithExtensions([]pkix.Extension{
 		{
-			Id:       ocspId,
+			Id:       ocspID,
 			Critical: false,
 			Value:    ocspValue,
 		},
@@ -98,7 +98,7 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 	ca = makeCa()
 	order = makeCertOrderWithExtensions([]pkix.Extension{
 		{
-			Id:       ocspId,
+			Id:       ocspID,
 			Critical: true,
 			Value:    ocspValue,
 		},
@@ -115,12 +115,12 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 	ca = makeCa()
 	order = makeCertOrderWithExtensions([]pkix.Extension{
 		{
-			Id:       ocspId,
+			Id:       ocspID,
 			Critical: true,
 			Value:    ocspValue,
 		},
 		{
-			Id:       ocspId,
+			Id:       ocspID,
 			Critical: true,
 			Value:    ocspValue,
 		},
@@ -128,7 +128,7 @@ func TestSettingOCSPMustStapleExtension(t *testing.T) {
 	ca.CompleteOrder(&order)
 	numOCSPMustStapleExtensions := 0
 	for _, ext := range order.CertificateObject.Cert.Extensions {
-		if ext.Id.Equal(ocspId) && bytes.Equal(ext.Value, ocspValue) {
+		if ext.Id.Equal(ocspID) && bytes.Equal(ext.Value, ocspValue) {
 			numOCSPMustStapleExtensions++
 		}
 	}
