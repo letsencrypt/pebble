@@ -14,7 +14,7 @@ FROM linux-base AS linux
 ARG APP
 ARG TARGETOS
 ARG TARGETARCH
-COPY --from=dist-files /${TARGETOS}/${TARGETARCH}/${APP} /app
+COPY --from=dist-files --chmod=0755 /${TARGETOS}/${TARGETARCH}/${APP} /app
 CMD ["/app"]
 
 # Use build arguments to select the appropriate binary for Windows
