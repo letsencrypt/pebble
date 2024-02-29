@@ -3,8 +3,8 @@
 # Fail on error, undefined, and uninitialized variables
 set -eu
 
-# Self-check with shellcheck
-shellcheck "$0"
+# Run shellcheck
+shellcheck *.sh
 
 # Run golangci-lint with the default configuration
 # but disable GOWORK to only check local go.mod

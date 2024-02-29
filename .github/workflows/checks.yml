@@ -1,4 +1,4 @@
-name: Go Checks
+name: Checks
 # Run on push to main and any pull request.
 on:
   push:
@@ -13,6 +13,7 @@ env:
   CGO_ENABLED: 0
   GO_VERSION: stable
   GOLANGCI_LINT_VERSION: v1.56.2
+  SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
   go-lint-checks:
     runs-on: ubuntu-latest
@@ -45,3 +46,10 @@ jobs:
           go mod vendor
           git diff --exit-code vendor ||
             (echo "::error::vendor directory needs to be updated" && exit 1)
+  shell-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          shellcheck $SHELLCHECK_SCRIPTS
