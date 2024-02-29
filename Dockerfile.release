@@ -15,7 +15,7 @@ ARG APP
 ARG TARGETOS
 ARG TARGETARCH
 COPY --from=dist-files --chmod=0755 /${TARGETOS}/${TARGETARCH}/${APP} /app
-CMD ["/app"]
+ENTRYPOINT [ "/app" ]
 
 # Use build arguments to select the appropriate binary for Windows
 FROM windows-base AS windows
@@ -23,7 +23,7 @@ ARG APP
 ARG TARGETOS
 ARG TARGETARCH
 COPY --from=dist-files /${TARGETOS}/${TARGETARCH}/${APP}.exe /app.exe
-CMD ["/app.exe"]
+ENTRYPOINT [ "/app.exe" ]
 
 # Final stage: dynamically select between Linux and Windows stages based on TARGETOS argument
 FROM ${TARGETOS} AS final
