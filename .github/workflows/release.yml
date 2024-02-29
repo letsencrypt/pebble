@@ -10,8 +10,15 @@ permissions:
   pull-requests: read
 env:
   DOCKER_PLATFORMS: linux/amd64, linux/arm64, windows/amd64
+  DOCKER_IMAGE_BASENAME: ghcr.io/${{ github.repository }}
 jobs:
-  build:
+  go-build:
+    env:
+      CGO_ENABLED: 0
+      GOARCH: ${{ matrix.go-arch }}
+      GOOS: ${{ matrix.go-os }}
+      LDFLAGS: -s -w -X main.version=${{ github.sha }}
+      OUTPUTDIR: /tmp/dist/${{ matrix.go-os }}/${{ matrix.go-arch }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -32,15 +39,10 @@ jobs:
           check-latest: true
           go-version-file: go.mod
       - name: Build ${{ matrix.app }} for ${{ matrix.go-os }}/${{ matrix.go-arch }}
-        env:
-          CGO_ENABLED: 0
-          GOARCH: ${{ matrix.go-arch }}
-          GOOS: ${{ matrix.go-os }}
-          LDFLAGS: -s -w -X main.version=${{ github.sha }}
         run: |
           go build \
             -ldflags="${LDFLAGS}" \
-            -o /tmp/dist/${{ matrix.go-os }}/${{ matrix.go-arch }}/ \
+            -o "${OUTPUTDIR}/" \
             -trimpath \
             -v \
             ./cmd/${{ matrix.app }}
@@ -51,9 +53,9 @@ jobs:
         with:
           name: ${{ matrix.app }}-${{ matrix.go-os }}-${{ matrix.go-arch }}
           path: /tmp/dist
-  docker:
+  docker-build:
     needs:
-      - build
+      - go-build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -73,13 +75,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/${{ matrix.app }}
+          images: ${{ env.DOCKER_IMAGE_BASENAME }}/${{ matrix.app }}
           # generate Docker tags based on the following events/attributes
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
             type=sha
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
