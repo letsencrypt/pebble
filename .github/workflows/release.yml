@@ -10,7 +10,7 @@ permissions:
   pull-requests: read
 env:
   DOCKER_PLATFORMS: linux/amd64, linux/arm64, windows/amd64
-  DOCKER_IMAGE_BASENAME: ghcr.io/${{ github.repository }}
+  DOCKER_IMAGE_BASENAME: ghcr.io/${{ github.repository_owner }}
 jobs:
   go-build:
     env:
