@@ -10,6 +10,7 @@ permissions:
   contents: read
   pull-requests: read
 env:
+  CGO_ENABLED: 0
   GO_VERSION: stable
   GOLANGCI_LINT_VERSION: v1.56.2
 jobs:
