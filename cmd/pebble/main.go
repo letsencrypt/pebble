@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/letsencrypt/pebble/v2/va"
 	"github.com/letsencrypt/pebble/v2/wfe"
 )
+
+var version = "dev" // Default value, to be overridden with ldflags
 
 type config struct {
 	Pebble struct {
@@ -50,10 +53,24 @@ func main() {
 		"dnsserver",
 		"",
 		"Define a custom DNS server address (ex: 192.168.0.56:5053 or 8.8.8.8:53).")
+	versionFlag := flag.Bool(
+		"version",
+		false,
+		"Print the software version")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *versionFlag {
+		fmt.Printf("Pebble version: %s\n", version)
+		os.Exit(0)
+	}
+
+	if *strictMode {
+		fmt.Printf("Running in strict mode\n")
+		return
 	}
 
 	// Log to stdout

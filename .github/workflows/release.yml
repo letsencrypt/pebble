@@ -36,7 +36,7 @@ jobs:
           CGO_ENABLED: 0
           GOARCH: ${{ matrix.go-arch }}
           GOOS: ${{ matrix.go-os }}
-          LDFLAGS: -s -w
+          LDFLAGS: -s -w "-X main.version=$(git rev-parse --short=8 HEAD)"
         run: |
           go build \
             -ldflags="${LDFLAGS}" \

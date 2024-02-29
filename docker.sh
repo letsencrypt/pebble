@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh
 
 # Fail on error, undefined, and uninitialized variables
 set -eu
@@ -9,13 +9,14 @@ APPS="pebble pebble-challtestsrv"
 docker buildx build \
     --tag pebble:dev \
     --load \
-    --progress plain \
+    --quiet \
     - <Dockerfile.devcontainer
 
 docker run --rm \
     --env GOCACHE=/work/.cache/go-build \
     --volume "$(pwd)":/work \
-    --volume "$(go env GOCACHE)":/work/.cache/go-build \
+    --volume "$(go env GOCACHE)":/work/.cache/go-build:cached \
+    --volume /tmp/dist:/work/dist \
     --workdir /work \
     pebble:dev \
     "./build.sh"
@@ -23,11 +24,11 @@ docker run --rm \
 for APP in ${APPS}; do
     TAG=${APP}:latest
     docker buildx build \
-        --build-context dist-files=./dist \
+        --build-context dist-files=/tmp/dist \
         --tag "${TAG}" \
         --load \
         --file Dockerfile.release \
-        --progress plain \
+        --quiet \
         .
     TAGS="${TAGS-} ${TAG}"
 done
@@ -39,7 +40,7 @@ for tag in ${TAGS}; do
 done
 
 # Smoke test the release image
-docker run \
-    -it \
-    --env GOCOVERDIR=. \
-    --rm pebble:latest -version
+echo Docker installed:
+echo '  - ' "$(
+    docker run -it --env GOCOVERDIR=/tmp --rm pebble:latest -version
+)"
