@@ -30,13 +30,24 @@ jobs:
         run: sudo snap install core && sudo snap refresh core
       - name: Install certbot
         run: sudo snap install --classic certbot && sudo ln -s /snap/bin/certbot /usr/bin/certbot
-      - name: go install pebble
-        run: go install -v -race ./...
+      - name: go install commands
+        run: go install -v -race ./cmd/...
       - name: launch pebble
         run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
       # Perform a test issuance with chisel2.py
       - name: chisel
         run: REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+      # Launch challtestsrv for further integration tests
+      - name: launch challtestsrv
+        run: challtestsrv &
+      # Run eggsampler/acme integration tests
+      - name: eggsampler/acme tests
+        env:
+          ACME_DIRECTORY: https://localhost:14000/dir
+          CLIENT: pebble
+        run: |
+          git clone https://github.com/eggsampler/acme.git /tmp/eggsampler-acme
+          cd /tmp/eggsampler-acme && make test
       # Run project unit tests (with the race detector enabled and atomic coverage profile collection)
       - name: unittests
         run: go test -v -race -covermode=atomic -coverprofile=profile.cov ./...
