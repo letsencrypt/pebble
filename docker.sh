@@ -13,9 +13,9 @@ docker buildx build \
     - <Dockerfile.devcontainer
 
 docker run --rm \
-    --env GOCACHE=/work/.cache/go-build \
+    --env GOCACHE=/.cache/go-build \
     --volume "$(pwd)":/work \
-    --volume "$(go env GOCACHE)":/work/.cache/go-build:cached \
+    --volume "$(go env GOCACHE)":/.cache/go-build:cached \
     --volume /tmp/dist:/work/dist \
     --workdir /work \
     pebble:dev \
