@@ -1597,30 +1597,27 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
 
-	// Authorizations for a wildcard identifier only get a DNS-01 challenges to
-	// match Boulder/Let's Encrypt wildcard issuance policy
+	// Determine which challenge types are enabled for this identifier
+	var enabledChallenges []string
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
-		chal, err := wfe.makeChallenge(acme.ChallengeDNS01, authz, request)
-		if err != nil {
-			return err
-		}
-		chals = []*core.Challenge{chal}
+		// Authorizations for a wildcard identifier get DNS-based challenges to
+		// match Boulder/Let's Encrypt wildcard issuance policy
+		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
-		var enabledChallenges []string
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
 		}
-		for _, chalType := range enabledChallenges {
-			chal, err := wfe.makeChallenge(chalType, authz, request)
-			if err != nil {
-				return err
-			}
-			chals = append(chals, chal)
+	}
+	for _, chalType := range enabledChallenges {
+		chal, err := wfe.makeChallenge(chalType, authz, request)
+		if err != nil {
+			return err
 		}
+		chals = append(chals, chal)
 	}
 
 	// Lock the authorization for writing to update the challenges
@@ -2377,8 +2374,12 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
-	// validated.
-	ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	// validated. Set a flag to indicate validation scope.
+	wildcard := false
+	if strings.HasPrefix(ident.Value, "*.") {
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+		wildcard = true
+	}
 
 	// Confirm challenge status again and update it immediately before sending it to the VA
 	prob = nil
@@ -2395,8 +2396,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
+	// Reconstruct account URL for use in scoped validation methods
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct, acctURL, wildcard)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()
