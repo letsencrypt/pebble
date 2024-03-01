@@ -63,14 +63,15 @@ jobs:
           - pebble
           - pebble-challtestsrv
     steps:
+      - uses: actions/checkout@v4
       - name: Download ${{ matrix.app }} artifacts
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-          path: ./dist
+          path: /tmp/dist
           pattern: ${{ matrix.app }}-*-*
       - name: Display ${{ matrix.app }} artifacts
-        run: ls -lR ./dist
+        run: ls -lR /tmp/dist
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -98,7 +99,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           build-args: APP=${{ matrix.app }}
-          build-contexts: dist-files=./dist
+          build-contexts: dist-files=/tmp/dist
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: Dockerfile.release
