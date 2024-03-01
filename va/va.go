@@ -371,7 +371,7 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 	}
 
 	if len(txts) == 0 {
-		msg := fmt.Sprintf("No TXT records found for DNS challenge")
+		msg := "No TXT records found for DNS challenge"
 		result.Error = acme.UnauthorizedProblem(msg)
 		return result
 	}
@@ -388,7 +388,7 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 		}
 	}
 
-	msg := fmt.Sprintf("Correct value not found for DNS challenge")
+	msg := "Correct value not found for DNS challenge"
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
