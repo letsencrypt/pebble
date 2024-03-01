@@ -1,4 +1,0 @@
-# syntax=docker/dockerfile:1
-FROM golang:1-alpine
-
-RUN apk add --no-cache build-base git

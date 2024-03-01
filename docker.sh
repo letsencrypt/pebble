@@ -3,24 +3,11 @@
 # Fail on error, undefined, and uninitialized variables
 set -eu
 
+# Build the Go binaries for Linux containers
+GOOS="linux" ./build.sh
+
+# Build `pebble` and `pebble-challtestsrv` images
 APPS="pebble pebble-challtestsrv"
-
-# no context needed for dev container
-docker buildx build \
-    --tag pebble:dev \
-    --load \
-    --quiet \
-    - <Dockerfile.devcontainer
-
-docker run --rm \
-    --env GOCACHE=/.cache/go-build \
-    --volume "$(pwd)":/work \
-    --volume "$(go env GOCACHE)":/.cache/go-build:cached \
-    --volume /tmp/dist:/work/dist \
-    --workdir /work \
-    pebble:dev \
-    "./build.sh"
-
 for APP in ${APPS}; do
     TAG=${APP}:latest
     docker buildx build \
@@ -34,13 +21,13 @@ for APP in ${APPS}; do
 done
 
 set +x
-echo "Built tags:"
+echo "Built Docker image tags:"
 for tag in ${TAGS}; do
     echo "  - ${tag}"
 done
 
 # Smoke test the release image
-echo Docker installed:
+echo Docker image runs:
 echo '  - ' "$(
     docker run -it --env GOCOVERDIR=/tmp --rm pebble:latest -version
 )"

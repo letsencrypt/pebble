@@ -17,16 +17,9 @@ export GOOS="${GOOS:-$(go env GOOS)}"
 # Build output directory
 outputdir="dist/${GOOS}/${GOARCH}"
 
-# Run the Go tests with coverage and race detection.
-# Enable cgo for race detection in cross compilation.
-export CGO_ENABLED=1
+# Build the software
 go build \
-    -cover \
     -ldflags="${ldflags}" \
     -o="${outputdir}/" \
-    -race \
     -tags="${tags}" \
     ./...
-
-echo Go built:
-echo '  - ' "$(GOCOVERDIR=/tmp ./"${outputdir}"/pebble -version)"
