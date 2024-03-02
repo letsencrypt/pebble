@@ -17,7 +17,7 @@ jobs:
       CGO_ENABLED: 0
       GOARCH: ${{ matrix.go-arch }}
       GOOS: ${{ matrix.go-os }}
-      LDFLAGS: -s -w -X main.version=${{ github.sha }}
+      LDFLAGS: -s -w -X main.version="${{ github.ref_name }} (${{ github.sha }})"
       OUTPUTDIR: /tmp/dist/${{ matrix.go-os }}/${{ matrix.go-arch }}
     runs-on: ubuntu-latest
     strategy:
