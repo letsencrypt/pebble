@@ -6,7 +6,7 @@
 ARG APP=${APP:-pebble}
 
 # Set the base image dynamically based on the target OS
-FROM --platform=${TARGETPLATFORM} alpine AS linux-base
+FROM --platform=${TARGETPLATFORM} scratch AS linux-base
 FROM --platform=${TARGETPLATFORM} mcr.microsoft.com/windows/nanoserver:ltsc2022 AS windows-base
 
 # Use build arguments to select the appropriate binary for Linux
