@@ -2,7 +2,7 @@ version: "3"
 services:
   pebble:
     image: ghcr.io/letsencrypt/pebble:latest
-    command: pebble -config /test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
+    command: -config test/config/pebble-config.json -strict -dnsserver 10.30.50.3:8053
     ports:
       - 14000:14000 # HTTPS ACME API
       - 15000:15000 # HTTPS Management API
@@ -11,7 +11,7 @@ services:
         ipv4_address: 10.30.50.2
   challtestsrv:
     image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
-    command: pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 10.30.50.3
+    command: -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
       - 8055:8055 # HTTP Management API
     networks:

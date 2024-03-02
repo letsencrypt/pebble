@@ -58,19 +58,20 @@ func main() {
 		false,
 		"Print the software version")
 	flag.Parse()
+
+	if *versionFlag {
+		// Print the version and exit
+		fmt.Printf("Pebble version: %s\n", version)
+		os.Exit(0)
+	}
+
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	if *versionFlag {
-		fmt.Printf("Pebble version: %s\n", version)
-		os.Exit(0)
-	}
-
 	if *strictMode {
 		fmt.Printf("Running in strict mode\n")
-		return
 	}
 
 	// Log to stdout

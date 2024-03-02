@@ -8,10 +8,12 @@ GOOS="linux" ./build.sh
 
 # Build `pebble` and `pebble-challtestsrv` images
 APPS="pebble pebble-challtestsrv"
+TAG_PREFIX="ghcr.io/letsencrypt"
 for APP in ${APPS}; do
-    TAG=${APP}:latest
+    TAG="${TAG_PREFIX}/${APP}:latest"
     docker buildx build \
-        --build-context dist-files=/tmp/dist \
+        --build-arg "APP=${APP}" \
+        --build-context dist-files=./dist \
         --tag "${TAG}" \
         --load \
         --file Dockerfile.release \
@@ -29,5 +31,5 @@ done
 # Smoke test the release image
 echo Docker image runs:
 echo '  - ' "$(
-    docker run -it --env GOCOVERDIR=/tmp --rm pebble:latest -version
+    docker run --rm ${TAG_PREFIX}/pebble:latest -version
 )"

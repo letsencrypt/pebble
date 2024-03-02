@@ -1,9 +1,12 @@
 name: Build Release
-# Run on release tags only.
+# Run on semver tags and release publish events.
 on:
   push:
     tags:
       - v*
+  release:
+    types:
+      - published
 permissions:
   contents: read
   packages: write # Allow docker/build-push-action to publish to GitHub Container Registry
@@ -17,7 +20,7 @@ jobs:
       CGO_ENABLED: 0
       GOARCH: ${{ matrix.go-arch }}
       GOOS: ${{ matrix.go-os }}
-      LDFLAGS: -s -w -X main.version="${{ github.ref_name }} (${{ github.sha }})"
+      LDFLAGS: -s -w -X 'main.version=${{ github.ref_name }} (${{ github.sha }})'
       OUTPUTDIR: /tmp/dist/${{ matrix.go-os }}/${{ matrix.go-arch }}
     runs-on: ubuntu-latest
     strategy:
