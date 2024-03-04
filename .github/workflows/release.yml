@@ -1,9 +1,6 @@
 name: Build Release
-# Run on semver tags and release publish events.
+# Run on release publish events.
 on:
-  push:
-    tags:
-      - v*
   release:
     types:
       - published
@@ -110,3 +107,21 @@ jobs:
           platforms: ${{ env.DOCKER_PLATFORMS }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+  docker-version:
+    needs:
+      - docker-build
+    runs-on: ${{ matrix.docker-os }}
+    strategy:
+      matrix:
+        docker-os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Display pebble version in container image
+        run: docker run ${{ env.DOCKER_IMAGE_BASENAME }}/pebble:latest -version
