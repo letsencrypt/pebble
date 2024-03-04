@@ -1,9 +1,9 @@
 name: Build Release
-# Run on release publish events.
+# Run on semver tags.
 on:
-  release:
-    types:
-      - published
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
 permissions:
   contents: read
   packages: write # Allow docker/build-push-action to publish to GitHub Container Registry
@@ -47,7 +47,7 @@ jobs:
             -v \
             ./cmd/${{ matrix.app }}
       - name: Display ${{ matrix.app }} artifacts
-        run: ls -lR /tmp/dist
+        run: tree /tmp/dist
       - name: Store ${{ matrix.app }} artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -71,7 +71,7 @@ jobs:
           path: /tmp/dist
           pattern: ${{ matrix.app }}-*-*
       - name: Display ${{ matrix.app }} artifacts
-        run: ls -lR /tmp/dist
+        run: tree /tmp/dist
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -83,8 +83,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
             type=sha
-            # set latest tag for default branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -125,3 +124,35 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Display pebble version in container image
         run: docker run ${{ env.DOCKER_IMAGE_BASENAME }}/pebble:latest -version
+  create-release:
+    needs:
+      - go-build
+    permissions:
+      contents: write # Allow creation of a release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+      - name: Display build artifacts
+        run: tree .
+      - name: Create release
+        # https://cli.github.com/manual/gh_release_create
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --title "${{ github.ref_name }}" \
+            --verify-tag
+        continue-on-error: true
+      - name: Upload release files
+        # https://cli.github.com/manual/gh_release_upload
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for artifact in *; do
+            tar czf ${artifact}.tar.gz ${artifact}
+            zip -r ${artifact}.zip ${artifact}
+            gh release upload ${{ github.ref_name }} ${artifact}.* \
+              --repo ${{ github.repository }};
+          done
