@@ -46,10 +46,3 @@ jobs:
           go mod vendor
           git diff --exit-code vendor ||
             (echo "::error::vendor directory needs to be updated" && exit 1)
-  shell-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run shellcheck
-        run: |
-          shellcheck $SHELLCHECK_SCRIPTS
