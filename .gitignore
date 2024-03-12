@@ -37,3 +37,5 @@ tags
 .idea
 
 .vscode/*
+/profile.cov
+/dist/

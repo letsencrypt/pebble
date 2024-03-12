@@ -1,70 +1,74 @@
 name: Tests
-
 on:
   push:
     branches:
       - main
   pull_request:
-
 permissions:
   contents: read
   pull-requests: read
-
 jobs:
-
-  test-linux:
-    name: Test on Linux
+  certbot-linux:
+    name: Run Certbot tests on Linux
     runs-on: ubuntu-latest
-    env:
-      GO_VERSION: oldstable
     steps:
-
       - name: Setup /etc/hosts
         run: |
           echo "127.0.0.1 example.letsencrypt.org" | sudo tee -a /etc/hosts
           echo "127.0.0.1 elpmaxe.letsencrypt.org" | sudo tee -a /etc/hosts
-
       # https://github.com/marketplace/actions/checkout
       - name: Check out code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       # https://github.com/marketplace/actions/setup-go-environment
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: apt install
+          go-version-file: go.mod
+      - name: Install packages
         run: sudo apt-get install snapd python3-acme python3-josepy
-
-      - name: snap install
+      - name: Setup snap
         run: sudo snap install core && sudo snap refresh core
-
-      - name: snap install certbot
+      - name: Install certbot
         run: sudo snap install --classic certbot && sudo ln -s /snap/bin/certbot /usr/bin/certbot
-
-      - name: go install tools
-        run: go install golang.org/x/tools/cmd/cover@latest
-
-      - name: go install goveralls
-        run: go install github.com/mattn/goveralls@latest
-
-      - name: go install pebble
-        run: go install -v -race ./...
-
+      - name: go install commands
+        run: go install -v -race ./cmd/...
       - name: launch pebble
         run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
-
-      # Run project unit tests (with the race detector enabled and atomic coverage profile collection)
-      - name: unittests
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-
-#      # Upload collected coverage profile to goveralls
-#      - name: goveralls
-#        run: goveralls -coverprofile=coverage.out -service=github
-
       # Perform a test issuance with chisel2.py
       - name: chisel
         run: REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
+  eggsampler-linux:
+    name: Run eggsampler/acme tests on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go install commands
+        run: go install -v -race ./cmd/...
+      - name: launch pebble
+        run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble -dnsserver localhost:8053 &
+      - name: launch challtestsrv for integration tests
+        run: pebble-challtestsrv &
+      - name: run eggsampler/acme tests
+        env:
+          PEBBLE_PATH: ${{ github.workspace }}
+        run: |
+          git clone https://github.com/eggsampler/acme.git /tmp/eggsampler-acme
+          cd /tmp/eggsampler-acme && make test
+  go-linux:
+    name: Run Go tests on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      # Run project unit tests (with the race detector enabled and atomic coverage profile collection)
+      - name: unittests
+        run: go test -v -race -covermode=atomic -coverprofile=profile.cov ./...
+      # Upload collected coverage profile to goveralls
+      - uses: shogo82148/actions-goveralls@v1
+        with:
+          path-to-profile: profile.cov

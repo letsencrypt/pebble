@@ -1,53 +1,48 @@
 name: Checks
-
+# Run on push to main and any pull request.
 on:
   push:
     branches:
       - main
   pull_request:
-
 permissions:
+  checks: write # Allow write access to checks to allow annotation of code in the PR.
   contents: read
   pull-requests: read
-
+env:
+  CGO_ENABLED: 0
+  GO_VERSION: stable
+  GOLANGCI_LINT_VERSION: v1.56.2
+  SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
-
-  checks:
-    name: Check Process
+  go-lint-checks:
     runs-on: ubuntu-latest
-    env:
-      GO_VERSION: oldstable
-      GOLANGCI_LINT_VERSION: v1.56.2
-      CGO_ENABLED: 0
-
     steps:
-
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Check and get dependencies
+      - name: Run GolangCI-Lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          # skip cache because of flaky behaviors
+          skip-build-cache: true
+          skip-pkg-cache: true
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+  go-mod-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Check if go.mod is tidy
         run: |
           go mod tidy
-          git diff --exit-code go.mod
-          git diff --exit-code go.sum
-
-      - name: vendoring
-        run: go mod vendor
-
-      - name: vendoring diff
-        run: git diff --exit-code vendor/
-
-      # https://golangci-lint.run/usage/install#other-ci
-      - name: Install golangci-lint ${{ env.GOLANGCI_LINT_VERSION }}
+          git diff --exit-code go.mod go.sum ||
+            (echo "::error::go.mod and go.sum need to be tidy" && exit 1)
+      - name: Check if vendor directory is up to date
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${GOLANGCI_LINT_VERSION}
-          golangci-lint run
-
-
+          go mod vendor
+          git diff --exit-code vendor ||
+            (echo "::error::vendor directory needs to be updated" && exit 1)

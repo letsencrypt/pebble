@@ -1,38 +1,34 @@
-name: Go Matrix
+name: Go Build Matrix
 on:
   push:
     branches:
       - main
   pull_request:
-
 permissions:
   contents: read
   pull-requests: read
-
 jobs:
-
   cross:
-    name: Build
+    name: Build on ${{ matrix.os }} with Go ${{ matrix.go-version }}
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: 0
-
     strategy:
       matrix:
-        go-version: [ oldstable, stable ]
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
+        go-version:
+          - oldstable
+          - stable
+        os:
+          - ubuntu-latest
+          - macos-14 # M1 runners
+          - macos-latest
+          - windows-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-
-      - name: Build pebble
-        run: go build -v -ldflags "-s -w" -trimpath -o pebble ./cmd/pebble
-
-      - name: Build pebble-challtestsrv
-        run: go build -v -ldflags "-s -w" -trimpath -o pebble-challtestsrv ./cmd/pebble-challtestsrv
+      - name: Build the module
+        run: go build -v ./...
