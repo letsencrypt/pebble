@@ -356,8 +356,7 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 	if task.Wildcard {
 		scope = "wildcard"
 	}
-	challengeSubdomain := "_" + acctLabel +
-		"._acme-" + scope + "-challenge." + task.Identifier.Value
+	challengeSubdomain := fmt.Sprintf("_%s._acme-%s-challenge.%s", acctLabel, scope, task.Identifier.Value)
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
@@ -366,12 +365,12 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 
 	txts, err := va.getTXTEntry(challengeSubdomain)
 	if err != nil {
-		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS challenge (%q)", err))
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS-ACCOUNT-01 challenge (%q)", err))
 		return result
 	}
 
 	if len(txts) == 0 {
-		msg := "No TXT records found for DNS challenge"
+		msg := "No TXT records found for DNS-ACCOUNT-01 challenge"
 		result.Error = acme.UnauthorizedProblem(msg)
 		return result
 	}
@@ -388,7 +387,7 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 		}
 	}
 
-	msg := "Correct value not found for DNS challenge"
+	msg := "Correct value not found for DNS-ACCOUNT-01 challenge"
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
