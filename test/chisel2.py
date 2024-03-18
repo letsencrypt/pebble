@@ -149,8 +149,12 @@ def do_dns_challenges(client, authzs):
 def do_dns_account_challenges(client, authzs):
     cleanup_hosts = []
     for a in authzs:
+        scope = "host"
+        if (a.body.wildcard):
+            scope = "wildcard"
+
         c = get_chall(a, challenges.DNSACCOUNT01)
-        name, value = (c.validation_domain_name(client.net.account.uri, a.body.identifier.value),
+        name, value = (c.validation_domain_name(client.net.account.uri, scope, a.body.identifier.value),
             c.validation(client.net.key))
         cleanup_hosts.append(name)
         requests.post(SET_TXT, json={
