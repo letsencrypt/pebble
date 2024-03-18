@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base32"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -92,6 +93,8 @@ type vaTask struct {
 	Identifier acme.Identifier
 	Challenge  *core.Challenge
 	Account    *core.Account
+	AccountURL string
+	Wildcard   bool
 }
 
 type VAImpl struct {
@@ -157,11 +160,13 @@ func New(
 	return va
 }
 
-func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account) {
+func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account, acctURL string, wildcard bool) {
 	task := &vaTask{
 		Identifier: ident,
 		Challenge:  chal,
 		Account:    acct,
+		AccountURL: acctURL,
+		Wildcard:   wildcard,
 	}
 	// Submit the task for validation
 	va.tasks <- task
@@ -299,6 +304,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateTLSALPN01(task)
 	case acme.ChallengeDNS01:
 		results <- va.validateDNS01(task)
+	case acme.ChallengeDNSAccount01:
+		results <- va.validateDNSAccount01(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
@@ -338,6 +345,49 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 	}
 
 	msg := "Correct value not found for DNS challenge"
+	result.Error = acme.UnauthorizedProblem(msg)
+	return result
+}
+
+func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
+	acctHash := sha256.Sum256([]byte(task.AccountURL))
+	acctLabel := strings.ToLower(base32.StdEncoding.EncodeToString(acctHash[0:10]))
+	scope := "host"
+	if task.Wildcard {
+		scope = "wildcard"
+	}
+	challengeSubdomain := fmt.Sprintf("_%s._acme-%s-challenge.%s", acctLabel, scope, task.Identifier.Value)
+
+	result := &core.ValidationRecord{
+		URL:         challengeSubdomain,
+		ValidatedAt: time.Now(),
+	}
+
+	txts, err := va.getTXTEntry(challengeSubdomain)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(fmt.Sprintf("Error retrieving TXT records for DNS-ACCOUNT-01 challenge (%q)", err))
+		return result
+	}
+
+	if len(txts) == 0 {
+		msg := "No TXT records found for DNS-ACCOUNT-01 challenge"
+		result.Error = acme.UnauthorizedProblem(msg)
+		return result
+	}
+
+	task.Challenge.RLock()
+	expectedKeyAuthorization := task.Challenge.ExpectedKeyAuthorization(task.Account.Key)
+	h := sha256.Sum256([]byte(expectedKeyAuthorization))
+	task.Challenge.RUnlock()
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h[:])
+
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
+			return result
+		}
+	}
+
+	msg := "Correct value not found for DNS-ACCOUNT-01 challenge"
 	result.Error = acme.UnauthorizedProblem(msg)
 	return result
 }
