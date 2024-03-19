@@ -121,9 +121,8 @@ for more information.
 
 #### Prebuilt Docker Images
 
-If you would prefer not to use the provided `docker-compose.yml`, or to build
-container images yourself, you can also use the [published
-images](https://hub.docker.com/r/letsencrypt/pebble/).
+Pebble releases are published as Docker images to the
+[Github Container Registry](https://github.com/orgs/letsencrypt/packages?repo_name=pebble)
 
 With a docker-compose file:
 
@@ -132,7 +131,7 @@ version: '3'
 
 services:
  pebble:
-  image: letsencrypt/pebble
+  image: ghcr.io/letsencrypt/pebble:latest
   command: pebble -config /test/my-pebble-config.json
   ports:
     - 14000:14000  # ACME port
@@ -146,12 +145,10 @@ services:
 With a Docker command:
 
 ```bash
-docker run -e "PEBBLE_VA_NOSLEEP=1" letsencrypt/pebble
+docker run -e "PEBBLE_VA_NOSLEEP=1" ghcr.io/letsencrypt/pebble
 # or
 docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
-
-**Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
 
 ### Default validation ports
 
