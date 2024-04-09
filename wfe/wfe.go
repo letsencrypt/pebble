@@ -2787,6 +2787,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 	}
 
 	eab, err := jose.ParseSigned(string(eabBytes), goodJWSSignatureAlgorithms)
+	fmt.Printf("EAB: %+v\n", eab)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))
@@ -2798,6 +2799,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 	// -  The "nonce" field MUST NOT be present
 	// -  The "url" field MUST be set to the same value as the outer JWS
 	keyID, prob := wfe.verifyEABPayloadHeader(eab, outerPostData)
+	fmt.Printf("keyID: %+v\n", keyID)
 	if prob != nil {
 		return nil, prob
 	}
@@ -2805,6 +2807,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 	// 3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
 	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
+	fmt.Printf("key: %+v\n", key)
 	if !ok {
 		return nil, acme.UnauthorizedProblem(
 			"the field 'kid' references a key that is not known to the ACME server")
@@ -2839,6 +2842,7 @@ func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignatu
 	}
 
 	header := innerJWS.Signatures[0].Protected
+	fmt.Println(header.Algorithm)
 	switch header.Algorithm {
 	case "HS256", "HS384", "HS512":
 		break

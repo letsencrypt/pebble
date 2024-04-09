@@ -424,7 +424,10 @@ func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
 		return errors.New("key ID and key must not be empty")
 	}
 
+	fmt.Printf("AddExternalAccountKeyByID keyID: %+v, key: %+v\n", keyID, key)
 	keyDecoded, err := base64.RawURLEncoding.DecodeString(key)
+	fmt.Printf("keyDecoded: %+v\n", keyDecoded)
+
 	if err != nil {
 		return fmt.Errorf("failed to decode base64 URL encoded key %q: %w", key, err)
 	}
@@ -446,7 +449,13 @@ func (m *MemoryStore) AddExternalAccountKeyByID(keyID, key string) error {
 func (m *MemoryStore) GetExtenalAccountKeyByID(keyID string) ([]byte, bool) {
 	m.RLock()
 	defer m.RUnlock()
+
+	fmt.Println([]byte(keyID))
+	for x, i := range m.externalAccountKeysByID {
+		fmt.Printf("x: %+v\ni:%+v\n", x, i)
+	}
 	key, ok := m.externalAccountKeysByID[keyID]
+	fmt.Println(key)
 	return key, ok
 }
 

@@ -16,7 +16,7 @@ import (
 )
 
 var goodJWSSignatureAlgorithms = []jose.SignatureAlgorithm{
-	jose.RS256, jose.ES256, jose.ES384, jose.ES512,
+	jose.RS256, jose.ES256, jose.ES384, jose.ES512, jose.HS256,
 }
 
 func algorithmForKey(key *jose.JSONWebKey) (string, error) {
