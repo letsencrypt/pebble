@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+
+# The build argument `APP` is used to select the appropriate binary
+# for the target OS.
+# The binary specified by `APP` must exist in the `dist-files` stage.
+ARG APP=${APP:-pebble}
+
+# Set the base image dynamically based on the target OS
+FROM --platform=${TARGETPLATFORM} scratch AS linux-base
+FROM --platform=${TARGETPLATFORM} mcr.microsoft.com/windows/nanoserver:ltsc2022 AS windows-base
+
+# Use build arguments to select the appropriate binary for Linux
+FROM linux-base AS linux
+ARG APP
+ARG TARGETOS
+ARG TARGETARCH
+COPY --from=dist-files --chmod=0755 /${TARGETOS}/${TARGETARCH}/${APP} /app
+ENTRYPOINT [ "/app" ]
+
+# Use build arguments to select the appropriate binary for Windows
+FROM windows-base AS windows
+ARG APP
+ARG TARGETOS
+ARG TARGETARCH
+COPY --from=dist-files /${TARGETOS}/${TARGETARCH}/${APP}.exe /app.exe
+ENTRYPOINT [ "/app.exe" ]
+
+# Final stage: dynamically select between Linux and Windows stages based on TARGETOS argument
+FROM ${TARGETOS} AS final
+# Add test configuration files
+COPY ./test/ /test/

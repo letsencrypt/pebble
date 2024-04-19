@@ -12,6 +12,7 @@
     "retryAfter": {
         "authz": 3,
         "order": 5
-    }
+    },
+    "certificateValidityPeriod": 157766400
   }
 }

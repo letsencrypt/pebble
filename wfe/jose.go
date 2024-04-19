@@ -7,12 +7,17 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 
-	"gopkg.in/square/go-jose.v2"
+	jose "github.com/go-jose/go-jose/v4"
 )
+
+var goodJWSSignatureAlgorithms = []jose.SignatureAlgorithm{
+	jose.RS256, jose.ES256, jose.ES384, jose.ES512,
+}
 
 func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 	switch k := key.Key.(type) {
@@ -61,7 +66,7 @@ func keyDigest(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:
 		if t == nil {
-			return "", fmt.Errorf("Cannot compute digest of nil key")
+			return "", errors.New("cannot compute digest of nil key")
 		}
 		return keyDigest(t.Key)
 	case jose.JSONWebKey:

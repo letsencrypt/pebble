@@ -6,7 +6,7 @@ version of the ACME specification. Usage:
 $ virtualenv venv
 $ . venv/bin/activate
 $ pip install -r requirements.txt
-$ python chisel.py foo.com bar.com
+$ python chisel2.py foo.com bar.com
 """
 from __future__ import print_function
 import logging

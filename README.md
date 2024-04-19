@@ -1,7 +1,9 @@
 # Pebble
 
-[![Build Status](https://travis-ci.org/letsencrypt/pebble.svg?branch=master)](https://travis-ci.org/letsencrypt/pebble)
-[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg?branch=cpu-goveralls)](https://coveralls.io/github/letsencrypt/pebble?branch=cpu-goveralls)
+[![Checks](https://github.com/letsencrypt/pebble/actions/workflows/checks.yml/badge.svg)](https://github.com/letsencrypt/pebble/actions/workflows/checks.yml)
+[![Tests](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml/badge.svg)](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml)
+
+[![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg)](https://coveralls.io/github/letsencrypt/pebble)
 [![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
@@ -66,21 +68,25 @@ correctly.
 
 ## Install
 
-1. [Set up Go](https://golang.org/doc/install). Add ~/go/bin to your $PATH, or
-   set GOBIN to a directory that is in your $PATH already.
-2. git clone github.com/letsencrypt/pebble/
-3. cd pebble
-4. go install ./cmd/pebble
+1. [Set up Go](https://golang.org/doc/install)
+2. Add `~/go/bin` to your $PATH, or set `GOBIN` to a directory that is in your
+   $PATH already, so that `pebble` will be in your $PATH for easy execution.
+   - One way to do this is to add `export PATH=$PATH:$HOME/go/bin` to your `~/.profile`
+4. git clone https://github.com/letsencrypt/pebble/
+5. cd pebble
+6. go install ./cmd/pebble
 
 ## Usage
 
 ### Binary
 
-Assuming pebble is in your $PATH:
+Assuming pebble is easily accessible in your $PATH:
 
 ```bash
 pebble -config ./test/config/pebble-config.json
 ```
+
+(otherwise replace `pebble` with `~/go/bin/pebble` or `$GOBIN/pebble`)
 
 Afterwards you can access the Pebble server's ACME directory
 at `https://localhost:14000/dir`.
@@ -115,9 +121,8 @@ for more information.
 
 #### Prebuilt Docker Images
 
-If you would prefer not to use the provided `docker-compose.yml`, or to build
-container images yourself, you can also use the [published
-images](https://hub.docker.com/r/letsencrypt/pebble/).
+Pebble releases are published as Docker images to the
+[Github Container Registry](https://github.com/orgs/letsencrypt/packages?repo_name=pebble)
 
 With a docker-compose file:
 
@@ -126,7 +131,7 @@ version: '3'
 
 services:
  pebble:
-  image: letsencrypt/pebble
+  image: ghcr.io/letsencrypt/pebble:latest
   command: pebble -config /test/my-pebble-config.json
   ports:
     - 14000:14000  # ACME port
@@ -140,12 +145,10 @@ services:
 With a Docker command:
 
 ```bash
-docker run -e "PEBBLE_VA_NOSLEEP=1" letsencrypt/pebble
+docker run -e "PEBBLE_VA_NOSLEEP=1" ghcr.io/letsencrypt/pebble
 # or
 docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
-
-**Note**: The Pebble dockerfile uses [multi-stage builds](https://docs.docker.com/develop/develop-images/multistage-build/) and requires Docker CE 17.05.0-ce or newer.
 
 ### Default validation ports
 
@@ -311,7 +314,7 @@ interface will listen on. Set `managementListenAddress` to an empty string or `n
 to disable it.
 
 The default configuration for this management interface as defined in
-`test/config/pebble-config.yml` is to listen on any address on port 15000:
+`test/config/pebble-config.json` is to listen on any address on port 15000:
 
 ```
   "managementListenAddress": "0.0.0.0:15000",

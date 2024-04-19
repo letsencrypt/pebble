@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/pebble/v2/db"
 )
 
-func TestAuthzRace(t *testing.T) {
+func TestAuthzRace(_ *testing.T) {
 	// Exercises a specific (fixed) race condition:
 	// WARNING: DATA RACE
 	// Read at 0x00c00040cde8 by goroutine 55:

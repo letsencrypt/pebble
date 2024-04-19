@@ -26,8 +26,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/ca"
@@ -178,11 +178,8 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
-	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int) WebFrontEndImpl {
-	// Seed rand from the current time so test environments don't always have
-	// the same nonce rejection and sleep time patterns.
-	rand.Seed(clockSource.Now().UnixNano())
-
+	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int,
+) WebFrontEndImpl {
 	// Read the % of good nonces that should be rejected as bad nonces from the
 	// environment
 	nonceErrPercentVal := os.Getenv(badNonceEnvVar)
@@ -249,8 +246,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 	mux *http.ServeMux,
 	pattern string,
 	handler wfeHandlerFunc,
-	methods ...string) {
-
+	methods ...string,
+) {
 	methodsMap := make(map[string]bool)
 	for _, m := range methods {
 		methodsMap[m] = true
@@ -302,7 +299,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 				handler(ctx, response, request)
 				cancel()
 			},
-			)})
+			),
+		})
 	mux.Handle(pattern, defaultHandler)
 }
 
@@ -310,7 +308,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 // enable use by CORS-aware user agents. If the request is a CORS preflight request, the
 // function returns true, in which case no further data may be written to the response.
 func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.ResponseWriter,
-	allowedMethodsMap map[string]bool) bool {
+	allowedMethodsMap map[string]bool,
+) bool {
 	// 6.1.1, 6.2.1. No Origin header means CORS is not relevant.
 	// 6.1.2, 6.2.2. Origin's value is not processed because it always matches.
 	if request.Header.Get("Origin") == "" {
@@ -349,7 +348,8 @@ func (wfe *WebFrontEndImpl) processCORS(request *http.Request, response http.Res
 func (wfe *WebFrontEndImpl) HandleManagementFunc(
 	mux *http.ServeMux,
 	pattern string,
-	handler wfeHandlerFunc) { // nolint:interfacer
+	handler wfeHandlerFunc,
+) {
 	mux.Handle(pattern, http.StripPrefix(pattern, handler))
 }
 
@@ -364,8 +364,10 @@ func (wfe *WebFrontEndImpl) sendError(prob *acme.ProblemDetails, response http.R
 	_, _ = response.Write(problemDoc)
 }
 
-type certGetter func(no int) *core.Certificate
-type keyGetter func(no int) *rsa.PrivateKey
+type (
+	certGetter func(no int) *core.Certificate
+	keyGetter  func(no int) *rsa.PrivateKey
+)
 
 func (wfe *WebFrontEndImpl) handleCert(
 	certGet certGetter,
@@ -373,7 +375,7 @@ func (wfe *WebFrontEndImpl) handleCert(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+	return func(_ context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		no, err := strconv.Atoi(request.URL.Path)
 		if err != nil {
@@ -411,7 +413,7 @@ func (wfe *WebFrontEndImpl) handleKey(
 	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request) {
-	return func(ctx context.Context, response http.ResponseWriter, request *http.Request) {
+	return func(_ context.Context, response http.ResponseWriter, request *http.Request) {
 		// Check for parameter
 		no, err := strconv.Atoi(request.URL.Path)
 		if err != nil {
@@ -455,10 +457,10 @@ func (wfe *WebFrontEndImpl) handleKey(
 }
 
 func (wfe *WebFrontEndImpl) handleCertStatusBySerial(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	serialStr := strings.TrimPrefix(request.URL.Path, certStatusBySerial)
 	serial := big.NewInt(0)
 	if _, ok := serial.SetString(serialStr, 16); !ok {
@@ -542,10 +544,10 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 }
 
 func (wfe *WebFrontEndImpl) Directory(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	directoryEndpoints := map[string]string{
 		"newNonce":   noncePath,
 		"newAccount": newAccountPath,
@@ -609,7 +611,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 		proto = "https"
 	}
 
-	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
+	// Allow upstream proxies to specify the forwarded protocol. Allow this value
 	// to override our own guess.
 	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
 		proto = specifiedProto
@@ -625,9 +627,10 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 }
 
 func (wfe *WebFrontEndImpl) Nonce(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	statusCode := http.StatusNoContent
 	// The ACME specification says GET requets should receive http.StatusNoContent
 	// and HEAD requests should receive http.StatusOK.
@@ -681,7 +684,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
 	if err != nil {
 		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
@@ -833,8 +836,8 @@ type authenticatedPOST struct {
 // accounts.
 func (wfe *WebFrontEndImpl) verifyPOST(
 	request *http.Request,
-	kx keyExtractor) (*authenticatedPOST, *acme.ProblemDetails) {
-
+	kx keyExtractor,
+) (*authenticatedPOST, *acme.ProblemDetails) {
 	if prob := wfe.validPOST(request); prob != nil {
 		return nil, prob
 	}
@@ -867,7 +870,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 // acceptable and that the JWS verifies with the provided pubkey.
 func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 	pubKey *jose.JSONWebKey,
-	parsedJWS *jose.JSONWebSignature) ([]byte, *acme.ProblemDetails) {
+	parsedJWS *jose.JSONWebSignature,
+) ([]byte, *acme.ProblemDetails) {
 	if prob := checkAlgorithm(pubKey, parsedJWS); prob != nil {
 		return nil, prob
 	}
@@ -882,7 +886,8 @@ func (wfe *WebFrontEndImpl) verifyJWSSignatureAndAlgorithm(
 // Extracts URL header parameter from parsed JWS.
 // Second return value indicates whether header was found.
 func (wfe *WebFrontEndImpl) extractJWSURL(
-	parsedJWS *jose.JSONWebSignature) (string, bool) {
+	parsedJWS *jose.JSONWebSignature,
+) (string, bool) {
 	headerURL, ok := parsedJWS.Signatures[0].Header.ExtraHeaders[jose.HeaderKey("url")].(string)
 	if !ok || len(headerURL) == 0 {
 		return "", false
@@ -893,7 +898,8 @@ func (wfe *WebFrontEndImpl) extractJWSURL(
 func (wfe *WebFrontEndImpl) verifyJWS(
 	pubKey *jose.JSONWebKey,
 	parsedJWS *jose.JSONWebSignature,
-	request *http.Request) (*authenticatedPOST, *acme.ProblemDetails) {
+	request *http.Request,
+) (*authenticatedPOST, *acme.ProblemDetails) {
 	payload, prob := wfe.verifyJWSSignatureAndAlgorithm(pubKey, parsedJWS)
 	if prob != nil {
 		return nil, prob
@@ -951,7 +957,8 @@ func (wfe *WebFrontEndImpl) verifyJWS(
 		postAsGet: string(payload) == "",
 		body:      payload,
 		url:       headerURL,
-		jwk:       pubKey}, nil
+		jwk:       pubKey,
+	}, nil
 }
 
 // isASCII determines if every character in a string is encoded in
@@ -1011,9 +1018,10 @@ func (wfe *WebFrontEndImpl) verifyContacts(acct acme.Account) *acme.ProblemDetai
 }
 
 func (wfe *WebFrontEndImpl) UpdateAccount(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -1105,9 +1113,10 @@ func (wfe *WebFrontEndImpl) UpdateAccount(
 }
 
 func (wfe *WebFrontEndImpl) ListOrders(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -1178,7 +1187,8 @@ func (wfe *WebFrontEndImpl) verifyKeyRollover(
 	innerPayload []byte,
 	existingAcct *core.Account,
 	newKey *jose.JSONWebKey,
-	request *http.Request) *acme.ProblemDetails {
+	request *http.Request,
+) *acme.ProblemDetails {
 	var innerContent struct {
 		Account string
 		OldKey  jose.JSONWebKey
@@ -1215,9 +1225,10 @@ func (wfe *WebFrontEndImpl) verifyKeyRollover(
 }
 
 func (wfe *WebFrontEndImpl) KeyRollover(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	// Extract and parse outer JWS, and retrieve account
 	outerPostData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
@@ -1271,12 +1282,11 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	// Ok, now change account key
 	err = wfe.db.ChangeAccountKey(existingAcct, newPubKey)
 	if err != nil {
-		if existingAccountError, ok := err.(*db.ExistingAccountError); ok {
+		var existingAccountError *db.ExistingAccountError
+		if errors.As(err, &existingAccountError) {
 			acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAccountError.MatchingAccount.ID))
 			response.Header().Set("Location", acctURL)
 			response.WriteHeader(http.StatusConflict)
-		} else {
-			wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error rolling over account key (%s)", err.Error())), response)
 		}
 		return
 	}
@@ -1285,10 +1295,10 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 }
 
 func (wfe *WebFrontEndImpl) NewAccount(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	// We use extractJWK rather than lookupJWK here because the account is not yet
 	// created, so the user provides the full key in a JWS header rather than
 	// referring to an existing key.
@@ -1405,14 +1415,15 @@ func isDNSCharacter(ch byte) bool {
 // verifyOrder checks that a new order is considered well formed. Light
 // validation is done on the order identifiers.
 func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails {
-	// Lock the order for reading
-	order.RLock()
-	defer order.RUnlock()
-
 	// Shouldn't happen - defensive check
 	if order == nil {
 		return acme.InternalErrorProblem("Order is nil")
 	}
+
+	// Lock the order for reading
+	order.RLock()
+	defer order.RUnlock()
+
 	idents := order.Identifiers
 	if len(idents) == 0 {
 		return acme.MalformedProblem("Order did not specify any identifiers")
@@ -1444,8 +1455,7 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 func (wfe *WebFrontEndImpl) validateDNSName(ident acme.Identifier) *acme.ProblemDetails {
 	rawDomain := ident.Value
 	if rawDomain == "" {
-		return acme.MalformedProblem(fmt.Sprintf(
-			"Order included DNS identifier with empty value"))
+		return acme.MalformedProblem("Order included DNS identifier with empty value")
 	}
 
 	for _, ch := range []byte(rawDomain) {
@@ -1563,7 +1573,8 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 func (wfe *WebFrontEndImpl) makeChallenge(
 	chalType string,
 	authz *core.Authorization,
-	request *http.Request) (*core.Challenge, error) {
+	request *http.Request,
+) (*core.Challenge, error) {
 	// Create a new challenge of the requested type
 	id := newToken()
 	chal := &core.Challenge{
@@ -1590,30 +1601,27 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *http.Request) error {
 	var chals []*core.Challenge
 
-	// Authorizations for a wildcard identifier only get a DNS-01 challenges to
-	// match Boulder/Let's Encrypt wildcard issuance policy
+	// Determine which challenge types are enabled for this identifier
+	var enabledChallenges []string
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
-		chal, err := wfe.makeChallenge(acme.ChallengeDNS01, authz, request)
-		if err != nil {
-			return err
-		}
-		chals = []*core.Challenge{chal}
+		// Authorizations for a wildcard identifier get DNS-based challenges to
+		// match Boulder/Let's Encrypt wildcard issuance policy
+		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
-		var enabledChallenges []string
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
 		}
-		for _, chalType := range enabledChallenges {
-			chal, err := wfe.makeChallenge(chalType, authz, request)
-			if err != nil {
-				return err
-			}
-			chals = append(chals, chal)
+	}
+	for _, chalType := range enabledChallenges {
+		chal, err := wfe.makeChallenge(chalType, authz, request)
+		if err != nil {
+			return err
 		}
+		chals = append(chals, chal)
 	}
 
 	// Lock the authorization for writing to update the challenges
@@ -1625,10 +1633,10 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 
 // NewOrder creates a new Order request and populates its authorizations
 func (wfe *WebFrontEndImpl) NewOrder(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -1733,7 +1741,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 // rendered to JSON for display to an API client.
 func (wfe *WebFrontEndImpl) orderForDisplay(
 	order *core.Order,
-	request *http.Request) acme.Order {
+	request *http.Request,
+) acme.Order {
 	// Lock the order for reading
 	order.RLock()
 	defer order.RUnlock()
@@ -1772,9 +1781,10 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 
 // Order retrieves the details of an existing order
 func (wfe *WebFrontEndImpl) Order(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -1820,10 +1830,10 @@ func (wfe *WebFrontEndImpl) Order(
 }
 
 func (wfe *WebFrontEndImpl) FinalizeOrder(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	// Verify the POST request
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
@@ -2043,9 +2053,10 @@ func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 }
 
 func (wfe *WebFrontEndImpl) Authz(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	// There are two types of requests we might get:
 	//   A) a POST to update the authorization
 	//   B) a POST-as-GET to get the authorization
@@ -2144,9 +2155,10 @@ func (wfe *WebFrontEndImpl) Authz(
 }
 
 func (wfe *WebFrontEndImpl) Challenge(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	// There are two possibilities:
 	// A) request is a POST to begin a challenge
 	// B) request is a POST-as-GET to poll a challenge
@@ -2168,13 +2180,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 	if !postData.postAsGet {
 		wfe.updateChallenge(postData, response, request)
 		return
-	} else {
-		// Otherwise it is case B)
-		account, prob = wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
+	}
+
+	// Otherwise it is case B)
+	account, prob = wfe.validPOSTAsGET(postData)
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
 	}
 
 	// Lock the challenge for reading in order to write the response
@@ -2214,7 +2226,8 @@ func (wfe *WebFrontEndImpl) getAcctByKey(key crypto.PublicKey) (*core.Account, *
 }
 
 func (wfe *WebFrontEndImpl) validateChallengeUpdate(
-	chal *core.Challenge) (*core.Authorization, *acme.ProblemDetails) {
+	chal *core.Challenge,
+) (*core.Authorization, *acme.ProblemDetails) {
 	// Lock the challenge for reading to do validation
 	chal.RLock()
 	defer chal.RUnlock()
@@ -2264,8 +2277,8 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 func (wfe *WebFrontEndImpl) updateChallenge(
 	postData *authenticatedPOST,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	existingAcct, prob := wfe.getAcctByKey(postData.jwk)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -2282,31 +2295,31 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		wfe.sendError(
 			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
 		return
-	} else {
-		// When not in strict mode we still want to be strict about the legacy key
-		// authorization field not being present in the POST JSON.
-		var chalResp struct {
-			KeyAuthorization *string
-		}
-		err := json.Unmarshal(postData.body, &chalResp)
-		if err != nil {
-			wfe.sendError(
-				acme.MalformedProblem("Error unmarshaling body JSON"), response)
-			return
-		}
+	}
 
-		// Historically challenges were updated by POSTing a KeyAuthorization. This is
-		// unnecessary, the server can calculate this itself. We could ignore this if
-		// sent (and that's what Boulder will do) but for Pebble we'd like to offer
-		// a way to be more aggressive about pushing clients implementations in the
-		// right direction, so we treat this as a malformed request.
-		if chalResp.KeyAuthorization != nil {
-			wfe.sendError(
-				acme.MalformedProblem(
-					"Challenge response body contained legacy KeyAuthorization field, "+
-						"POST body should be `{}`"), response)
-			return
-		}
+	// When not in strict mode we still want to be strict about the legacy key
+	// authorization field not being present in the POST JSON.
+	var chalResp struct {
+		KeyAuthorization *string
+	}
+	err := json.Unmarshal(postData.body, &chalResp)
+	if err != nil {
+		wfe.sendError(
+			acme.MalformedProblem("Error unmarshaling body JSON"), response)
+		return
+	}
+
+	// Historically challenges were updated by POSTing a KeyAuthorization. This is
+	// unnecessary, the server can calculate this itself. We could ignore this if
+	// sent (and that's what Boulder will do) but for Pebble we'd like to offer
+	// a way to be more aggressive about pushing clients implementations in the
+	// right direction, so we treat this as a malformed request.
+	if chalResp.KeyAuthorization != nil {
+		wfe.sendError(
+			acme.MalformedProblem(
+				"Challenge response body contained legacy KeyAuthorization field, "+
+					"POST body should be `{}`"), response)
+		return
 	}
 
 	chalID := strings.TrimPrefix(request.URL.Path, challengePath)
@@ -2365,9 +2378,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 
 	// If the identifier value is for a wildcard domain then strip the wildcard
 	// prefix before dispatching the validation to ensure the base domain is
-	// validated.
+	// validated. Set a flag to indicate validation scope.
+	wildcard := false
 	if strings.HasPrefix(ident.Value, "*.") {
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+		wildcard = true
 	}
 
 	// Confirm challenge status again and update it immediately before sending it to the VA
@@ -2385,14 +2400,17 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
+	// Reconstruct account URL for use in scoped validation methods
+	acctURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, existingAcct.ID))
+
 	// Submit a validation job to the VA, this will be processed asynchronously
-	wfe.va.ValidateChallenge(ident, existingChal, existingAcct)
+	wfe.va.ValidateChallenge(ident, existingChal, existingAcct, acctURL, wildcard)
 
 	// Lock the challenge for reading in order to write the response
 	existingChal.RLock()
 	defer existingChal.RUnlock()
 	response.Header().Add("Link", link(existingChal.Authz.URL, "up"))
-	err := wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
+	err = wfe.writeJSONResponse(response, http.StatusOK, existingChal.Challenge)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshaling challenge"), response)
 		return
@@ -2420,7 +2438,7 @@ func getAlternateNo(url string) (string, int, error) {
 		return url, 0, err
 	}
 	if no < 0 {
-		return url, 0, fmt.Errorf("number is negative")
+		return url, 0, errors.New("number is negative")
 	}
 	return urlSplit[0], no, nil
 }
@@ -2442,9 +2460,10 @@ func addAlternateLinks(response http.ResponseWriter, url string, no int, number 
 }
 
 func (wfe *WebFrontEndImpl) Certificate(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
+	request *http.Request,
+) {
 	postData, prob := wfe.verifyPOST(request, wfe.lookupJWK)
 	if prob != nil {
 		wfe.sendError(prob, response)
@@ -2514,8 +2533,7 @@ func addRetryAfterHeader(response http.ResponseWriter, currentTime time.Time, se
 		} else {
 			// IMF-fixdate
 			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
-			gmt, _ := time.LoadLocation("GMT")
-			currentTime := currentTime.In(gmt)
+			currentTime := currentTime.In(time.UTC)
 			retryAfter := currentTime.Add(time.Second * time.Duration(second))
 			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
 		}
@@ -2572,10 +2590,10 @@ func uniqueIPs(IPs []net.IP) []net.IP {
 // Pebble's idea of certificate revocation is to forget the certificate exists.
 // This method does not percolate to a CRL or an OCSP response.
 func (wfe *WebFrontEndImpl) RevokeCert(
-	ctx context.Context,
+	_ context.Context,
 	response http.ResponseWriter,
-	request *http.Request) {
-
+	request *http.Request,
+) {
 	// The ACME specification handles the verification of revocation requests
 	// differently from other endpoints that always use one JWS authentication
 	// method. For this endpoint we need to accept a JWS with an embedded JWK, or
@@ -2628,8 +2646,8 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 
 func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	jws *jose.JSONWebSignature,
-	request *http.Request) *acme.ProblemDetails {
-
+	request *http.Request,
+) *acme.ProblemDetails {
 	pubKey, prob := wfe.lookupJWK(request, jws)
 	if prob != nil {
 		return prob
@@ -2666,8 +2684,8 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 
 func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	jws *jose.JSONWebSignature,
-	request *http.Request) *acme.ProblemDetails {
-
+	request *http.Request,
+) *acme.ProblemDetails {
 	var requestKey *jose.JSONWebKey
 	pubKey, prob := wfe.extractJWK(request, jws)
 	if prob != nil {
@@ -2702,8 +2720,8 @@ type authorizedToRevokeCert func(*core.Certificate) *acme.ProblemDetails
 
 func (wfe *WebFrontEndImpl) processRevocation(
 	jwsBody []byte,
-	authorizedToRevoke authorizedToRevokeCert) *acme.ProblemDetails {
-
+	authorizedToRevoke authorizedToRevokeCert,
+) *acme.ProblemDetails {
 	// revokeCertReq is the ACME certificate information submitted by the client
 	var revokeCertReq struct {
 		Certificate string `json:"certificate"`
@@ -2730,12 +2748,10 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	if cert == nil {
 		cert := wfe.db.GetRevokedCertificateByDER(derBytes)
 		if cert != nil {
-			return acme.AlreadyRevokedProblem(
-				"Certificate has already been revoked.")
-		} else {
-			return acme.MalformedProblem(
-				"Unable to find specified certificate.")
+			return acme.AlreadyRevokedProblem("Certificate has already been revoked.")
 		}
+
+		return acme.MalformedProblem("Unable to find specified certificate.")
 	}
 
 	if prob := authorizedToRevoke(cert); prob != nil {
@@ -2756,7 +2772,8 @@ func (wfe *WebFrontEndImpl) processRevocation(
 // then error.
 func (wfe *WebFrontEndImpl) verifyEAB(
 	newAcctReq newAccountRequest,
-	outerPostData *authenticatedPOST) (*acme.JSONSigned, *acme.ProblemDetails) {
+	outerPostData *authenticatedPOST,
+) (*acme.JSONSigned, *acme.ProblemDetails) {
 	if newAcctReq.ExternalAccountBinding == nil {
 		if wfe.requireEAB {
 			return nil, acme.ExternalAccountRequiredProblem(
@@ -2766,30 +2783,30 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 		return nil, nil
 	}
 
-	//1.  Verify that the value of the field is a well-formed JWS
+	// 1.  Verify that the value of the field is a well-formed JWS
 	eabBytes, err := json.Marshal(newAcctReq.ExternalAccountBinding)
 	if err != nil {
 		return nil, acme.InternalErrorProblem(
 			fmt.Sprintf("failed to encode external account binding JSON structure: %s", err))
 	}
 
-	eab, err := jose.ParseSigned(string(eabBytes))
+	eab, err := jose.ParseSigned(string(eabBytes), goodJWSSignatureAlgorithms)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))
 	}
 
-	//2.  Verify that the JWS protected field meets the following criteria
-	//-  The "alg" field MUST indicate a MAC-based algorithm
-	//-  The "kid" field MUST contain the key identifier provided by the CA
-	//-  The "nonce" field MUST NOT be present
-	//-  The "url" field MUST be set to the same value as the outer JWS
+	// 2.  Verify that the JWS protected field meets the following criteria
+	// -  The "alg" field MUST indicate a MAC-based algorithm
+	// -  The "kid" field MUST contain the key identifier provided by the CA
+	// -  The "nonce" field MUST NOT be present
+	// -  The "url" field MUST be set to the same value as the outer JWS
 	keyID, prob := wfe.verifyEABPayloadHeader(eab, outerPostData)
 	if prob != nil {
 		return nil, prob
 	}
 
-	//3.  Retrieve the MAC key corresponding to the key identifier in the
+	// 3.  Retrieve the MAC key corresponding to the key identifier in the
 	//    "kid" field
 	key, ok := wfe.db.GetExtenalAccountKeyByID(keyID)
 	if !ok {
@@ -2797,14 +2814,14 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 			"the field 'kid' references a key that is not known to the ACME server")
 	}
 
-	//4.  Verify that the MAC on the JWS verifies using that MAC key
+	// 4.  Verify that the MAC on the JWS verifies using that MAC key
 	payload, err := eab.Verify(key)
 	if err != nil {
 		return nil, acme.UnauthorizedProblem(
 			fmt.Sprintf("external account binding JWS verification error: %s", err))
 	}
 
-	//5.  Verify that the payload of the JWS represents the same key as was
+	// 5.  Verify that the payload of the JWS represents the same key as was
 	//    used to verify the outer JWS (i.e., the "jwk" field of the outer
 	//    JWS)
 	if prob := wfe.verifyEABMatchesKey(payload, outerPostData.jwk); prob != nil {

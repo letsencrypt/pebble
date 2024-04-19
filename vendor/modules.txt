@@ -1,56 +1,54 @@
-# github.com/google/go-cmp v0.5.6
-## explicit; go 1.8
+# github.com/go-jose/go-jose/v4 v4.0.1
+## explicit; go 1.21
+github.com/go-jose/go-jose/v4
+github.com/go-jose/go-jose/v4/cipher
+github.com/go-jose/go-jose/v4/json
+# github.com/google/go-cmp v0.6.0
+## explicit; go 1.13
 # github.com/jmhodges/clock v1.2.0
 ## explicit; go 1.17
 github.com/jmhodges/clock
-# github.com/letsencrypt/challtestsrv v1.2.1
+# github.com/letsencrypt/challtestsrv v1.3.2
 ## explicit; go 1.13
 github.com/letsencrypt/challtestsrv
-# github.com/miekg/dns v1.1.48
-## explicit; go 1.14
+# github.com/miekg/dns v1.1.58
+## explicit; go 1.19
 github.com/miekg/dns
-# github.com/stretchr/testify v1.7.0
-## explicit; go 1.13
-# golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
-## explicit; go 1.17
-golang.org/x/crypto/ed25519
+# github.com/stretchr/testify v1.8.4
+## explicit; go 1.20
+# golang.org/x/crypto v0.21.0
+## explicit; go 1.18
 golang.org/x/crypto/pbkdf2
-# golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3
-## explicit; go 1.17
+# golang.org/x/mod v0.15.0
+## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.0.0-20220412020605-290c469a71a5
-## explicit; go 1.17
+# golang.org/x/net v0.23.0
+## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
-# golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
-## explicit; go 1.17
-golang.org/x/sys/execabs
-golang.org/x/sys/internal/unsafeheader
+# golang.org/x/sys v0.18.0
+## explicit; go 1.18
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/tools v0.1.10
-## explicit; go 1.17
+# golang.org/x/tools v0.18.0
+## explicit; go 1.18
 golang.org/x/tools/go/gcexportdata
-golang.org/x/tools/go/internal/gcimporter
 golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
+golang.org/x/tools/go/types/objectpath
 golang.org/x/tools/internal/event
 golang.org/x/tools/internal/event/core
 golang.org/x/tools/internal/event/keys
 golang.org/x/tools/internal/event/label
+golang.org/x/tools/internal/event/tag
+golang.org/x/tools/internal/gcimporter
 golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/pkgbits
+golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# golang.org/x/xerrors v0.0.0-20220411194840-2f41105eb62f
-## explicit; go 1.11
-golang.org/x/xerrors
-golang.org/x/xerrors/internal
-# gopkg.in/square/go-jose.v2 v2.6.0
-## explicit
-gopkg.in/square/go-jose.v2
-gopkg.in/square/go-jose.v2/cipher
-gopkg.in/square/go-jose.v2/json
+golang.org/x/tools/internal/versions

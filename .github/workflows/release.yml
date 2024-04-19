@@ -1,0 +1,157 @@
+name: Build Release
+# Run on semver tags.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+permissions:
+  contents: read
+  packages: write # Allow docker/build-push-action to publish to GitHub Container Registry
+env:
+  DOCKER_PLATFORMS: linux/amd64, linux/arm64, windows/amd64
+  DOCKER_IMAGE_BASENAME: ghcr.io/${{ github.repository_owner }}
+jobs:
+  go-build:
+    env:
+      CGO_ENABLED: 0
+      GOARCH: ${{ matrix.go-arch }}
+      GOOS: ${{ matrix.go-os }}
+      LDFLAGS: -s -w -X 'main.version=${{ github.ref_name }} (${{ github.sha }})'
+      OUTPUTDIR: /tmp/dist/${{ matrix.go-os }}/${{ matrix.go-arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - pebble
+          - pebble-challtestsrv
+        go-arch:
+          - amd64
+          - arm64
+        go-os:
+          - darwin
+          - linux
+          - windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          check-latest: true
+          go-version-file: go.mod
+      - name: Build ${{ matrix.app }} for ${{ matrix.go-os }}/${{ matrix.go-arch }}
+        run: |
+          go build \
+            -ldflags="${LDFLAGS}" \
+            -o "${OUTPUTDIR}/" \
+            -trimpath \
+            -v \
+            ./cmd/${{ matrix.app }}
+      - name: Display ${{ matrix.app }} artifacts
+        run: tree /tmp/dist
+      - name: Store ${{ matrix.app }} artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-${{ matrix.go-os }}-${{ matrix.go-arch }}
+          path: /tmp/dist
+  docker-build:
+    needs:
+      - go-build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - pebble
+          - pebble-challtestsrv
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download ${{ matrix.app }} artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: /tmp/dist
+          pattern: ${{ matrix.app }}-*-*
+      - name: Display ${{ matrix.app }} artifacts
+        run: tree /tmp/dist
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE_BASENAME }}/${{ matrix.app }}
+          # generate Docker tags based on the following events/attributes
+          tags: |
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+            type=sha
+            type=raw,value=latest
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ${{ github.repository }}/${{ matrix.app }} for ${{ env.DOCKER_PLATFORMS }}
+        uses: docker/build-push-action@v5
+        with:
+          build-args: APP=${{ matrix.app }}
+          build-contexts: dist-files=/tmp/dist
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          file: Dockerfile.release
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ env.DOCKER_PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+  docker-version:
+    needs:
+      - docker-build
+    runs-on: ${{ matrix.docker-os }}
+    strategy:
+      matrix:
+        docker-os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Display pebble version in container image
+        run: docker run ${{ env.DOCKER_IMAGE_BASENAME }}/pebble:latest -version
+  create-release:
+    needs:
+      - go-build
+    permissions:
+      contents: write # Allow creation of a release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+      - name: Display build artifacts
+        run: tree .
+      - name: Create release
+        # https://cli.github.com/manual/gh_release_create
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --repo ${{ github.repository }} \
+            --title "${{ github.ref_name }}" \
+            --verify-tag
+        continue-on-error: true
+      - name: Upload release files
+        # https://cli.github.com/manual/gh_release_upload
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for artifact in *; do
+            tar czf ${artifact}.tar.gz ${artifact}
+            zip -r ${artifact}.zip ${artifact}
+            gh release upload ${{ github.ref_name }} ${artifact}.* \
+              --repo ${{ github.repository }};
+          done
