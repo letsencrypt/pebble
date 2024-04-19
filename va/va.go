@@ -368,7 +368,7 @@ func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
-		ValidatedAt: time.Now(),
+		ValidatedAt: va.clockSource.Now(),
 	}
 
 	txts, err := va.getTXTEntry(challengeSubdomain)
