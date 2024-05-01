@@ -87,7 +87,7 @@ jobs:
                --eab \
                  --kid kid-1 \
                  --hmac=zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W \
-               --http \
+               --http --http.port=:5002 \
                run
   go-linux:
     name: Run Go tests on Linux
