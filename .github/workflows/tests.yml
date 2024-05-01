@@ -73,11 +73,8 @@ jobs:
         run: go install -v ./cmd/...
       - name: launch pebble
         run: |
-          GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 PEBBLE_VA_ALWAYS_VALID=1 \
-          pebble \
-            -dnsserver localhost:8053 \
-            -config test/config/pebble-config-external-account-bindings.json \
-          &
+          GORACE="halt_on_error=1" PEBBLE_VA_ALWAYS_VALID=1 \
+          pebble -config test/config/pebble-config-external-account-bindings.json &
       - run: |
           LEGO_CA_CERTIFICATES=./test/certs/pebble.minica.pem \
           lego --accept-tos \
