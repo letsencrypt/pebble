@@ -82,8 +82,8 @@ jobs:
                --email="pebble-test@example.letsencrypt.org" \
                --domains=example.letsencrypt.org \
                --eab \
-                 --kid kid-1 \
-                 --hmac=zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W \
+                 --kid kid-3 \
+                 --hmac=HjudV5qnbreN-n9WyFSH-t4HXuEx_XFen45zuxY-G1h6fr74V3cUM_dVlwQZBWmc \
                --http --http.port=:5002 \
                run
   go-linux:
