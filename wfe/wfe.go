@@ -2787,9 +2787,11 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 	}
 
 	// The "alg" field MUST indicate a MAC-based algorithm
-	eab, err := jose.ParseSigned(string(eabBytes), []jose.SignatureAlgorithm{
+	eabSignatureAlgorithms := []jose.SignatureAlgorithm{
 		jose.HS256, jose.HS384, jose.HS512,
-	})
+	}
+
+	eab, err := jose.ParseSigned(string(eabBytes), eabSignatureAlgorithms)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))
