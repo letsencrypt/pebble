@@ -53,6 +53,9 @@ const (
 	keyRolloverPath   = "/rollover-account-key"
 	ordersPath        = "/list-orderz/"
 
+	// Draft or likely-to-change paths
+	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo/"
+
 	// Theses entrypoints are not a part of the standard ACME endpoints,
 	// and are exposed by Pebble as an integration test tool. We export
 	// RootCertPath so that the pebble binary can reference it.
@@ -507,6 +510,8 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	m := http.NewServeMux()
 	// GET & POST handlers
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, http.MethodGet, http.MethodPost)
+	wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, http.MethodGet, http.MethodPost)
+
 	// Note for noncePath: http.MethodGet also implies http.MethodHead
 	wfe.HandleFunc(m, noncePath, wfe.Nonce, http.MethodGet, http.MethodPost)
 
@@ -545,11 +550,12 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request,
 ) {
 	directoryEndpoints := map[string]string{
-		"newNonce":   noncePath,
-		"newAccount": newAccountPath,
-		"newOrder":   newOrderPath,
-		"revokeCert": revokeCertPath,
-		"keyChange":  keyRolloverPath,
+		"newNonce":    noncePath,
+		"newAccount":  newAccountPath,
+		"newOrder":    newOrderPath,
+		"revokeCert":  revokeCertPath,
+		"keyChange":   keyRolloverPath,
+		"renewalInfo": renewalInfoPath,
 	}
 
 	// RFC 8555 §6.3 says the server's directory endpoint should support
@@ -1773,6 +1779,50 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	}
 
 	return result
+}
+
+// RenewalInfo implements ACME Renewal Info (ARI)
+func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodPost {
+		wfe.UpdateRenewal(context.TODO(), response, request)
+		wfe.sendError(acme.InternalErrorProblem("POSTing to RenewalInfo has not been implemented yet"), response)
+		return
+	}
+
+	if len(request.URL.Path) == 0 {
+		wfe.sendError(acme.NotFoundProblem("Must specify a request path"), response)
+		return
+	}
+
+	if request.Method == http.MethodGet {
+		wfe.UpdateRenewal(context.TODO(), response, request)
+		wfe.sendError(acme.InternalErrorProblem("GETing RenewalInfo is being implemented"), response)
+		return
+	}
+
+	certID, err := parseCertID(request.URL.Path, nil)
+	fmt.Println(certID)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("While parsing ARI CertID an error occurred: %s", err)), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.ResponseWriter, request *http.Request) {
+	// Not yet implemented
+}
+
+// parseCertID parses a unique identifier (certID) as specified in
+// draft-ietf-acme-ari-03. It takes the composite string as input returns a
+// certID struct with the keyIdentifier and serialNumber extracted and decoded.
+// For more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
+func parseCertID(path string, issuer *x509.Certificate) (string, error) {
+	fmt.Println(path)
+	if issuer == nil {
+		return "", fmt.Errorf("issuer was nil")
+	}
+	return "", fmt.Errorf("working on it still")
 }
 
 // Order retrieves the details of an existing order
