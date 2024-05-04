@@ -1794,18 +1794,46 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 		return
 	}
 
-	if request.Method == http.MethodGet {
-		wfe.UpdateRenewal(context.TODO(), response, request)
-		wfe.sendError(acme.InternalErrorProblem("GETing RenewalInfo is being implemented"), response)
+	certID, err := wfe.parseCertID(request.URL.Path)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Parsing ARI CertID failed: %s", err)), response)
 		return
 	}
 
-	certID, err := parseCertID(request.URL.Path, nil)
-	fmt.Println(certID)
+	renewalInfo, err := wfe.determineARIWindow(context.TODO(), certID.SerialNumber)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("While parsing ARI CertID an error occurred: %s", err)), response)
+		/*
+			if errors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order was not found"), nil)
+				return
+			}
+		*/
+		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error determining renewal window: %s", err)), response)
 		return
 	}
+
+	response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	err = wfe.writeJSONResponse(response, http.StatusOK, renewalInfo)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error marshalling renewalInfo: %s", err)), response)
+		return
+	}
+}
+
+func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, serial *big.Int) (*core.RenewalInfo, error) {
+	// Check if the serial is revoked.
+	isRevoked := wfe.db.GetRevokedCertificateBySerial(serial)
+	if isRevoked != nil {
+		// The existing certificate is revoked, renew immediately.
+		return core.RenewalInfoImmediate(time.Now().In(time.UTC)), nil
+	}
+
+	cert := wfe.db.GetCertificateBySerial(serial)
+	if cert != nil {
+		return nil, fmt.Errorf("failed to retrieve existing certificate")
+	}
+
+	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
 }
 
 func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.ResponseWriter, request *http.Request) {
@@ -1817,12 +1845,38 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.Respo
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func parseCertID(path string, issuer *x509.Certificate) (string, error) {
-	fmt.Println(path)
-	if issuer == nil {
-		return "", fmt.Errorf("issuer was nil")
+func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
+	parts := strings.Split(path, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, acme.MalformedProblem("Invalid path")
 	}
-	return "", fmt.Errorf("working on it still")
+
+	akid, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, acme.MalformedProblem(fmt.Sprintf("Authority Key Identifier was not base64url-encoded or contained padding: %s", err))
+	}
+
+	var found bool
+	skis := wfe.ca.GetSubjectKeyIDs()
+	for _, skiBytes := range skis {
+		if bytes.Equal(skiBytes, akid) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, acme.MalformedProblem("path contained an Authority Key Identifier that did not match a known issuer")
+	}
+
+	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, acme.MalformedProblem(fmt.Sprintf("serial number was not base64url-encoded or contained padding: %s", err))
+	}
+
+	return &core.CertID{
+		KeyIdentifier: akid,
+		SerialNumber:  new(big.Int).SetBytes(serialNumber),
+	}, nil
 }
 
 // Order retrieves the details of an existing order

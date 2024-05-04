@@ -438,6 +438,19 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
+func (ca *CAImpl) GetSubjectKeyIDs() core.SubjectKeyIDs {
+	skis := core.SubjectKeyIDs{}
+	for _, chain := range ca.chains {
+		skis = append(skis, chain.root.cert.Cert.SubjectKeyId)
+		for _, intermediate := range chain.intermediates {
+			skis = append(skis, intermediate.cert.Cert.SubjectKeyId)
+		}
+	}
+	ca.log.Printf("Found %d SKIs\n", len(skis))
+
+	return skis
+}
+
 func (ca *CAImpl) GetNumberOfRootCerts() int {
 	return len(ca.chains)
 }
