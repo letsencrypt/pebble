@@ -59,6 +59,33 @@ jobs:
         run: |
           git clone https://github.com/eggsampler/acme.git /tmp/eggsampler-acme
           cd /tmp/eggsampler-acme && make test
+  lego-eab-linux:
+    name: Test lego with EAB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install lego cli
+        run: go install github.com/go-acme/lego/v4/cmd/lego@latest
+      - name: go install commands
+        run: go install -v ./cmd/...
+      - name: launch pebble
+        run: |
+          GORACE="halt_on_error=1" PEBBLE_VA_ALWAYS_VALID=1 \
+          pebble -config test/config/pebble-config-external-account-bindings.json &
+      - run: |
+          LEGO_CA_CERTIFICATES=./test/certs/pebble.minica.pem \
+          lego --accept-tos \
+               --server=https://localhost:14000/dir \
+               --email="pebble-test@example.letsencrypt.org" \
+               --domains=example.letsencrypt.org \
+               --eab \
+                 --kid kid-3 \
+                 --hmac=HjudV5qnbreN-n9WyFSH-t4HXuEx_XFen45zuxY-G1h6fr74V3cUM_dVlwQZBWmc \
+               --http --http.port=:5002 \
+               run
   go-linux:
     name: Run Go tests on Linux
     runs-on: ubuntu-latest

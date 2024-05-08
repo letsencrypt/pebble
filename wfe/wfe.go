@@ -2790,14 +2790,18 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 			fmt.Sprintf("failed to encode external account binding JSON structure: %s", err))
 	}
 
-	eab, err := jose.ParseSigned(string(eabBytes), goodJWSSignatureAlgorithms)
+	// The "alg" field MUST indicate a MAC-based algorithm
+	eabSignatureAlgorithms := []jose.SignatureAlgorithm{
+		jose.HS256, jose.HS384, jose.HS512,
+	}
+
+	eab, err := jose.ParseSigned(string(eabBytes), eabSignatureAlgorithms)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))
 	}
 
 	// 2.  Verify that the JWS protected field meets the following criteria
-	// -  The "alg" field MUST indicate a MAC-based algorithm
 	// -  The "kid" field MUST contain the key identifier provided by the CA
 	// -  The "nonce" field MUST NOT be present
 	// -  The "url" field MUST be set to the same value as the outer JWS
@@ -2843,13 +2847,6 @@ func (wfe *WebFrontEndImpl) verifyEABPayloadHeader(innerJWS *jose.JSONWebSignatu
 	}
 
 	header := innerJWS.Signatures[0].Protected
-	switch header.Algorithm {
-	case "HS256", "HS384", "HS512":
-		break
-	default:
-		return "", acme.BadPublicKeyProblem(
-			fmt.Sprintf("the 'alg' field is set to %q, which is not valid for external account binding, valid values are: HS256, HS384 or HS512", header.Algorithm))
-	}
 	if len(header.Nonce) > 0 {
 		return "", acme.MalformedProblem(
 			"the 'nonce' field must be absent in external account binding")
