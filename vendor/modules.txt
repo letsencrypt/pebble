@@ -5,6 +5,9 @@ github.com/go-jose/go-jose/v4/cipher
 github.com/go-jose/go-jose/v4/json
 # github.com/google/go-cmp v0.6.0
 ## explicit; go 1.13
+# github.com/jmhodges/clock v1.2.0
+## explicit; go 1.17
+github.com/jmhodges/clock
 # github.com/letsencrypt/challtestsrv v1.3.2
 ## explicit; go 1.13
 github.com/letsencrypt/challtestsrv

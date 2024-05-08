@@ -27,6 +27,7 @@ import (
 	"unicode"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/ca"
@@ -155,6 +156,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type WebFrontEndImpl struct {
 	log               *log.Logger
+	clockSource       clock.Clock
 	db                *db.MemoryStore
 	nonce             *nonceMap
 	nonceErrPercent   int
@@ -172,6 +174,7 @@ const ToSURL = "data:text/plain,Do%20what%20thou%20wilt"
 
 func New(
 	log *log.Logger,
+	clockSource clock.Clock,
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
@@ -224,6 +227,7 @@ func New(
 
 	return WebFrontEndImpl{
 		log:               log,
+		clockSource:       clockSource,
 		db:                db,
 		nonce:             newNonceMap(),
 		nonceErrPercent:   nonceErrPercent,
@@ -1517,7 +1521,7 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 	order.RLock()
 	// Add one authz for each name in the order's parsed CSR
 	for _, name := range order.Identifiers {
-		now := time.Now().UTC()
+		now := wfe.clockSource.Now().UTC()
 		expires := now.Add(pendingAuthzExpire)
 		ident := acme.Identifier{
 			Type:  name.Type,
@@ -1677,7 +1681,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	for _, ip := range orderIPs {
 		uniquenames = append(uniquenames, acme.Identifier{Value: ip.String(), Type: acme.IdentifierIP})
 	}
-	expires := time.Now().AddDate(0, 0, 1)
+	expires := wfe.clockSource.Now().AddDate(0, 0, 1)
 	order := &core.Order{
 		ID:        newToken(),
 		AccountID: existingReg.ID,
@@ -1813,7 +1817,7 @@ func (wfe *WebFrontEndImpl) Order(
 	}
 
 	if order.Status == acme.StatusProcessing {
-		addRetryAfterHeader(response, wfe.retryAfterOrder)
+		addRetryAfterHeader(response, wfe.clockSource.Now(), wfe.retryAfterOrder)
 	}
 
 	// Prepare the order for display as JSON
@@ -1878,7 +1882,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	}
 
 	// The existing order must not be expired
-	if orderExpires.Before(time.Now()) {
+	if orderExpires.Before(wfe.clockSource.Now()) {
 		wfe.sendError(acme.NotFoundProblem(fmt.Sprintf(
 			"Order %q expired %s", orderID, orderExpires)), response)
 		return
@@ -1996,7 +2000,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Set the existingOrder to processing before displaying to the user
 	existingOrder.Status = acme.StatusProcessing
 
-	addRetryAfterHeader(response, wfe.retryAfterOrder)
+	addRetryAfterHeader(response, wfe.clockSource.Now(), wfe.retryAfterOrder)
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
@@ -2133,7 +2137,7 @@ func (wfe *WebFrontEndImpl) Authz(
 				challengeStatus := c.Status
 				c.RUnlock()
 				if challengeStatus == acme.StatusProcessing {
-					addRetryAfterHeader(response, wfe.retryAfterAuthz)
+					addRetryAfterHeader(response, wfe.clockSource.Now(), wfe.retryAfterAuthz)
 					break
 				}
 			}
@@ -2255,7 +2259,7 @@ func (wfe *WebFrontEndImpl) validateAuthzForChallenge(authz *core.Authorization)
 			fmt.Sprintf("Authorization identifier was type %s, only %s and %s are supported",
 				ident.Type, acme.IdentifierDNS, acme.IdentifierIP))
 	}
-	now := time.Now()
+	now := wfe.clockSource.Now()
 	if now.After(authz.ExpiresDate) {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("Authorization expired %s",
@@ -2359,7 +2363,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	expiry := existingOrder.ExpiresDate
 	existingOrder.RUnlock()
 
-	now := time.Now()
+	now := wfe.clockSource.Now()
 	if now.After(expiry) {
 		wfe.sendError(
 			acme.MalformedProblem(fmt.Sprintf("order expired %s",
@@ -2522,14 +2526,14 @@ func addNoCacheHeader(response http.ResponseWriter) {
 	response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 }
 
-func addRetryAfterHeader(response http.ResponseWriter, second int) {
+func addRetryAfterHeader(response http.ResponseWriter, currentTime time.Time, second int) {
 	if second > 0 {
 		if rand.Intn(2) == 0 {
 			response.Header().Add("Retry-After", strconv.Itoa(second))
 		} else {
 			// IMF-fixdate
 			// see https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.1.1
-			currentTime := time.Now().In(time.UTC)
+			currentTime := currentTime.In(time.UTC)
 			retryAfter := currentTime.Add(time.Second * time.Duration(second))
 			response.Header().Add("Retry-After", retryAfter.Format(http.TimeFormat))
 		}
@@ -2756,7 +2760,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	wfe.db.RevokeCertificate(&core.RevokedCertificate{
 		Certificate: cert,
-		RevokedAt:   time.Now(),
+		RevokedAt:   wfe.clockSource.Now(),
 		Reason:      revokeCertReq.Reason,
 	})
 	return nil

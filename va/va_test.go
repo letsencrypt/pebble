@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/core"
 	"github.com/letsencrypt/pebble/v2/db"
@@ -30,8 +32,8 @@ func TestAuthzRace(_ *testing.T) {
 	// MemoryStore.FindValidAuthorization searches and tests authz.Status
 
 	// This whole test can be removed if/when the MemoryStore becomes 100% by value
-	ms := db.NewMemoryStore()
-	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "")
+	ms := db.NewMemoryStore(clock.New())
+	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), clock.New(), 14000, 15000, false, "")
 
 	authz := &core.Authorization{
 		ID: "auth-id",

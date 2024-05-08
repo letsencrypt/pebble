@@ -29,7 +29,7 @@ type Order struct {
 	CertificateObject    *Certificate
 }
 
-func (o *Order) GetStatus() (string, error) {
+func (o *Order) GetStatus(currentTime time.Time) (string, error) {
 	// Lock the order for reading
 	o.RLock()
 	defer o.RUnlock()
@@ -50,7 +50,7 @@ func (o *Order) GetStatus() (string, error) {
 
 		authzStatuses[authzStatus]++
 
-		if authzExpires.Before(time.Now()) {
+		if authzExpires.Before(currentTime) {
 			authzStatuses[acme.StatusExpired]++
 		}
 	}

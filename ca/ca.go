@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/core"
 	"github.com/letsencrypt/pebble/v2/db"
@@ -34,6 +36,7 @@ type CAImpl struct {
 	log              *log.Logger
 	db               *db.MemoryStore
 	ocspResponderURL string
+	clockSource      clock.Clock
 
 	chains []*chain
 
@@ -118,8 +121,8 @@ func (ca *CAImpl) makeRootCert(
 	template := &x509.Certificate{
 		Subject:      subject,
 		SerialNumber: serial,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(30, 0, 0),
+		NotBefore:    ca.clockSource.Now(),
+		NotAfter:     ca.clockSource.Now().AddDate(30, 0, 0),
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
@@ -269,7 +272,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("cannot create subject key ID: %s", err.Error())
 	}
 
-	certNotBefore := time.Now()
+	certNotBefore := ca.clockSource.Now()
 	if notBefore != "" {
 		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
 		if err != nil {
@@ -342,16 +345,20 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
+func New(log *log.Logger, clockSource clock.Clock, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
 	ca := &CAImpl{
 		log:                log,
 		db:                 db,
+		clockSource:        clockSource,
 		certValidityPeriod: defaultValidityPeriod,
 	}
 
 	if ocspResponderURL != "" {
 		ca.ocspResponderURL = ocspResponderURL
 		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspResponderURL)
+	}
+	if clockSource == nil {
+		ca.clockSource = clock.New()
 	}
 
 	intermediateSubject := pkix.Name{
