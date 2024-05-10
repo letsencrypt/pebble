@@ -59,6 +59,9 @@ type Order struct {
 	NotAfter       string          `json:"notAfter,omitempty"`
 	Authorizations []string        `json:"authorizations"`
 	Certificate    string          `json:"certificate,omitempty"`
+
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	Replaces string `json:"replaces,omitempty"`
 }
 
 // An Authorization is created for each identifier in an order

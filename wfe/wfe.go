@@ -1633,6 +1633,30 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	return nil
 }
 
+func (wfe *WebFrontEndImpl) validateReplacementOrder(_ context.Context, replaces string, response http.ResponseWriter) error {
+	if replaces == "" {
+		// No replacement indicated
+		return nil
+	}
+
+	certID, err := wfe.parseCertID(replaces)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Parsing ARI CertID failed: %s", err)), response)
+		return nil
+	}
+
+	replacementOrder := wfe.db.GetOrderByID(certID.SerialNumber.String())
+	if replacementOrder == nil {
+		return fmt.Errorf("could not find order")
+	}
+	if replacementOrder.Replaces != "" {
+		wfe.sendError(acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber)), response)
+		return nil
+	}
+
+	return nil
+}
+
 // NewOrder creates a new Order request and populates its authorizations
 func (wfe *WebFrontEndImpl) NewOrder(
 	_ context.Context,
@@ -1695,6 +1719,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			Identifiers: uniquenames,
 			NotBefore:   newOrder.NotBefore,
 			NotAfter:    newOrder.NotAfter,
+			Replaces:    newOrder.Replaces,
 		},
 		ExpiresDate: expires,
 	}
@@ -1800,14 +1825,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 		return
 	}
 
-	renewalInfo, err := wfe.determineARIWindow(context.TODO(), certID.SerialNumber)
+	renewalInfo, err := wfe.determineARIWindow(context.TODO(), certID)
 	if err != nil {
-		/*
-			if errors.Is(err, berrors.NotFound) {
-				wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order was not found"), nil)
-				return
-			}
-		*/
 		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error determining renewal window: %s", err)), response)
 		return
 	}
@@ -1820,17 +1839,20 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 	}
 }
 
-func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, serial *big.Int) (*core.RenewalInfo, error) {
-	// Check if the serial is revoked.
-	isRevoked := wfe.db.GetRevokedCertificateBySerial(serial)
+func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertID) (*core.RenewalInfo, error) {
+	if id == nil {
+		return nil, fmt.Errorf("CertID was nil")
+	}
+
+	// Check if the serial is revoked, and if so, renew it immediately.
+	isRevoked := wfe.db.GetRevokedCertificateBySerial(id.SerialNumber)
 	if isRevoked != nil {
-		// The existing certificate is revoked, renew immediately.
 		return core.RenewalInfoImmediate(time.Now().In(time.UTC)), nil
 	}
 
-	cert := wfe.db.GetCertificateBySerial(serial)
-	if cert != nil {
-		return nil, fmt.Errorf("failed to retrieve existing certificate")
+	cert := wfe.db.GetCertificateBySerial(id.SerialNumber)
+	if cert == nil {
+		return nil, fmt.Errorf("failed to retrieve existing certificate serial")
 	}
 
 	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
@@ -1844,7 +1866,7 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.Respo
 // draft-ietf-acme-ari-03. It takes the composite string as input returns a
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
-// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-4.1.
 func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -1861,6 +1883,7 @@ func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 	for _, skiBytes := range skis {
 		if bytes.Equal(skiBytes, akid) {
 			found = true
+			wfe.log.Printf("Found an issuer matching SubjectKeyID %x", skiBytes)
 			break
 		}
 	}
@@ -1963,6 +1986,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
+	// TODO(PHIL)
+	//orderReplaces := existingOrder.Replaces
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning

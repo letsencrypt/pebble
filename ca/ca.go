@@ -446,7 +446,6 @@ func (ca *CAImpl) GetSubjectKeyIDs() core.SubjectKeyIDs {
 			skis = append(skis, intermediate.cert.Cert.SubjectKeyId)
 		}
 	}
-	ca.log.Printf("Found %d SKIs\n", len(skis))
 
 	return skis
 }
