@@ -669,7 +669,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
+		return nil, fmt.Errorf("parse error reading JWS: %w", err)
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
@@ -688,11 +688,11 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
 	if err != nil {
-		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
+		return nil, fmt.Errorf("parse error reading JWS: %w", err)
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
-		return nil, errors.New("Too many signatures in POST body")
+		return nil, errors.New("too many signatures in POST body")
 	}
 
 	if len(parsedJWS.Signatures) == 0 {
@@ -1647,7 +1647,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(_ context.Context, replaces
 
 	replacementOrder := wfe.db.GetOrderByID(certID.SerialNumber.String())
 	if replacementOrder == nil {
-		return fmt.Errorf("could not find order")
+		return errors.New("could not find order")
 	}
 	if replacementOrder.Replaces != "" {
 		wfe.sendError(acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber)), response)
@@ -1680,7 +1680,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err := json.Unmarshal(postData.body, &newOrder)
 	if err != nil {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("Error unmarshalling body JSON: %s", err.Error())), response)
+			acme.MalformedProblem(fmt.Sprintf("Error unmarshaling body JSON: %s", err.Error())), response)
 		return
 	}
 
@@ -1831,17 +1831,17 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 		return
 	}
 
-	response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	response.Header().Set("Retry-After", strconv.Itoa(int(6*time.Hour/time.Second)))
 	err = wfe.writeJSONResponse(response, http.StatusOK, renewalInfo)
 	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error marshalling renewalInfo: %s", err)), response)
+		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error marshaling renewalInfo: %s", err)), response)
 		return
 	}
 }
 
 func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertID) (*core.RenewalInfo, error) {
 	if id == nil {
-		return nil, fmt.Errorf("CertID was nil")
+		return nil, errors.New("CertID was nil")
 	}
 
 	// Check if the serial is revoked, and if so, renew it immediately.
@@ -1852,7 +1852,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertI
 
 	cert := wfe.db.GetCertificateBySerial(id.SerialNumber)
 	if cert == nil {
-		return nil, fmt.Errorf("failed to retrieve existing certificate serial")
+		return nil, errors.New("failed to retrieve existing certificate serial")
 	}
 
 	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
@@ -1987,7 +1987,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
 	// TODO(PHIL)
-	//orderReplaces := existingOrder.Replaces
+	// orderReplaces := existingOrder.Replaces
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
