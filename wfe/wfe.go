@@ -1633,27 +1633,27 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) validateReplacementOrder(_ context.Context, replaces string, response http.ResponseWriter) error {
+func (wfe *WebFrontEndImpl) validateReplacementOrder(_ context.Context, replaces string, orderID string) *acme.ProblemDetails {
 	if replaces == "" {
-		// No replacement indicated
+		wfe.log.Printf("Order %q is not a replacement\n", orderID)
 		return nil
 	}
 
 	certID, err := wfe.parseCertID(replaces)
 	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Parsing ARI CertID failed: %s", err)), response)
-		return nil
+		return acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err))
 	}
 
 	replacementOrder := wfe.db.GetOrderByID(certID.SerialNumber.String())
 	if replacementOrder == nil {
-		return errors.New("could not find order")
-	}
-	if replacementOrder.Replaces != "" {
-		wfe.sendError(acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber)), response)
-		return nil
+		return acme.NotFoundProblem("could not find order")
 	}
 
+	if replacementOrder.Replaces != "" {
+		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber))
+	}
+
+	wfe.log.Printf("Order %q is a replacement\n", orderID)
 	return nil
 }
 
@@ -1727,6 +1727,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// Verify the details of the order before creating authorizations
 	if err := wfe.verifyOrder(order); err != nil {
 		wfe.sendError(err, response)
+		return
+	}
+
+	prob = wfe.validateReplacementOrder(context.TODO(), order.Replaces, order.ID)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1809,7 +1815,7 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 // RenewalInfo implements ACME Renewal Info (ARI)
 func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodPost {
-		wfe.UpdateRenewal(context.TODO(), response, request)
+		//wfe.UpdateRenewal(context.TODO(), response, request)
 		wfe.sendError(acme.InternalErrorProblem("POSTing to RenewalInfo has not been implemented yet"), response)
 		return
 	}
@@ -1858,9 +1864,21 @@ func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertI
 	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
 }
 
+/*
 func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.ResponseWriter, request *http.Request) {
-	// Not yet implemented
+	if len(request.URL.Path) == 0 {
+		wfe.sendError(acme.NotFoundProblem("Must specify a request path"), response)
+		return
+	}
+
+	certID, err := wfe.parseCertID(request.URL.Path)
+	if err != nil {
+		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Parsing ARI CertID failed: %s", err)), response)
+		return
+	}
+
 }
+*/
 
 // parseCertID parses a unique identifier (certID) as specified in
 // draft-ietf-acme-ari-03. It takes the composite string as input returns a
@@ -1987,7 +2005,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
 	// TODO(PHIL)
-	// orderReplaces := existingOrder.Replaces
+	//orderReplaces := existingOrder.Replaces
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
