@@ -28,6 +28,8 @@ type Order struct {
 	AuthorizationObjects []*Authorization
 	BeganProcessing      bool
 	CertificateObject    *Certificate
+	// Indicates if the order has replaced via ARI.
+	IsReplaced bool
 }
 
 func (o *Order) GetStatus() (string, error) {

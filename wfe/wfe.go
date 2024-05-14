@@ -1666,7 +1666,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
-	if originalOrder.Replaces != "" {
+	if originalOrder.Replaces != "" || !originalOrder.IsReplaced {
 		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber))
 	}
 
