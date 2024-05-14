@@ -551,12 +551,16 @@ func (wfe *WebFrontEndImpl) Directory(
 	request *http.Request,
 ) {
 	directoryEndpoints := map[string]string{
-		"newNonce":    noncePath,
-		"newAccount":  newAccountPath,
-		"newOrder":    newOrderPath,
-		"revokeCert":  revokeCertPath,
-		"keyChange":   keyRolloverPath,
-		"renewalInfo": renewalInfoPath,
+		"newNonce":   noncePath,
+		"newAccount": newAccountPath,
+		"newOrder":   newOrderPath,
+		"revokeCert": revokeCertPath,
+		"keyChange":  keyRolloverPath,
+		// ARI-capable clients are expected to add the trailing slash per the
+		// draft. We explicitly strip the trailing slash here so that clients
+		// don't need to add trailing slash handling in their own code, saving
+		// them minimal amounts of complexity.
+		"renewalInfo": strings.TrimRight(renewalInfoPath, "/"),
 	}
 
 	// RFC 8555 §6.3 says the server's directory endpoint should support
