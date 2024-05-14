@@ -212,6 +212,30 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	return nil
 }
 
+// GetOrderByCertSerial returns the order that resulted in the given certificate
+// serial. If no such order exists, an error will be returned.
+func (m *MemoryStore) GetOrderByCertSerial(certID *big.Int) (*core.Order, error) {
+	if certID == nil {
+		return nil, errors.New("certID was nil")
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+
+	for _, order := range m.ordersByID {
+		order.Lock()
+		defer order.Unlock()
+		if order.CertificateObject.Cert == nil {
+			continue
+		}
+		if order.CertificateObject.Cert.SerialNumber.Cmp(certID) == 0 {
+			return order, nil
+		}
+	}
+
+	return nil, errors.New("could not find order resulting in the given certificate serial number")
+}
+
 func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
 	m.RLock()
 	defer m.RUnlock()

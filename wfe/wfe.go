@@ -20,6 +20,7 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1633,27 +1634,59 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) validateReplacementOrder(_ context.Context, replaces string, orderID string) *acme.ProblemDetails {
-	if replaces == "" {
-		wfe.log.Printf("Order %q is not a replacement\n", orderID)
+// validateReplacementOrder performs several sanity checks on the order to
+// determine if the order is a replacement of an existing order. If the order is
+// not a replacement or is a valid replacement, no problem will be returned.
+// Otherwise the caller will receive a problem.
+func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme.ProblemDetails {
+	if newOrder == nil {
+		return acme.InternalErrorProblem("Order is nil")
+	}
+
+	// Lock the order for reading
+	newOrder.RLock()
+	defer newOrder.RUnlock()
+
+	if newOrder.Replaces == "" {
+		wfe.log.Printf("Order %q is not a replacement\n", newOrder.ID)
 		return nil
 	}
 
-	certID, err := wfe.parseCertID(replaces)
+	certID, err := wfe.parseCertID(newOrder.Replaces)
 	if err != nil {
 		return acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err))
 	}
 
-	replacementOrder := wfe.db.GetOrderByID(certID.SerialNumber.String())
-	if replacementOrder == nil {
-		return acme.NotFoundProblem("could not find order")
+	originalOrder, err := wfe.db.GetOrderByCertSerial(certID.SerialNumber)
+	if err != nil {
+		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
-	if replacementOrder.Replaces != "" {
+	if originalOrder.Replaces != "" {
 		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber))
 	}
 
-	wfe.log.Printf("Order %q is a replacement\n", orderID)
+	// Servers SHOULD check that the identified certificate and the current New
+	// Order request correspond to the same ACME Account and share a
+	// preponderance of identifiers, and that the identified certificate has not
+	// already been marked as replaced by a different finalized Order. Servers
+	// MAY ignore the replaces field in New Order requests which do not pass
+	// such checks.
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	var foundMatchingIdentifier bool
+	for _, id := range originalOrder.Identifiers {
+		if slices.Contains(newOrder.Identifiers, id) {
+			foundMatchingIdentifier = true
+			break
+		}
+	}
+
+	if !foundMatchingIdentifier {
+		return acme.InternalErrorProblem("at least one identifier in the new order and existing order must match")
+	}
+
+	wfe.log.Printf("Order %q is a replacement of %q\n", newOrder.ID, originalOrder.ID)
+
 	return nil
 }
 
@@ -1730,9 +1763,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	prob = wfe.validateReplacementOrder(context.TODO(), order.Replaces, order.ID)
-	if prob != nil {
-		wfe.sendError(prob, response)
+	if err := wfe.validateReplacementOrder(order); err != nil {
+		wfe.sendError(err, response)
 		return
 	}
 
@@ -2004,8 +2036,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
-	// TODO(PHIL)
-	//orderReplaces := existingOrder.Replaces
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning

@@ -28,7 +28,6 @@ type Order struct {
 	AuthorizationObjects []*Authorization
 	BeganProcessing      bool
 	CertificateObject    *Certificate
-	Replaces             string `json:"replaces,omitempty"`
 }
 
 func (o *Order) GetStatus() (string, error) {
