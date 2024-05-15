@@ -101,8 +101,8 @@ func (m *MemoryStore) UpdateReplacedOrder(serial *big.Int) error {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
-	m.RLock()
-	defer m.RUnlock()
+	m.Lock()
+	defer m.Unlock()
 
 	originalOrder.IsReplaced = true
 	m.ordersByID[originalOrder.ID] = originalOrder
@@ -220,8 +220,8 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 		if err != nil {
 			panic(err)
 		}
-		order.RLock()
-		defer order.RUnlock()
+		order.Lock()
+		defer order.Unlock()
 		order.Status = orderStatus
 		return order
 	}
@@ -239,8 +239,8 @@ func (m *MemoryStore) GetOrderByCertSerial(certID *big.Int) (*core.Order, error)
 	defer m.RUnlock()
 
 	for _, order := range m.ordersByID {
-		order.Lock()
-		defer order.Unlock()
+		order.RLock()
+		defer order.RUnlock()
 		if order.CertificateObject == nil || order.CertificateObject.Cert == nil {
 			continue
 		}
@@ -262,8 +262,8 @@ func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
 			if err != nil {
 				panic(err)
 			}
-			order.RLock()
-			defer order.RUnlock()
+			order.Lock()
+			defer order.Unlock()
 			order.Status = orderStatus
 		}
 		return orders
