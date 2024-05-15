@@ -1647,10 +1647,6 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.InternalErrorProblem("Order is nil")
 	}
 
-	// Lock the order for reading
-	newOrder.Lock()
-	defer newOrder.Unlock()
-
 	if newOrder.Replaces == "" {
 		wfe.log.Printf("ARI: order %q is not a replacement\n", newOrder.ID)
 		return nil
