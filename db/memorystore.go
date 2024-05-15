@@ -94,6 +94,22 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 	return m.accountsByKeyID[keyID], nil
 }
 
+// UpdateReplacedOrder
+func (m *MemoryStore) UpdateReplacedOrder(serial *big.Int) error {
+	originalOrder, err := m.GetOrderByCertSerial(serial)
+	if err != nil {
+		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
+	}
+
+	m.RLock()
+	defer m.RUnlock()
+
+	originalOrder.IsReplaced = true
+	m.ordersByID[originalOrder.ID] = originalOrder
+
+	return nil
+}
+
 // Note that this function should *NOT* be used for key changes. It assumes
 // the public key associated to the account does not change. Use ChangeAccountKey
 // to change the account's public key.
@@ -204,8 +220,8 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 		if err != nil {
 			panic(err)
 		}
-		order.Lock()
-		defer order.Unlock()
+		order.RLock()
+		defer order.RUnlock()
 		order.Status = orderStatus
 		return order
 	}
@@ -225,7 +241,7 @@ func (m *MemoryStore) GetOrderByCertSerial(certID *big.Int) (*core.Order, error)
 	for _, order := range m.ordersByID {
 		order.Lock()
 		defer order.Unlock()
-		if order.CertificateObject.Cert == nil {
+		if order.CertificateObject == nil || order.CertificateObject.Cert == nil {
 			continue
 		}
 		if order.CertificateObject.Cert.SerialNumber.Cmp(certID) == 0 {
@@ -246,8 +262,8 @@ func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
 			if err != nil {
 				panic(err)
 			}
-			order.Lock()
-			defer order.Unlock()
+			order.RLock()
+			defer order.RUnlock()
 			order.Status = orderStatus
 		}
 		return orders

@@ -1648,11 +1648,11 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 	}
 
 	// Lock the order for reading
-	newOrder.RLock()
-	defer newOrder.RUnlock()
+	newOrder.Lock()
+	defer newOrder.Unlock()
 
 	if newOrder.Replaces == "" {
-		wfe.log.Printf("Order %q is not a replacement\n", newOrder.ID)
+		wfe.log.Printf("ARI: order %q is not a replacement\n", newOrder.ID)
 		return nil
 	}
 
@@ -1666,8 +1666,12 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
-	if originalOrder.Replaces != "" || !originalOrder.IsReplaced {
+	if originalOrder.IsReplaced {
 		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber))
+	}
+
+	if originalOrder.AccountID != newOrder.AccountID {
+		return acme.UnauthorizedProblem("requester account did not request the certificate being replaced by this order")
 	}
 
 	// Servers SHOULD check that the identified certificate and the current New
@@ -1675,7 +1679,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 	// preponderance of identifiers, and that the identified certificate has not
 	// already been marked as replaced by a different finalized Order. Servers
 	// MAY ignore the replaces field in New Order requests which do not pass
-	// such checks.
+	// such checks (but Pebble will not ignore it).
 	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
 	var foundMatchingIdentifier bool
 	for _, id := range originalOrder.Identifiers {
@@ -1684,12 +1688,11 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 			break
 		}
 	}
-
 	if !foundMatchingIdentifier {
 		return acme.InternalErrorProblem("at least one identifier in the new order and existing order must match")
 	}
 
-	wfe.log.Printf("Order %q is a replacement of %q\n", newOrder.ID, originalOrder.ID)
+	wfe.log.Printf("ARI: order %q is a replacement of %q\n", newOrder.ID, originalOrder.ID)
 
 	return nil
 }
@@ -1851,7 +1854,6 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 // RenewalInfo implements ACME Renewal Info (ARI)
 func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.ResponseWriter, request *http.Request) {
 	if request.Method == http.MethodPost {
-		//wfe.UpdateRenewal(context.TODO(), response, request)
 		wfe.sendError(acme.InternalErrorProblem("POSTing to RenewalInfo has not been implemented yet"), response)
 		return
 	}
@@ -1899,22 +1901,6 @@ func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertI
 
 	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
 }
-
-/*
-func (wfe *WebFrontEndImpl) UpdateRenewal(_ context.Context, response http.ResponseWriter, request *http.Request) {
-	if len(request.URL.Path) == 0 {
-		wfe.sendError(acme.NotFoundProblem("Must specify a request path"), response)
-		return
-	}
-
-	certID, err := wfe.parseCertID(request.URL.Path)
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem(fmt.Sprintf("Parsing ARI CertID failed: %s", err)), response)
-		return
-	}
-
-}
-*/
 
 // parseCertID parses a unique identifier (certID) as specified in
 // draft-ietf-acme-ari-03. It takes the composite string as input returns a
@@ -2040,6 +2026,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderStatus := existingOrder.Status
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
+	orderReplaces := existingOrder.Replaces
 	// And then immediately unlock it again - we don't defer() here because
 	// `maybeIssue` will also acquire a read lock and we call that before
 	// returning
@@ -2173,6 +2160,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Ask the CA to complete the order in a separate goroutine.
 	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
 	go wfe.ca.CompleteOrder(existingOrder)
+
+	wfe.log.Println("here 1")
+	if orderReplaces != "" {
+		wfe.log.Println("here 2")
+		certID, err := wfe.parseCertID(orderReplaces)
+		if err != nil {
+			wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
+			return
+		}
+		wfe.log.Println("here 3")
+		go wfe.db.UpdateReplacedOrder(certID.SerialNumber)
+		wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)
+	}
 
 	// Set the existingOrder to processing before displaying to the user
 	existingOrder.Status = acme.StatusProcessing

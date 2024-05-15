@@ -28,7 +28,7 @@ type Order struct {
 	AuthorizationObjects []*Authorization
 	BeganProcessing      bool
 	CertificateObject    *Certificate
-	// Indicates if the order has replaced via ARI.
+	// Indicates if the finalized order has been successfully replaced via ARI.
 	IsReplaced bool
 }
 
