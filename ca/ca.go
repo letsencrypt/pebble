@@ -148,9 +148,7 @@ func (ca *CAImpl) makeRootCert(
 		return nil, err
 	}
 
-	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:   hexSerial,
 		Cert: cert,
 		DER:  der,
 	}
@@ -180,7 +178,7 @@ func (ca *CAImpl) newRootIssuer(name string) (*issuer, error) {
 		return nil, err
 	}
 
-	ca.log.Printf("Generated new root issuer %s with serial %s and SKI %x\n", rc.Cert.Subject, rc.ID, subjectKeyID)
+	ca.log.Printf("Generated new root issuer %s with serial %s and SKI %x\n", rc.Cert.Subject, rc.Cert.SerialNumber.String(), subjectKeyID)
 	return &issuer{
 		key:  rk,
 		cert: rc,
@@ -196,7 +194,7 @@ func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Sig
 	if err != nil {
 		return nil, err
 	}
-	ca.log.Printf("Generated new intermediate issuer %s with serial %s and SKI %x\n", ic.Cert.Subject, ic.ID, subjectKeyID)
+	ca.log.Printf("Generated new intermediate issuer %s with serial %s and SKI %x\n", ic.Cert.Subject, ic.Cert.SerialNumber.String(), subjectKeyID)
 	return &issuer{
 		key:  intermediateKey,
 		cert: ic,
@@ -327,9 +325,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		issuers[i] = issuerChain
 	}
 
-	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
 	newCert := &core.Certificate{
-		ID:           hexSerial,
 		AccountID:    accountID,
 		Cert:         cert,
 		DER:          der,
@@ -430,7 +426,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
 	}
-	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.ID, order.ID)
+	ca.log.Printf("Issued certificate serial %s for order %s\n", cert.Cert.SerialNumber.String(), order.ID)
 
 	// Lock and update the order to store the issued certificate
 	order.Lock()

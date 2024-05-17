@@ -150,7 +150,6 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 }
 
 type Certificate struct {
-	ID           string
 	Cert         *x509.Certificate
 	DER          []byte
 	IssuerChains [][]*Certificate
@@ -166,7 +165,7 @@ func (c Certificate) PEM() []byte {
 	})
 	if err != nil {
 		panic(fmt.Sprintf("Unable to encode certificate %q to PEM: %s",
-			c.ID, err.Error()))
+			c.Cert.SerialNumber.String(), err.Error()))
 	}
 
 	return buf.Bytes()

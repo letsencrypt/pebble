@@ -1657,7 +1657,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err))
 	}
 
-	originalOrder, err := wfe.db.GetOrderByCertSerial(certID.SerialNumber)
+	originalOrder, err := wfe.db.GetOrderByIssuedSerial(certID.SerialNumber.String())
 	if err != nil {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
@@ -1783,7 +1783,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	count, err := wfe.db.AddOrder(order)
 	if err != nil {
 		wfe.sendError(
-			acme.InternalErrorProblem("Error saving order"), response)
+			acme.InternalErrorProblem(fmt.Sprintf("Error saving order: %s", err)), response)
 		return
 	}
 	wfe.log.Printf("Added order %q to the db\n", order.ID)
@@ -1841,7 +1841,7 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	if order.CertificateObject != nil {
 		result.Certificate = wfe.relativeEndpoint(
 			request,
-			certPath+order.CertificateObject.ID)
+			certPath+order.CertificateObject.Cert.SerialNumber.String())
 	}
 
 	return result
@@ -2153,25 +2153,32 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	existingOrder.BeganProcessing = true
 	existingOrder.Unlock()
 
-	// Ask the CA to complete the order in a separate goroutine.
 	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
-	go wfe.ca.CompleteOrder(existingOrder)
+	wfe.ca.CompleteOrder(existingOrder)
 
-	wfe.log.Println("here 1")
+	// Store the order in this table so we can check if it had previously been replaced.
+	count, err := wfe.db.AddOrderByIssuedSerial(existingOrder)
+	if err != nil {
+		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error saving order: %s", err)), response)
+		return
+	}
+	wfe.log.Printf("Added order %q to the orderByIssuedSerial DB\n", existingOrder.ID)
+	wfe.log.Printf("There are now %d orders in the orderByIssuedSerial DB\n", count)
+
 	if orderReplaces != "" {
-		wfe.log.Println("here 2")
 		certID, err := wfe.parseCertID(orderReplaces)
 		if err != nil {
 			wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
 			return
 		}
-		wfe.log.Println("here 3")
-		go wfe.db.UpdateReplacedOrder(certID.SerialNumber)
+		wfe.db.UpdateReplacedOrder(certID.SerialNumber.String())
 		wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)
 	}
 
 	// Set the existingOrder to processing before displaying to the user
+	existingOrder.Lock()
 	existingOrder.Status = acme.StatusProcessing
+	existingOrder.Unlock()
 
 	addRetryAfterHeader(response, wfe.retryAfterOrder)
 

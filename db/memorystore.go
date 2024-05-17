@@ -46,15 +46,18 @@ type MemoryStore struct {
 	// key bytes.
 	accountsByKeyID map[string]*core.Account
 
-	ordersByID        map[string]*core.Order
-	ordersByAccountID map[string][]*core.Order
+	// ordersByIssuedSerial indexes the hex encoding of the certificate's
+	// SerialNumber.
+	ordersByIssuedSerial map[string]*core.Order
+	ordersByID           map[string]*core.Order
+	ordersByAccountID    map[string][]*core.Order
 
 	authorizationsByID map[string]*core.Authorization
 
 	challengesByID map[string]*core.Challenge
 
-	certificatesByID        map[string]*core.Certificate
-	revokedCertificatesByID map[string]*core.RevokedCertificate
+	certificatesByID            map[string]*core.Certificate
+	revokedCertificatesBySerial map[string]*core.RevokedCertificate
 
 	externalAccountKeysByID map[string][]byte
 
@@ -63,17 +66,18 @@ type MemoryStore struct {
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		accountRand:             rand.New(rand.NewSource(time.Now().UnixNano())),
-		accountsByID:            make(map[string]*core.Account),
-		accountsByKeyID:         make(map[string]*core.Account),
-		ordersByID:              make(map[string]*core.Order),
-		ordersByAccountID:       make(map[string][]*core.Order),
-		authorizationsByID:      make(map[string]*core.Authorization),
-		challengesByID:          make(map[string]*core.Challenge),
-		certificatesByID:        make(map[string]*core.Certificate),
-		revokedCertificatesByID: make(map[string]*core.RevokedCertificate),
-		externalAccountKeysByID: make(map[string][]byte),
-		blockListByDomain:       make([][]string, 0),
+		accountRand:                 rand.New(rand.NewSource(time.Now().UnixNano())),
+		accountsByID:                make(map[string]*core.Account),
+		accountsByKeyID:             make(map[string]*core.Account),
+		ordersByIssuedSerial:        make(map[string]*core.Order),
+		ordersByID:                  make(map[string]*core.Order),
+		ordersByAccountID:           make(map[string][]*core.Order),
+		authorizationsByID:          make(map[string]*core.Authorization),
+		challengesByID:              make(map[string]*core.Challenge),
+		certificatesByID:            make(map[string]*core.Certificate),
+		revokedCertificatesBySerial: make(map[string]*core.RevokedCertificate),
+		externalAccountKeysByID:     make(map[string][]byte),
+		blockListByDomain:           make([][]string, 0),
 	}
 }
 
@@ -95,17 +99,20 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 }
 
 // UpdateReplacedOrder
-func (m *MemoryStore) UpdateReplacedOrder(serial *big.Int) error {
-	originalOrder, err := m.GetOrderByCertSerial(serial)
+// We intentionally don't Lock the database inside this method because the
+// inner GetOrderByIssuedSerial which is used elsewhere does an RLock which
+// would hang.
+// , account *core.Account
+func (m *MemoryStore) UpdateReplacedOrder(serial string) error {
+	if serial == "" {
+		return acme.InternalErrorProblem("no serial provided")
+	}
+
+	originalOrder, err := m.GetOrderByIssuedSerial(serial)
 	if err != nil {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
-
-	m.Lock()
-	defer m.Unlock()
-
 	originalOrder.IsReplaced = true
-	m.ordersByID[originalOrder.ID] = originalOrder
 
 	return nil
 }
@@ -211,6 +218,20 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 	return len(m.ordersByID), nil
 }
 
+func (m *MemoryStore) AddOrderByIssuedSerial(order *core.Order) (int, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	if order.CertificateObject == nil || order.CertificateObject.Cert == nil {
+		return len(m.ordersByIssuedSerial), errors.New("order must have non-empty CertificateObject and Cert")
+	}
+
+	serial := order.CertificateObject.Cert.SerialNumber.String()
+	m.ordersByIssuedSerial[serial] = order
+
+	return len(m.ordersByIssuedSerial), nil
+}
+
 func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	m.RLock()
 	defer m.RUnlock()
@@ -228,28 +249,18 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	return nil
 }
 
-// GetOrderByCertSerial returns the order that resulted in the given certificate
+// GetOrderByIssuedSerial returns the order that resulted in the given certificate
 // serial. If no such order exists, an error will be returned.
-func (m *MemoryStore) GetOrderByCertSerial(certID *big.Int) (*core.Order, error) {
-	if certID == nil {
-		return nil, errors.New("certID was nil")
-	}
-
+func (m *MemoryStore) GetOrderByIssuedSerial(serial string) (*core.Order, error) {
 	m.RLock()
 	defer m.RUnlock()
 
-	for _, order := range m.ordersByID {
-		order.RLock()
-		defer order.RUnlock()
-		if order.CertificateObject == nil || order.CertificateObject.Cert == nil {
-			continue
-		}
-		if order.CertificateObject.Cert.SerialNumber.Cmp(certID) == 0 {
-			return order, nil
-		}
+	order, ok := m.ordersByIssuedSerial[serial]
+	if !ok {
+		return nil, errors.New("could not find order resulting in the given certificate serial number")
 	}
 
-	return nil, errors.New("could not find order resulting in the given certificate serial number")
+	return order, nil
 }
 
 func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {
@@ -346,19 +357,19 @@ func (m *MemoryStore) AddCertificate(cert *core.Certificate) (int, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	certID := cert.ID
-	if len(certID) == 0 {
-		return 0, errors.New("cert must have a non-empty ID to add to MemoryStore")
+	serial := cert.Cert.SerialNumber.String()
+	if serial == "" {
+		return 0, errors.New("invalid serial")
 	}
 
-	if _, present := m.certificatesByID[certID]; present {
-		return 0, fmt.Errorf("cert %q already exists", certID)
+	if _, present := m.certificatesByID[serial]; present {
+		return 0, fmt.Errorf("cert %q already exists", serial)
 	}
-	if _, present := m.revokedCertificatesByID[certID]; present {
-		return 0, fmt.Errorf("cert %q already exists (and is revoked)", certID)
+	if _, present := m.revokedCertificatesBySerial[serial]; present {
+		return 0, fmt.Errorf("cert %q already exists (and is revoked)", serial)
 	}
 
-	m.certificatesByID[certID] = cert
+	m.certificatesByID[serial] = cert
 	return len(m.certificatesByID), nil
 }
 
@@ -387,7 +398,7 @@ func (m *MemoryStore) GetCertificateByDER(der []byte) *core.Certificate {
 func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.RevokedCertificate {
 	m.RLock()
 	defer m.RUnlock()
-	for _, c := range m.revokedCertificatesByID {
+	for _, c := range m.revokedCertificatesBySerial {
 		if reflect.DeepEqual(c.Certificate.DER, der) {
 			return c
 		}
@@ -399,8 +410,8 @@ func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.RevokedCertif
 func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) {
 	m.Lock()
 	defer m.Unlock()
-	m.revokedCertificatesByID[cert.Certificate.ID] = cert
-	delete(m.certificatesByID, cert.Certificate.ID)
+	m.revokedCertificatesBySerial[cert.Certificate.Cert.SerialNumber.String()] = cert
+	delete(m.certificatesByID, cert.Certificate.Cert.SerialNumber.String())
 }
 
 /*
@@ -447,7 +458,7 @@ func (m *MemoryStore) GetCertificateBySerial(serialNumber *big.Int) *core.Certif
 func (m *MemoryStore) GetRevokedCertificateBySerial(serialNumber *big.Int) *core.RevokedCertificate {
 	m.RLock()
 	defer m.RUnlock()
-	for _, c := range m.revokedCertificatesByID {
+	for _, c := range m.revokedCertificatesBySerial {
 		if serialNumber.Cmp(c.Certificate.Cert.SerialNumber) == 0 {
 			return c
 		}
