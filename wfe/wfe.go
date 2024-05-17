@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -674,7 +675,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, fmt.Errorf("parse error reading JWS: %w", err)
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
@@ -693,11 +694,11 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 
 	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
 	if err != nil {
-		return nil, fmt.Errorf("parse error reading JWS: %w", err)
+		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
-		return nil, errors.New("too many signatures in POST body")
+		return nil, errors.New("Too many signatures in POST body")
 	}
 
 	if len(parsedJWS.Signatures) == 0 {
@@ -1657,13 +1658,13 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err))
 	}
 
-	originalOrder, err := wfe.db.GetOrderByIssuedSerial(certID.SerialNumber.String())
+	originalOrder, err := wfe.db.GetOrderByIssuedSerial(certID.ID)
 	if err != nil {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
 	if originalOrder.IsReplaced {
-		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialNumber))
+		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.ID))
 	}
 
 	if originalOrder.AccountID != newOrder.AccountID {
@@ -1841,7 +1842,7 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	if order.CertificateObject != nil {
 		result.Certificate = wfe.relativeEndpoint(
 			request,
-			certPath+order.CertificateObject.Cert.SerialNumber.String())
+			certPath+order.CertificateObject.ID)
 	}
 
 	return result
@@ -1927,14 +1928,17 @@ func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 		return nil, acme.MalformedProblem("path contained an Authority Key Identifier that did not match a known issuer")
 	}
 
-	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
+	serialBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return nil, acme.MalformedProblem(fmt.Sprintf("serial number was not base64url-encoded or contained padding: %s", err))
 	}
 
+	serialNumber := new(big.Int).SetBytes(serialBytes)
+	serialID := hex.EncodeToString(serialBytes)
 	return &core.CertID{
 		KeyIdentifier: akid,
-		SerialNumber:  new(big.Int).SetBytes(serialNumber),
+		SerialNumber:  serialNumber,
+		ID:            serialID,
 	}, nil
 }
 
@@ -2023,9 +2027,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	orderExpires := existingOrder.ExpiresDate
 	orderIdentifiers := existingOrder.Identifiers
 	orderReplaces := existingOrder.Replaces
-	// And then immediately unlock it again - we don't defer() here because
-	// `maybeIssue` will also acquire a read lock and we call that before
-	// returning
 	existingOrder.RUnlock()
 
 	if orderAccountID != existingAcct.ID {
@@ -2149,40 +2150,42 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 	// Lock and update the order with the parsed CSR and the began processing
 	// state.
 	existingOrder.Lock()
+	// do a check on the stored order to see if another process
+	// changed the order status
 	existingOrder.ParsedCSR = parsedCSR
 	existingOrder.BeganProcessing = true
 	existingOrder.Unlock()
 
 	wfe.log.Printf("Order %s is fully authorized. Processing finalization", orderID)
-	wfe.ca.CompleteOrder(existingOrder)
 
-	// Store the order in this table so we can check if it had previously been replaced.
-	count, err := wfe.db.AddOrderByIssuedSerial(existingOrder)
-	if err != nil {
-		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error saving order: %s", err)), response)
-		return
-	}
-	wfe.log.Printf("Added order %q to the orderByIssuedSerial DB\n", existingOrder.ID)
-	wfe.log.Printf("There are now %d orders in the orderByIssuedSerial DB\n", count)
+	// Perform asynchronous finalization
+	go func() {
+		wfe.ca.CompleteOrder(existingOrder)
 
-	if orderReplaces != "" {
-		certID, err := wfe.parseCertID(orderReplaces)
+		// Store the order in this table so we can check if it had previously been replaced.
+		err := wfe.db.AddOrderByIssuedSerial(existingOrder)
 		if err != nil {
-			wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
+			wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error saving order: %s", err)), response)
 			return
 		}
-		err = wfe.db.UpdateReplacedOrder(certID.SerialNumber.String())
-		if err != nil {
-			wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error updating replacement order: %s", err)), response)
-			return
+
+		if orderReplaces != "" {
+			certID, err := wfe.parseCertID(orderReplaces)
+			if err != nil {
+				wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
+				return
+			}
+			err = wfe.db.UpdateReplacedOrder(certID.ID)
+			if err != nil {
+				wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error updating replacement order: %s", err)), response)
+				return
+			}
+			wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)
 		}
-		wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)
-	}
+	}()
 
 	// Set the existingOrder to processing before displaying to the user
-	existingOrder.Lock()
 	existingOrder.Status = acme.StatusProcessing
-	existingOrder.Unlock()
 
 	addRetryAfterHeader(response, wfe.retryAfterOrder)
 
