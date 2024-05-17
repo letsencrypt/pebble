@@ -2171,7 +2171,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(
 			wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
 			return
 		}
-		wfe.db.UpdateReplacedOrder(certID.SerialNumber.String())
+		err = wfe.db.UpdateReplacedOrder(certID.SerialNumber.String())
+		if err != nil {
+			wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error updating replacement order: %s", err)), response)
+			return
+		}
 		wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)
 	}
 
