@@ -1,6 +1,6 @@
 module github.com/letsencrypt/pebble/v2
 
-go 1.22
+go 1.21
 
 require (
 	github.com/go-jose/go-jose/v4 v4.0.1
