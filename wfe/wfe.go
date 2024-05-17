@@ -1992,7 +1992,7 @@ func (wfe *WebFrontEndImpl) Order(
 	}
 }
 
-func (wfe *WebFrontEndImpl) FinalizeOrder(
+func (wfe *WebFrontEndImpl) FinalizeOrder( //nolint:gocyclo,gocognit
 	_ context.Context,
 	response http.ResponseWriter,
 	request *http.Request,
