@@ -98,12 +98,13 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 	return m.accountsByKeyID[keyID], nil
 }
 
-// UpdateReplacedOrder
-// We intentionally don't Lock the database inside this method because the
-// inner GetOrderByIssuedSerial which is used elsewhere does an RLock which
-// would hang.
-// , account *core.Account
-func (m *MemoryStore) UpdateReplacedOrder(serial string) error {
+// UpdateReplacedOrder takes a serial and marks a parent order as
+// replaced/not-replaced or returns an error.
+//
+// We intentionally don't Lock the database inside this method because the inner
+// GetOrderByIssuedSerial which is used elsewhere does an RLock which would
+// hang.
+func (m *MemoryStore) UpdateReplacedOrder(serial string, shouldBeReplaced bool) error {
 	if serial == "" {
 		return acme.InternalErrorProblem("no serial provided")
 	}
@@ -112,7 +113,9 @@ func (m *MemoryStore) UpdateReplacedOrder(serial string) error {
 	if err != nil {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
-	originalOrder.IsReplaced = true
+	originalOrder.Lock()
+	defer originalOrder.Unlock()
+	originalOrder.IsReplaced = shouldBeReplaced
 
 	return nil
 }

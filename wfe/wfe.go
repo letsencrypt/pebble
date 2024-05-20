@@ -7,7 +7,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -1457,6 +1456,11 @@ func (wfe *WebFrontEndImpl) verifyOrder(order *core.Order) *acme.ProblemDetails 
 			return problem
 		}
 	}
+
+	if problem := wfe.validateReplacementOrder(order); problem != nil {
+		return problem
+	}
+
 	return nil
 }
 
@@ -1649,7 +1653,6 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 	}
 
 	if newOrder.Replaces == "" {
-		wfe.log.Printf("ARI: order %q is not a replacement\n", newOrder.ID)
 		return nil
 	}
 
@@ -1658,26 +1661,26 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 		return acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err))
 	}
 
-	originalOrder, err := wfe.db.GetOrderByIssuedSerial(certID.ID)
+	originalOrder, err := wfe.db.GetOrderByIssuedSerial(certID.SerialHex())
 	if err != nil {
 		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
 	}
 
 	if originalOrder.IsReplaced {
-		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.ID))
+		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialHex()))
 	}
 
 	if originalOrder.AccountID != newOrder.AccountID {
 		return acme.UnauthorizedProblem("requester account did not request the certificate being replaced by this order")
 	}
 
-	// Servers SHOULD check that the identified certificate and the current New
-	// Order request correspond to the same ACME Account and share a
-	// preponderance of identifiers, and that the identified certificate has not
-	// already been marked as replaced by a different finalized Order. Servers
-	// MAY ignore the replaces field in New Order requests which do not pass
-	// such checks (but Pebble will not ignore it).
-	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	// Servers SHOULD check that the identified certificate and the New Order
+	// request correspond to the same ACME Account, that they share at least one
+	// identifier, and that the identified certificate has not already been
+	// marked as replaced by a different Order that is not "invalid".
+	// Correspondence checks beyond this (such as requiring exact identifier
+	// matching) are left up to Server policy. If any of these checks fail, the
+	// Server SHOULD reject the new-order request.
 	var foundMatchingIdentifier bool
 	for _, id := range originalOrder.Identifiers {
 		if slices.Contains(newOrder.Identifiers, id) {
@@ -1763,11 +1766,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	// Verify the details of the order before creating authorizations
 	if err := wfe.verifyOrder(order); err != nil {
-		wfe.sendError(err, response)
-		return
-	}
-
-	if err := wfe.validateReplacementOrder(order); err != nil {
 		wfe.sendError(err, response)
 		return
 	}
@@ -1915,17 +1913,9 @@ func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 		return nil, acme.MalformedProblem(fmt.Sprintf("Authority Key Identifier was not base64url-encoded or contained padding: %s", err))
 	}
 
-	var found bool
-	skis := wfe.ca.GetSubjectKeyIDs()
-	for _, skiBytes := range skis {
-		if bytes.Equal(skiBytes, akid) {
-			found = true
-			wfe.log.Printf("Found an issuer matching SubjectKeyID %x", skiBytes)
-			break
-		}
-	}
-	if !found {
-		return nil, acme.MalformedProblem("path contained an Authority Key Identifier that did not match a known issuer")
+	err = wfe.ca.GetIntermediateBySKID(akid)
+	if err != nil {
+		return nil, acme.MalformedProblem(err.Error())
 	}
 
 	serialBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
@@ -1933,13 +1923,12 @@ func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 		return nil, acme.MalformedProblem(fmt.Sprintf("serial number was not base64url-encoded or contained padding: %s", err))
 	}
 
-	serialNumber := new(big.Int).SetBytes(serialBytes)
-	serialID := hex.EncodeToString(serialBytes)
-	return &core.CertID{
-		KeyIdentifier: akid,
-		SerialNumber:  serialNumber,
-		ID:            serialID,
-	}, nil
+	certID, err := core.NewCertID(serialBytes, akid)
+	if err != nil {
+		return nil, acme.MalformedProblem(fmt.Sprintf("error creating certID: %s", err))
+	}
+
+	return certID, nil
 }
 
 // Order retrieves the details of an existing order
@@ -2165,19 +2154,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder( //nolint:gocyclo,gocognit
 		// Store the order in this table so we can check if it had previously been replaced.
 		err := wfe.db.AddOrderByIssuedSerial(existingOrder)
 		if err != nil {
-			wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error saving order: %s", err)), response)
+			wfe.log.Printf("Error saving order: %s", err)
 			return
 		}
 
 		if orderReplaces != "" {
 			certID, err := wfe.parseCertID(orderReplaces)
 			if err != nil {
-				wfe.sendError(acme.MalformedProblem(fmt.Sprintf("parsing ARI CertID failed: %s", err)), response)
+				wfe.log.Printf("parsing ARI CertID failed: %s", err)
 				return
 			}
-			err = wfe.db.UpdateReplacedOrder(certID.ID)
+			err = wfe.db.UpdateReplacedOrder(certID.SerialHex(), true)
 			if err != nil {
-				wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error updating replacement order: %s", err)), response)
+				wfe.log.Printf("Error updating replacement order: %s", err)
 				return
 			}
 			wfe.log.Printf("Order %s has been marked as replaced in the DB", orderID)

@@ -438,16 +438,23 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
-func (ca *CAImpl) GetSubjectKeyIDs() core.SubjectKeyIDs {
-	skis := core.SubjectKeyIDs{}
+// GetIntermediateBySKID attempts to match the incoming Authority Key Idenfitier
+// (AKID) bytes to the Subject Key Identifier of an intermediate certificate. It
+// returns an error if no match is found.
+func (ca *CAImpl) GetIntermediateBySKID(issuer []byte) error {
+	if issuer == nil {
+		return errors.New("issuer bytes must not be nil")
+	}
+
 	for _, chain := range ca.chains {
-		skis = append(skis, chain.root.cert.Cert.SubjectKeyId)
 		for _, intermediate := range chain.intermediates {
-			skis = append(skis, intermediate.cert.Cert.SubjectKeyId)
+			if bytes.Equal(intermediate.cert.Cert.SubjectKeyId, issuer) {
+				return nil
+			}
 		}
 	}
 
-	return skis
+	return errors.New("no known issuer matches the provided Authority Key Identifier ")
 }
 
 func (ca *CAImpl) GetNumberOfRootCerts() int {

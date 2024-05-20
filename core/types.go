@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -204,10 +205,6 @@ type ValidationRecord struct {
 	ValidatedAt time.Time
 }
 
-// SubjectKeyIDs is a convenience type that holds the Subject Key Identifier
-// value for each Pebble generated root and intermediate certificate.
-type SubjectKeyIDs [][]byte
-
 // CertID represents a unique identifier (CertID) for a certificate as per the
 // ACME protocol's "renewalInfo" resource, as specified in draft-ietf-acme-ari-
 // 03. The CertID is a composite string derived from the base64url-encoded
@@ -218,8 +215,27 @@ type SubjectKeyIDs [][]byte
 type CertID struct {
 	KeyIdentifier []byte
 	SerialNumber  *big.Int
-	// ID is the pre-computed hex encoding of SerialNumber.
-	ID string
+	// id is the pre-computed hex encoding of SerialNumber.
+	id string
+}
+
+// SerialHex returns a CertID's id field.
+func (c CertID) SerialHex() string {
+	return c.id
+}
+
+// NewCertID takes bytes representing a serial number and authority key
+// identifier and returns a CertID or an error.
+func NewCertID(serial []byte, akid []byte) (*CertID, error) {
+	if serial == nil || akid == nil {
+		return nil, fmt.Errorf("must send non-nil bytes")
+	}
+
+	return &CertID{
+		KeyIdentifier: akid,
+		SerialNumber:  new(big.Int).SetBytes(serial),
+		id:            hex.EncodeToString(serial),
+	}, nil
 }
 
 // SuggestedWindow is a type exposed inside the RenewalInfo resource.
