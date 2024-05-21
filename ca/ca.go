@@ -438,10 +438,10 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
-// GetIntermediateBySKID attempts to match the incoming Authority Key Idenfitier
-// (AKID) bytes to the Subject Key Identifier of an intermediate certificate. It
+// RecognizedSKID attempts to match the incoming Authority Key Idenfitier (AKID)
+// bytes to the Subject Key Identifier (SKID) of an intermediate certificate. It
 // returns an error if no match is found.
-func (ca *CAImpl) GetIntermediateBySKID(issuer []byte) error {
+func (ca *CAImpl) RecognizedSKID(issuer []byte) error {
 	if issuer == nil {
 		return errors.New("issuer bytes must not be nil")
 	}

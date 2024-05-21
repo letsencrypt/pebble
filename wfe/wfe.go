@@ -1913,7 +1913,7 @@ func (wfe *WebFrontEndImpl) parseCertID(path string) (*core.CertID, error) {
 		return nil, acme.MalformedProblem(fmt.Sprintf("Authority Key Identifier was not base64url-encoded or contained padding: %s", err))
 	}
 
-	err = wfe.ca.GetIntermediateBySKID(akid)
+	err = wfe.ca.RecognizedSKID(akid)
 	if err != nil {
 		return nil, acme.MalformedProblem(err.Error())
 	}

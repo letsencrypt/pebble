@@ -109,7 +109,11 @@ type VAImpl struct {
 	strict             bool
 	customResolverAddr string
 	dnsClient          *dns.Client
-	db                 *db.MemoryStore
+
+	// The VA having a DB client is indeed strange. This is only used to
+	// facilitate va.setOrderError changing the ARI related order replacement
+	// field on failed orders.
+	db *db.MemoryStore
 }
 
 func New(
