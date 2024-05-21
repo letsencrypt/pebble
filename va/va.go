@@ -224,7 +224,7 @@ func (va VAImpl) setOrderError(order *core.Order, prob *acme.ProblemDetails) {
 
 	// Mark the parent order as "not replaced yet" so a new replacement order
 	// can be attempted.
-	err := va.db.UpdateReplacedOrder(order.CertificateObject.ID, false)
+	err := va.db.UpdateReplacedOrder(order.Replaces, false)
 	if err != nil {
 		va.log.Printf("Error updating replacement order: %s", err)
 	}
