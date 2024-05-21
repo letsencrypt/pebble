@@ -228,7 +228,7 @@ func (c CertID) SerialHex() string {
 // identifier and returns a CertID or an error.
 func NewCertID(serial []byte, akid []byte) (*CertID, error) {
 	if serial == nil || akid == nil {
-		return nil, fmt.Errorf("must send non-nil bytes")
+		return nil, errors.New("must send non-nil bytes")
 	}
 
 	return &CertID{
