@@ -12,7 +12,7 @@ permissions:
 env:
   CGO_ENABLED: 0
   GO_VERSION: stable
-  GOLANGCI_LINT_VERSION: v1.56.2
+  GOLANGCI_LINT_VERSION: v1.58.1
   SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
   go-lint-checks:
@@ -23,11 +23,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Run GolangCI-Lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
-          # skip cache because of flaky behaviors
-          skip-build-cache: true
-          skip-pkg-cache: true
           version: ${{ env.GOLANGCI_LINT_VERSION }}
   go-mod-checks:
     runs-on: ubuntu-latest
