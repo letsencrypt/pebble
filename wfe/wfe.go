@@ -1864,7 +1864,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 		return
 	}
 
-	renewalInfo, err := wfe.determineARIWindow(context.TODO(), certID)
+	renewalInfo, err := wfe.determineARIWindow(certID)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem(fmt.Sprintf("Error determining renewal window: %s", err)), response)
 		return
@@ -1878,7 +1878,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 	}
 }
 
-func (wfe *WebFrontEndImpl) determineARIWindow(_ context.Context, id *core.CertID) (*core.RenewalInfo, error) {
+func (wfe *WebFrontEndImpl) determineARIWindow(id *core.CertID) (*core.RenewalInfo, error) {
 	if id == nil {
 		return nil, errors.New("CertID was nil")
 	}
