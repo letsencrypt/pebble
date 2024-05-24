@@ -95,7 +95,7 @@ func main() {
 
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress)
+	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)

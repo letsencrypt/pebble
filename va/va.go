@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/challtestsrv"
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/core"
+	"github.com/letsencrypt/pebble/v2/db"
 )
 
 const (
@@ -108,12 +109,18 @@ type VAImpl struct {
 	strict             bool
 	customResolverAddr string
 	dnsClient          *dns.Client
+
+	// The VA having a DB client is indeed strange. This is only used to
+	// facilitate va.setOrderError changing the ARI related order replacement
+	// field on failed orders.
+	db *db.MemoryStore
 }
 
 func New(
 	log *log.Logger,
 	httpPort, tlsPort int,
 	strict bool, customResolverAddr string,
+	db *db.MemoryStore,
 ) *VAImpl {
 	va := &VAImpl{
 		log:                log,
@@ -124,6 +131,7 @@ func New(
 		sleepTime:          defaultSleepTime,
 		strict:             strict,
 		customResolverAddr: customResolverAddr,
+		db:                 db,
 	}
 
 	if customResolverAddr != "" {
@@ -209,10 +217,17 @@ func (va VAImpl) setAuthzValid(authz *core.Authorization, chal *core.Challenge) 
 
 // setOrderError updates an order with an error from an authorization
 // validation.
-func (va VAImpl) setOrderError(order *core.Order, err *acme.ProblemDetails) {
+func (va VAImpl) setOrderError(order *core.Order, prob *acme.ProblemDetails) {
 	order.Lock()
 	defer order.Unlock()
-	order.Error = err
+	order.Error = prob
+
+	// Mark the parent order as "not replaced yet" so a new replacement order
+	// can be attempted.
+	err := va.db.UpdateReplacedOrder(order.Replaces, false)
+	if err != nil {
+		va.log.Printf("Error updating replacement order: %s", err)
+	}
 }
 
 // setAuthzInvalid updates an authorization and an associated challenge to be

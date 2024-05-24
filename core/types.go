@@ -5,9 +5,11 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -27,6 +29,8 @@ type Order struct {
 	AuthorizationObjects []*Authorization
 	BeganProcessing      bool
 	CertificateObject    *Certificate
+	// Indicates if the finalized order has been successfully replaced via ARI.
+	IsReplaced bool
 }
 
 func (o *Order) GetStatus() (string, error) {
@@ -199,4 +203,86 @@ type ValidationRecord struct {
 	URL         string
 	Error       *acme.ProblemDetails
 	ValidatedAt time.Time
+}
+
+// CertID represents a unique identifier (CertID) for a certificate as per the
+// ACME protocol's "renewalInfo" resource, as specified in draft-ietf-acme-ari-
+// 03. The CertID is a composite string derived from the base64url-encoded
+// keyIdentifier of the certificate's Authority Key Identifier (AKI) and the
+// base64url-encoded serial number of the certificate, separated by a period.
+// For more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
+type CertID struct {
+	KeyIdentifier []byte
+	SerialNumber  *big.Int
+	// id is the pre-computed hex encoding of SerialNumber.
+	id string
+}
+
+// SerialHex returns a CertID's id field.
+func (c CertID) SerialHex() string {
+	return c.id
+}
+
+// NewCertID takes bytes representing a serial number and authority key
+// identifier and returns a CertID or an error.
+func NewCertID(serial []byte, akid []byte) (*CertID, error) {
+	if serial == nil || akid == nil {
+		return nil, errors.New("must send non-nil bytes")
+	}
+
+	return &CertID{
+		KeyIdentifier: akid,
+		SerialNumber:  new(big.Int).SetBytes(serial),
+		id:            hex.EncodeToString(serial),
+	}, nil
+}
+
+// SuggestedWindow is a type exposed inside the RenewalInfo resource.
+type SuggestedWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+// IsWithin returns true if the given time is within the suggested window,
+// inclusive of the start time and exclusive of the end time.
+func (window SuggestedWindow) IsWithin(now time.Time) bool {
+	return !now.Before(window.Start) && now.Before(window.End)
+}
+
+// RenewalInfo is a type which is exposed to clients which query the renewalInfo
+// endpoint specified in draft-aaron-ari.
+type RenewalInfo struct {
+	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
+}
+
+// RenewalInfoSimple constructs a `RenewalInfo` object and suggested window
+// using a very simple renewal calculation: calculate a point 2/3rds of the way
+// through the validity period, then give a 2-day window around that. Both the
+// `issued` and `expires` timestamps are expected to be UTC.
+func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
+	validity := expires.Add(time.Second).Sub(issued)
+	renewalOffset := validity / time.Duration(3)
+	idealRenewal := expires.Add(-renewalOffset)
+	return &RenewalInfo{
+		SuggestedWindow: SuggestedWindow{
+			Start: idealRenewal.Add(-24 * time.Hour),
+			End:   idealRenewal.Add(24 * time.Hour),
+		},
+	}
+}
+
+// RenewalInfoImmediate constructs a `RenewalInfo` object with a suggested
+// window in the past. Per the draft-ietf-acme-ari-01 spec, clients should
+// attempt to renew immediately if the suggested window is in the past. The
+// passed `now` is assumed to be a timestamp representing the current moment in
+// time.
+func RenewalInfoImmediate(now time.Time) *RenewalInfo {
+	oneHourAgo := now.Add(-1 * time.Hour)
+	return &RenewalInfo{
+		SuggestedWindow: SuggestedWindow{
+			Start: oneHourAgo,
+			End:   oneHourAgo.Add(time.Minute * 30),
+		},
+	}
 }

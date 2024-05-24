@@ -46,8 +46,11 @@ type MemoryStore struct {
 	// key bytes.
 	accountsByKeyID map[string]*core.Account
 
-	ordersByID        map[string]*core.Order
-	ordersByAccountID map[string][]*core.Order
+	// ordersByIssuedSerial indexes the hex encoding of the certificate's
+	// SerialNumber.
+	ordersByIssuedSerial map[string]*core.Order
+	ordersByID           map[string]*core.Order
+	ordersByAccountID    map[string][]*core.Order
 
 	authorizationsByID map[string]*core.Authorization
 
@@ -66,6 +69,7 @@ func NewMemoryStore() *MemoryStore {
 		accountRand:             rand.New(rand.NewSource(time.Now().UnixNano())),
 		accountsByID:            make(map[string]*core.Account),
 		accountsByKeyID:         make(map[string]*core.Account),
+		ordersByIssuedSerial:    make(map[string]*core.Order),
 		ordersByID:              make(map[string]*core.Order),
 		ordersByAccountID:       make(map[string][]*core.Order),
 		authorizationsByID:      make(map[string]*core.Authorization),
@@ -92,6 +96,28 @@ func (m *MemoryStore) GetAccountByKey(key crypto.PublicKey) (*core.Account, erro
 	m.RLock()
 	defer m.RUnlock()
 	return m.accountsByKeyID[keyID], nil
+}
+
+// UpdateReplacedOrder takes a serial and marks a parent order as
+// replaced/not-replaced or returns an error.
+//
+// We intentionally don't Lock the database inside this method because the inner
+// GetOrderByIssuedSerial which is used elsewhere does an RLock which would
+// hang.
+func (m *MemoryStore) UpdateReplacedOrder(serial string, shouldBeReplaced bool) error {
+	if serial == "" {
+		return acme.InternalErrorProblem("no serial provided")
+	}
+
+	originalOrder, err := m.GetOrderByIssuedSerial(serial)
+	if err != nil {
+		return acme.InternalErrorProblem(fmt.Sprintf("could not find an order for the given certificate: %s", err))
+	}
+	originalOrder.Lock()
+	defer originalOrder.Unlock()
+	originalOrder.IsReplaced = shouldBeReplaced
+
+	return nil
 }
 
 // Note that this function should *NOT* be used for key changes. It assumes
@@ -195,6 +221,19 @@ func (m *MemoryStore) AddOrder(order *core.Order) (int, error) {
 	return len(m.ordersByID), nil
 }
 
+func (m *MemoryStore) AddOrderByIssuedSerial(order *core.Order) error {
+	m.Lock()
+	defer m.Unlock()
+
+	if order.CertificateObject == nil {
+		return errors.New("order must have non-empty CertificateObject")
+	}
+
+	m.ordersByIssuedSerial[order.CertificateObject.ID] = order
+
+	return nil
+}
+
 func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 	m.RLock()
 	defer m.RUnlock()
@@ -210,6 +249,20 @@ func (m *MemoryStore) GetOrderByID(id string) *core.Order {
 		return order
 	}
 	return nil
+}
+
+// GetOrderByIssuedSerial returns the order that resulted in the given certificate
+// serial. If no such order exists, an error will be returned.
+func (m *MemoryStore) GetOrderByIssuedSerial(serial string) (*core.Order, error) {
+	m.RLock()
+	defer m.RUnlock()
+
+	order, ok := m.ordersByIssuedSerial[serial]
+	if !ok {
+		return nil, errors.New("could not find order resulting in the given certificate serial number")
+	}
+
+	return order, nil
 }
 
 func (m *MemoryStore) GetOrdersByAccountID(accountID string) []*core.Order {

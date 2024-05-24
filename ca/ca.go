@@ -438,6 +438,25 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 	order.Unlock()
 }
 
+// RecognizedSKID attempts to match the incoming Authority Key Idenfitier (AKID)
+// bytes to the Subject Key Identifier (SKID) of an intermediate certificate. It
+// returns an error if no match is found.
+func (ca *CAImpl) RecognizedSKID(issuer []byte) error {
+	if issuer == nil {
+		return errors.New("issuer bytes must not be nil")
+	}
+
+	for _, chain := range ca.chains {
+		for _, intermediate := range chain.intermediates {
+			if bytes.Equal(intermediate.cert.Cert.SubjectKeyId, issuer) {
+				return nil
+			}
+		}
+	}
+
+	return errors.New("no known issuer matches the provided Authority Key Identifier ")
+}
+
 func (ca *CAImpl) GetNumberOfRootCerts() int {
 	return len(ca.chains)
 }
