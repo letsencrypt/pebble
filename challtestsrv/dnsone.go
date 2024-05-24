@@ -72,7 +72,7 @@ func (s *doh) ListenAndServe() error {
 }
 
 // dohServer creates a DoH server.
-func dohServer(address string, tlsCert, tlsCertKey string, handler http.Handler) (challengeServer, error) {
+func dohServer(address string, tlsCert, tlsCertKey string, handler http.Handler) (*doh, error) {
 	return &doh{
 		&http.Server{
 			Handler:      handler,

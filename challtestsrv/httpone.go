@@ -181,7 +181,7 @@ func (c challHTTPServer) Shutdown() error {
 // resulting challengeServer will run a HTTPS server with a self-signed
 // certificate useful for HTTP-01 -> HTTPS HTTP-01 redirect responses. If HTTPS
 // is false the resulting challengeServer will run an HTTP server.
-func httpOneServer(address string, handler http.Handler, https bool) challengeServer {
+func httpOneServer(address string, handler http.Handler, https bool) challHTTPServer {
 	// If HTTPS is requested build a TLS Config that uses the self-signed
 	// certificate generated at startup.
 	var tlsConfig *tls.Config

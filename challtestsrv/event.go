@@ -70,10 +70,7 @@ func (e DNSRequestEvent) Type() RequestEventType {
 // in the question name is removed.
 func (e DNSRequestEvent) Key() string {
 	key := e.Question.Name
-	if strings.HasSuffix(key, ".") {
-		key = strings.TrimSuffix(key, ".")
-	}
-	return key
+	return strings.TrimSuffix(key, ".")
 }
 
 // TLSALPNRequestEvent corresponds to a TLS request received by

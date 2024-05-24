@@ -24,8 +24,8 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/letsencrypt/pebble/v2/challtestsrv"
 	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/challtestsrv"
 	"github.com/letsencrypt/pebble/v2/core"
 	"github.com/letsencrypt/pebble/v2/db"
 )
