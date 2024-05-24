@@ -3,7 +3,7 @@
 package challtestsrv
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -118,7 +118,7 @@ func (c *Config) validate() error {
 		len(c.HTTPSOneAddrs) < 1 &&
 		len(c.DNSOneAddrs) < 1 &&
 		len(c.TLSALPNOneAddrs) < 1 {
-		return fmt.Errorf(
+		return errors.New(
 			"config must specify at least one HTTPOneAddrs entry, one HTTPSOneAddr " +
 				"entry, one DOHAddrs, one DNSOneAddrs entry, or one TLSALPNOneAddrs entry")
 	}
@@ -177,10 +177,7 @@ func New(config Config) (*ChallSrv, error) {
 
 	for _, address := range config.DOHAddrs {
 		challSrv.log.Printf("Creating DoH server on %s\n", address)
-		s, err := dohServer(address, config.DOHCert, config.DOHCertKey, http.HandlerFunc(challSrv.dohHandler))
-		if err != nil {
-			return nil, err
-		}
+		s := dohServer(address, config.DOHCert, config.DOHCertKey, http.HandlerFunc(challSrv.dohHandler))
 		challSrv.servers = append(challSrv.servers, s)
 	}
 
