@@ -4,7 +4,6 @@ go 1.21
 
 require (
 	github.com/go-jose/go-jose/v4 v4.0.1
-	github.com/letsencrypt/challtestsrv v1.3.2
 	github.com/miekg/dns v1.1.58
 )
 
