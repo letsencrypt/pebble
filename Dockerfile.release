@@ -27,5 +27,8 @@ ENTRYPOINT [ "/app.exe" ]
 
 # Final stage: dynamically select between Linux and Windows stages based on TARGETOS argument
 FROM ${TARGETOS} AS final
+# Ports needed for testing when not using docker compose.
+EXPOSE 14000
+EXPOSE 15000
 # Add test configuration files
 COPY ./test/ /test/
