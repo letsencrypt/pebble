@@ -6,12 +6,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/letsencrypt/challtestsrv"
+
 	"github.com/letsencrypt/pebble/v2/cmd"
 )
 
@@ -74,6 +76,12 @@ func main() {
 		"Default IPv6 address for mock DNS responses to AAAA queries")
 
 	flag.Parse()
+
+	if len(flag.Args()) > 0 {
+		fmt.Printf("invalid command line arguments: %s\n", strings.Join(flag.Args(), " "))
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	httpsOneAddresses := filterEmpty(strings.Split(*httpsOneBind, ","))
