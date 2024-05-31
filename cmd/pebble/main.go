@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/letsencrypt/pebble/v2/ca"
 	"github.com/letsencrypt/pebble/v2/cmd"
@@ -58,6 +59,12 @@ func main() {
 		false,
 		"Print the software version")
 	flag.Parse()
+
+	if len(flag.Args()) > 0 {
+		fmt.Printf("invalid command line arguments: %s\n", strings.Join(flag.Args(), " "))
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	if *versionFlag {
 		// Print the version and exit

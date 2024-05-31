@@ -154,7 +154,7 @@ With a Docker command:
 ```bash
 docker run -p 14000:14000 -p 15000:15000 -e "PEBBLE_VA_NOSLEEP=1" ghcr.io/letsencrypt/pebble
 # or
-docker run -p 14000:14000 -p 15000:15000 -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind ghcr.io/letsencrypt/pebble pebble -config /test/my-pebble-config.json
+docker run -p 14000:14000 -p 15000:15000 -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind ghcr.io/letsencrypt/pebble -config /test/my-pebble-config.json
 ```
 
 ### Default validation ports
