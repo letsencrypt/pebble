@@ -95,7 +95,7 @@ at `https://localhost:14000/dir`.
 
 Pebble includes a [docker-compose](https://docs.docker.com/compose/) file that
 will create a `pebble` instance that uses a `pebble-challtestsrv` instance for
-DNS resolution.
+DNS resolution with the correct ports mapped to the host system.
 
 To download and start the containers run:
 
@@ -118,6 +118,13 @@ curl --request POST --data '{"ip":"172.20.0.1"}' http://localhost:8055/set-defau
 See the [pebble-challtestsrv
 README](https://github.com/letsencrypt/pebble/blob/master/cmd/pebble-challtestsrv/README.md)
 for more information.
+
+If you are running a one-off container for either `pebble` or
+`pebble-challtestsrv`, you will need to manually map ports.
+```
+docker run -p 14000:14000 -p 15000:15000 ghcr.io/letsencrypt/pebble:latest
+docker run -p 5001:5001 -p 5002:5002 -p 5003:5003 -p 8053:8053 -p 8055:8055 -p 8443:8443 ghcr.io/letsencrypt/pebble-challtestsrv:latest
+```
 
 #### Prebuilt Docker Images
 
@@ -145,9 +152,9 @@ services:
 With a Docker command:
 
 ```bash
-docker run -e "PEBBLE_VA_NOSLEEP=1" ghcr.io/letsencrypt/pebble
+docker run -p 14000:14000 -p 15000:15000 -e "PEBBLE_VA_NOSLEEP=1" ghcr.io/letsencrypt/pebble
 # or
-docker run -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind ghcr.io/letsencrypt/pebble pebble -config /test/my-pebble-config.json
+docker run -p 14000:14000 -p 15000:15000 -e "PEBBLE_VA_NOSLEEP=1" --mount src=$(pwd)/my-pebble-config.json,target=/test/my-pebble-config.json,type=bind ghcr.io/letsencrypt/pebble pebble -config /test/my-pebble-config.json
 ```
 
 ### Default validation ports
