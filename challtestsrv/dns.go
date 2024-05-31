@@ -158,7 +158,7 @@ func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 }
 
 type writeMsg interface {
-	WriteMsg(*dns.Msg) error
+	WriteMsg(msg *dns.Msg) error
 }
 
 type dnsToHTTPWriter struct {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/letsencrypt/challtestsrv"
+	"github.com/letsencrypt/pebble/v2/challtestsrv"
 )
 
 // clearHistory handles an HTTP POST request to clear the challenge server
