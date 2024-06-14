@@ -127,6 +127,7 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA256: true,
 	x509.ECDSAWithSHA384: true,
 	x509.ECDSAWithSHA512: true,
+	x509.PureEd25519:     true,
 }
 
 // newAccountRequest is the ACME account information submitted by the client
