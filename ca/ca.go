@@ -27,7 +27,7 @@ import (
 const (
 	rootCAPrefix          = "Pebble Root CA "
 	intermediateCAPrefix  = "Pebble Intermediate CA "
-	defaultValidityPeriod = 157766400
+	defaultValidityPeriod = 7776000
 )
 
 type CAImpl struct {
@@ -341,11 +341,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
 	ca := &CAImpl{
-		log:                log,
-		db:                 db,
-		certValidityPeriod: defaultValidityPeriod,
+		log:      log,
+		db:       db,
+		profiles: make(map[string]*Profile, len(profiles)),
 	}
 
 	if ocspResponderURL != "" {
@@ -365,11 +365,12 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 
-	if certificateValidityPeriod != 0 && certificateValidityPeriod < 9223372038 {
-		ca.certValidityPeriod = certificateValidityPeriod
+	for name, prof := range profiles {
+		if prof.ValidityPeriod <= 0 || prof.ValidityPeriod >= 9223372038 {
+			prof.ValidityPeriod = defaultValidityPeriod
+		}
+		ca.profiles[name] = &prof
 	}
-
-	ca.log.Printf("Using certificate validity period of %d seconds", ca.certValidityPeriod)
 
 	return ca
 }

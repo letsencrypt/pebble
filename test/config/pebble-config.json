@@ -13,6 +13,15 @@
         "authz": 3,
         "order": 5
     },
-    "certificateValidityPeriod": 157766400
+    "profiles": {
+      "default": {
+        "description": "The profile you know and love",
+        "validityPeriod": 7776000
+      },
+      "shortlived": {
+        "description": "A short-lived cert profile, without actual enforcement",
+        "validityPeriod": 518400
+      }
+    }
   }
 }
