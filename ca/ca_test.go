@@ -27,7 +27,7 @@ var (
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	db := db.NewMemoryStore()
-	return New(logger, db, "", 0, 1, 0)
+	return New(logger, db, "", 0, 1, map[string]Profile{"default": {}})
 }
 
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
@@ -50,6 +50,7 @@ func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
 			Status:      acme.StatusPending,
 			Expires:     time.Now().AddDate(0, 0, 1).UTC().Format(time.RFC3339),
 			Identifiers: []acme.Identifier{},
+			Profile:     "default",
 			NotBefore:   time.Now().UTC().Format(time.RFC3339),
 			NotAfter:    time.Now().AddDate(30, 0, 0).UTC().Format(time.RFC3339),
 		},
