@@ -35,14 +35,18 @@ type CAImpl struct {
 	db               *db.MemoryStore
 	ocspResponderURL string
 
-	chains []*chain
-
-	certValidityPeriod uint64
+	chains   []*chain
+	profiles map[string]*Profile
 }
 
 type chain struct {
 	root          *issuer
 	intermediates []*issuer
+}
+
+type Profile struct {
+	Desc           string
+	ValidityPeriod time.Duration
 }
 
 func (c *chain) String() string {
@@ -505,4 +509,12 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 		return key
 	}
 	return nil
+}
+
+func (ca *CAImpl) GetProfiles() map[string]string {
+	res := make(map[string]string, len(ca.profiles))
+	for name, prof := range ca.profiles {
+		res[name] = prof.Desc
+	}
+	return res
 }

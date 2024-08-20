@@ -599,6 +599,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	relativeDir["meta"] = map[string]interface{}{
 		"termsOfService":          ToSURL,
 		"externalAccountRequired": wfe.requireEAB,
+		"profiles":                wfe.ca.GetProfiles(),
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
