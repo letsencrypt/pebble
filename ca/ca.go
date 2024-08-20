@@ -257,7 +257,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
-func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string, extensions []pkix.Extension) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter, profileName string, extensions []pkix.Extension) (*core.Certificate, error) {
 	if len(domains) == 0 && len(ips) == 0 {
 		return nil, errors.New("must specify at least one domain name or IP address")
 	}
@@ -268,6 +268,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	}
 	issuer := defaultChain[0]
 
+	prof, ok := ca.profiles[profileName]
+	if !ok {
+		return nil, fmt.Errorf("unrecgonized profile name %q", profileName)
+	}
+
 	certNotBefore := time.Now()
 	var err error
 	if notBefore != "" {
@@ -277,7 +282,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := certNotBefore.Add(time.Duration(ca.certValidityPeriod-1) * time.Second)
+	certNotAfter := certNotBefore.Add(time.Duration(prof.ValidityPeriod-1) * time.Second)
 	maxNotAfter := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 	if certNotAfter.After(maxNotAfter) {
 		certNotAfter = maxNotAfter
@@ -425,7 +430,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, extensions)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, order.Profile, extensions)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return

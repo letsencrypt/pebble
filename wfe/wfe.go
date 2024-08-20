@@ -1725,6 +1725,24 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	profiles := wfe.ca.GetProfiles()
+	profileName := newOrder.Profile
+	if profileName == "" {
+		// In true pebble chaos fashion, pick a random profile for orders that
+		// don't specify one.
+		profNames := make([]string, 0, len(profiles))
+		for name := range profiles {
+			profNames = append(profNames, name)
+		}
+		profileName = profNames[rand.Intn(len(profiles))]
+	}
+	_, ok := profiles[profileName]
+	if !ok {
+		wfe.sendError(
+			acme.MalformedProblem(fmt.Sprintf("Order includes unrecognized profile name %q", profileName)), response)
+		return
+	}
+
 	var orderDNSs []string
 	var orderIPs []net.IP
 	for _, ident := range newOrder.Identifiers {
@@ -1755,6 +1773,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Order: acme.Order{
 			Status:  acme.StatusPending,
 			Expires: expires.UTC().Format(time.RFC3339),
+			Profile: profileName,
 			// Only the Identifiers, NotBefore and NotAfter from the submitted order
 			// are carried forward
 			Identifiers: uniquenames,
