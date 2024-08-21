@@ -257,7 +257,6 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	if len(domains) == 0 && len(ips) == 0 {
 		return nil, errors.New("must specify at least one domain name or IP address")
 	}
-	var err error
 
 	defaultChain := ca.chains[0].intermediates
 	if len(defaultChain) == 0 || defaultChain[0].cert == nil {
@@ -266,6 +265,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	issuer := defaultChain[0]
 
 	certNotBefore := time.Now()
+	var err error
 	if notBefore != "" {
 		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
 		if err != nil {
