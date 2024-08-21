@@ -108,7 +108,7 @@ func makeKey() (*rsa.PrivateKey, []byte, error) {
 	return key, ski, nil
 }
 
-func (ca *CAImpl) makeRootCert(
+func (ca *CAImpl) makeCACert(
 	subjectKey crypto.Signer,
 	subject pkix.Name,
 	subjectKeyID []byte,
@@ -122,7 +122,7 @@ func (ca *CAImpl) makeRootCert(
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -175,7 +175,7 @@ func (ca *CAImpl) newRootIssuer(name string) (*issuer, error) {
 	subject := pkix.Name{
 		CommonName: rootCAPrefix + name,
 	}
-	rc, err := ca.makeRootCert(rk, subject, subjectKeyID, nil)
+	rc, err := ca.makeCACert(rk, subject, subjectKeyID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Sig
 		return nil, errors.New("internal error: root must not be nil")
 	}
 	// Make an intermediate certificate with the root issuer
-	ic, err := ca.makeRootCert(intermediateKey, subject, subjectKeyID, root)
+	ic, err := ca.makeCACert(intermediateKey, subject, subjectKeyID, root)
 	if err != nil {
 		return nil, err
 	}
@@ -264,12 +264,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	}
 	issuer := defaultChain[0]
 
-	subjectKeyID, err := makeSubjectKeyID(key)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create subject key ID: %s", err.Error())
-	}
-
 	certNotBefore := time.Now()
+	var err error
 	if notBefore != "" {
 		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
 		if err != nil {
@@ -297,9 +293,8 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		NotBefore:    certNotBefore,
 		NotAfter:     certNotAfter,
 
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		SubjectKeyId:          subjectKeyID,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		ExtraExtensions:       extensions,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
