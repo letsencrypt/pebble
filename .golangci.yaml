@@ -14,6 +14,7 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
+    - copyloopvar
     - decorder
     - dogsled
     - dupword
@@ -21,7 +22,6 @@ linters:
     - errcheck
     - errchkjson
     - errorlint
-    - exportloopref
     - forcetypeassert
     - ginkgolinter
     - gocheckcompilerdirectives

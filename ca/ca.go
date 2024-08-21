@@ -45,8 +45,8 @@ type chain struct {
 }
 
 type Profile struct {
-	Desc           string
-	ValidityPeriod time.Duration
+	Description    string
+	ValidityPeriod uint64
 }
 
 func (c *chain) String() string {
@@ -375,6 +375,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 			prof.ValidityPeriod = defaultValidityPeriod
 		}
 		ca.profiles[name] = &prof
+		ca.log.Printf("Loaded profile %q with certificate validity period of %d seconds", name, prof.ValidityPeriod)
 	}
 
 	return ca
@@ -520,7 +521,7 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 func (ca *CAImpl) GetProfiles() map[string]string {
 	res := make(map[string]string, len(ca.profiles))
 	for name, prof := range ca.profiles {
-		res[name] = prof.Desc
+		res[name] = prof.Description
 	}
 	return res
 }

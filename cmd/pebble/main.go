@@ -107,7 +107,7 @@ func main() {
 	if len(profiles) == 0 {
 		profiles = map[string]ca.Profile{
 			"default": {
-				Desc:           "The default profile",
+				Description:    "The default profile",
 				ValidityPeriod: 0, // Will be overridden by the CA's default
 			},
 		}
