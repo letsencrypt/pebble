@@ -27,7 +27,7 @@ import (
 const (
 	rootCAPrefix          = "Pebble Root CA "
 	intermediateCAPrefix  = "Pebble Intermediate CA "
-	defaultValidityPeriod = 157766400
+	defaultValidityPeriod = 7776000
 )
 
 type CAImpl struct {
@@ -35,14 +35,18 @@ type CAImpl struct {
 	db               *db.MemoryStore
 	ocspResponderURL string
 
-	chains []*chain
-
-	certValidityPeriod uint64
+	chains   []*chain
+	profiles map[string]*Profile
 }
 
 type chain struct {
 	root          *issuer
 	intermediates []*issuer
+}
+
+type Profile struct {
+	Description    string
+	ValidityPeriod uint64
 }
 
 func (c *chain) String() string {
@@ -253,7 +257,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
-func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter string, extensions []pkix.Extension) (*core.Certificate, error) {
+func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter, profileName string, extensions []pkix.Extension) (*core.Certificate, error) {
 	if len(domains) == 0 && len(ips) == 0 {
 		return nil, errors.New("must specify at least one domain name or IP address")
 	}
@@ -264,6 +268,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	}
 	issuer := defaultChain[0]
 
+	prof, ok := ca.profiles[profileName]
+	if !ok {
+		return nil, fmt.Errorf("unrecgonized profile name %q", profileName)
+	}
+
 	certNotBefore := time.Now()
 	var err error
 	if notBefore != "" {
@@ -273,7 +282,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		}
 	}
 
-	certNotAfter := certNotBefore.Add(time.Duration(ca.certValidityPeriod-1) * time.Second)
+	certNotAfter := certNotBefore.Add(time.Duration(prof.ValidityPeriod-1) * time.Second)
 	maxNotAfter := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
 	if certNotAfter.After(maxNotAfter) {
 		certNotAfter = maxNotAfter
@@ -337,11 +346,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, certificateValidityPeriod uint64) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
 	ca := &CAImpl{
-		log:                log,
-		db:                 db,
-		certValidityPeriod: defaultValidityPeriod,
+		log:      log,
+		db:       db,
+		profiles: make(map[string]*Profile, len(profiles)),
 	}
 
 	if ocspResponderURL != "" {
@@ -361,11 +370,13 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
 	}
 
-	if certificateValidityPeriod != 0 && certificateValidityPeriod < 9223372038 {
-		ca.certValidityPeriod = certificateValidityPeriod
+	for name, prof := range profiles {
+		if prof.ValidityPeriod <= 0 || prof.ValidityPeriod >= 9223372038 {
+			prof.ValidityPeriod = defaultValidityPeriod
+		}
+		ca.profiles[name] = &prof
+		ca.log.Printf("Loaded profile %q with certificate validity period of %d seconds", name, prof.ValidityPeriod)
 	}
-
-	ca.log.Printf("Using certificate validity period of %d seconds", ca.certValidityPeriod)
 
 	return ca
 }
@@ -420,7 +431,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 
 	// issue a certificate for the csr
 	csr := order.ParsedCSR
-	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, extensions)
+	cert, err := ca.newCertificate(csr.DNSNames, csr.IPAddresses, csr.PublicKey, order.AccountID, order.NotBefore, order.NotAfter, order.Profile, extensions)
 	if err != nil {
 		ca.log.Printf("Error: unable to issue order: %s", err.Error())
 		return
@@ -505,4 +516,12 @@ func (ca *CAImpl) GetIntermediateKey(no int) *rsa.PrivateKey {
 		return key
 	}
 	return nil
+}
+
+func (ca *CAImpl) GetProfiles() map[string]string {
+	res := make(map[string]string, len(ca.profiles))
+	for name, prof := range ca.profiles {
+		res[name] = prof.Description
+	}
+	return res
 }

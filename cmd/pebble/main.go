@@ -32,12 +32,15 @@ type config struct {
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
+		Profiles        map[string]ca.Profile
 
-		CertificateValidityPeriod uint64
-		RetryAfter                struct {
+		RetryAfter struct {
 			Authz int
 			Order int
 		}
+
+		// Deprecated: use Profiles.ValidityPeriod instead
+		CertificateValidityPeriod uint64
 	}
 }
 
@@ -100,8 +103,18 @@ func main() {
 		chainLength = int(val)
 	}
 
+	profiles := c.Pebble.Profiles
+	if len(profiles) == 0 {
+		profiles = map[string]ca.Profile{
+			"default": {
+				Description:    "The default profile",
+				ValidityPeriod: 0, // Will be overridden by the CA's default
+			},
+		}
+	}
+
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, c.Pebble.CertificateValidityPeriod)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, profiles)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

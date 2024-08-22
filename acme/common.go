@@ -54,6 +54,7 @@ type Order struct {
 	Error          *ProblemDetails `json:"error,omitempty"`
 	Expires        string          `json:"expires"`
 	Identifiers    []Identifier    `json:"identifiers,omitempty"`
+	Profile        string          `json:"profile,omitempty"`
 	Finalize       string          `json:"finalize"`
 	NotBefore      string          `json:"notBefore,omitempty"`
 	NotAfter       string          `json:"notAfter,omitempty"`
