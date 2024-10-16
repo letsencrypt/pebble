@@ -134,12 +134,10 @@ Pebble releases are published as Docker images to the
 With a docker-compose file:
 
 ```yaml
-version: '3'
-
 services:
  pebble:
   image: ghcr.io/letsencrypt/pebble:latest
-  command: pebble -config /test/my-pebble-config.json
+  command: -config /test/my-pebble-config.json
   ports:
     - 14000:14000  # ACME port
     - 15000:15000  # Management port
