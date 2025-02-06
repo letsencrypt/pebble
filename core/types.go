@@ -59,22 +59,15 @@ func (o *Order) GetStatus() (string, error) {
 		}
 	}
 
-	// An order is invalid if **any** of its authzs are invalid
-	if authzStatuses[acme.StatusInvalid] > 0 {
+	// An order is invalid if ANY of its authzs are invalid, deactivated, or
+	// expired per: https://tools.ietf.org/html/rfc8555#page-32
+	if authzStatuses[acme.StatusInvalid] > 0 ||
+		authzStatuses[acme.StatusDeactivated] > 0 ||
+		authzStatuses[acme.StatusExpired] > 0 {
 		return acme.StatusInvalid, nil
 	}
 
-	// An order is expired if **any** of its authzs are expired
-	if authzStatuses[acme.StatusExpired] > 0 {
-		return acme.StatusInvalid, nil
-	}
-
-	// An order is deactivated if **any** of its authzs are deactivated
-	if authzStatuses[acme.StatusDeactivated] > 0 {
-		return acme.StatusDeactivated, nil
-	}
-
-	// An order is pending if **any** of its authzs are pending
+	// Otherwise, an order is pending if ANY of its authzs are pending.
 	if authzStatuses[acme.StatusPending] > 0 {
 		return acme.StatusPending, nil
 	}
