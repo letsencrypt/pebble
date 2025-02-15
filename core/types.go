@@ -279,7 +279,7 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
         windowEnd = expires
     }
     
-    if !windowEnd.after(windowStart) {
+    if !windowEnd.After(windowStart) {
         // Ensure windowStart is before windowEnd
         windowEnd = expires.Add(-1 * time.Second)
     }
