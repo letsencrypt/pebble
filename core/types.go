@@ -260,9 +260,6 @@ type RenewalInfo struct {
 // using a very simple renewal calculation: calculate a point 2/3rds of the way
 // through the validity period, then give a 2-day window around that. Both the
 // `issued` and `expires` timestamps are expected to be UTC.
-// If the cert has expired, return `RenewalInfoImmediate` instead.
-// If the windowEnd is after the cert's expiry, adjust it to the window end.
-// Ensure windowStart is before windowEnd.
 func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
 	validity := expires.Add(time.Second).Sub(issued)
 	renewalOffset := validity / time.Duration(3)
@@ -272,15 +269,18 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
 	now := time.Now().In(time.UTC)
 
     if expires.Before(now) {
+        // If the cert has expired, return `RenewalInfoImmediate` instead.
         return RenewalInfoImmediate(now)
     }
 
     if expires.Before(windowEnd) {
+        // If the windowEnd is after the cert's expiry, adjust it to the window end.
         windowStart = expires.Add(-1 * time.Second)
         windowEnd = expires
     }
     
     if !windowEnd.after(windowStart) {
+        // Ensure windowStart is before windowEnd
         windowEnd = expires.Add(-1 * time.Second)
     }
 
