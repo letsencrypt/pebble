@@ -302,7 +302,7 @@ func RenewalInfoImmediate(now time.Time) *RenewalInfo {
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
 			Start: oneHourAgo,
-			End:   oneHourAgo.Add(time.Minute * 30),
+			End:   oneHourAgo.Add(1 * time.Second),
 		},
 	}
 }
