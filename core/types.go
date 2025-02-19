@@ -260,29 +260,29 @@ type RenewalInfo struct {
 // using a very simple renewal calculation: calculate a point 2/3rds of the way
 // through the validity period, then give a 2-day window around that. Both the
 // `issued` and `expires` timestamps are expected to be UTC.
-func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
+func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *RenewalInfo {
 	validity := expires.Add(time.Second).Sub(issued)
 	renewalOffset := validity / time.Duration(3)
 	idealRenewal := expires.Add(-renewalOffset)
 	windowStart := idealRenewal.Add(-24 * time.Hour)
 	windowEnd := idealRenewal.Add(24 * time.Hour)
-	now := time.Now().In(time.UTC)
 
-    if expires.Before(now) {
-        // If the cert has expired, return `RenewalInfoImmediate` instead.
-        return RenewalInfoImmediate(now)
-    }
-
-    if expires.Before(windowEnd) {
-        // If the windowEnd is after the cert's expiry, adjust it to the window end.
-        windowStart = expires.Add(-1 * time.Second)
-        windowEnd = expires
-    }
-    
-    if !windowEnd.After(windowStart) {
-        // Ensure windowStart is before windowEnd
-        windowEnd = expires.Add(-1 * time.Second)
-    }
+	if expires.Before(now) {
+		// If the cert has expired, return `RenewalInfoImmediate` instead.
+		return RenewalInfoImmediate(now)
+	}
+	
+	// Ensure RenewalWindow is not after the expiry
+	if windowEnd.After(expires){
+		windowEnd = expires
+	}
+	
+	// draft-ietf-acme-ari states:
+	// A RenewalInfo object in which the end timestamp
+	// equals or precedes the start timestamp is invalid.
+	if !windowStart.Before(windowEnd){
+		windowStart = windowStart.Add(-1 * time.Second)
+	}
 
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
