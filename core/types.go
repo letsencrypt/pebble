@@ -267,31 +267,26 @@ func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *Rene
 	windowStart := idealRenewal.Add(-24 * time.Hour)
 	windowEnd := idealRenewal.Add(24 * time.Hour)
 
-	if expires.Before(now) {
-		// If the cert has expired, return `RenewalInfoImmediate` instead.
-		return RenewalInfoImmediate(now)
-	}
-	
 	// Ensure RenewalWindow is not after the expiry
-	if windowEnd.After(expires){
+	if windowEnd.After(expires) {
 		windowEnd = expires
 	}
 	// Ensure correct start for future issueds
-	if windowStart.After(issued){
+	if windowStart.Before(issued) {
 		windowStart = issued
 	}
-	
+
 	// draft-ietf-acme-ari states:
 	// A RenewalInfo object in which the end timestamp
 	// equals or precedes the start timestamp is invalid.
-	if !windowStart.Before(windowEnd){
+	if !windowStart.Before(windowEnd) {
 		windowStart = windowStart.Add(-1 * time.Second)
 	}
 
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
 			Start: windowStart,
-			End: windowEnd,
+			End:   windowEnd,
 		},
 	}
 }
