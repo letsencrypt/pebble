@@ -276,6 +276,10 @@ func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *Rene
 	if windowEnd.After(expires){
 		windowEnd = expires
 	}
+	// Ensure correct start for future issueds
+	if windowStart.After(issued){
+		windowStart = issued
+	}
 	
 	// draft-ietf-acme-ari states:
 	// A RenewalInfo object in which the end timestamp
