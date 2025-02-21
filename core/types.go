@@ -260,14 +260,33 @@ type RenewalInfo struct {
 // using a very simple renewal calculation: calculate a point 2/3rds of the way
 // through the validity period, then give a 2-day window around that. Both the
 // `issued` and `expires` timestamps are expected to be UTC.
-func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
+func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *RenewalInfo {
 	validity := expires.Add(time.Second).Sub(issued)
 	renewalOffset := validity / time.Duration(3)
 	idealRenewal := expires.Add(-renewalOffset)
+	windowStart := idealRenewal.Add(-24 * time.Hour)
+	windowEnd := idealRenewal.Add(24 * time.Hour)
+
+	// Ensure RenewalWindow is not after the expiry
+	if windowEnd.After(expires) {
+		windowEnd = expires
+	}
+	// Ensure correct start for future issueds
+	if windowStart.Before(issued) {
+		windowStart = issued
+	}
+
+	// draft-ietf-acme-ari states:
+	// A RenewalInfo object in which the end timestamp
+	// equals or precedes the start timestamp is invalid.
+	if !windowStart.Before(windowEnd) {
+		windowStart = windowStart.Add(-1 * time.Second)
+	}
+
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: idealRenewal.Add(-24 * time.Hour).Truncate(time.Millisecond),
-			End:   idealRenewal.Add(24 * time.Hour).Truncate(time.Millisecond),
+			Start: windowStart.Truncate(time.Millisecond),
+			End:   windowEnd.Truncate(time.Millisecond),
 		},
 	}
 }
@@ -278,11 +297,11 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
 // passed `now` is assumed to be a timestamp representing the current moment in
 // time.
 func RenewalInfoImmediate(now time.Time) *RenewalInfo {
-	oneHourAgo := now.Add(-1 * time.Hour).Truncate(time.Millisecond)
+	oneHourAgo := now.Add(-1 * time.Hour)
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: oneHourAgo,
-			End:   oneHourAgo.Add(time.Minute * 30),
+			Start: oneHourAgo.Truncate(time.Millisecond),
+			End:   oneHourAgo.Add(1 * time.Second).Truncate(time.Millisecond),
 		},
 	}
 }
