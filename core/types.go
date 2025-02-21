@@ -285,8 +285,8 @@ func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *Rene
 
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: windowStart,
-			End:   windowEnd,
+			Start: windowStart.Truncate(time.Millisecond),
+			End:   windowEnd.Truncate(time.Millisecond),
 		},
 	}
 }
@@ -300,8 +300,8 @@ func RenewalInfoImmediate(now time.Time) *RenewalInfo {
 	oneHourAgo := now.Add(-1 * time.Hour)
 	return &RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: oneHourAgo,
-			End:   oneHourAgo.Add(1 * time.Second),
+			Start: oneHourAgo.Truncate(time.Millisecond),
+			End:   oneHourAgo.Add(1 * time.Second).Truncate(time.Millisecond),
 		},
 	}
 }
