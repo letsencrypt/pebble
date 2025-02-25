@@ -1,8 +1,6 @@
 linters-settings:
   gocyclo:
     min-complexity: 25
-  govet:
-    check-shadowing: false
   misspell:
     locale: "US"
 
@@ -55,7 +53,6 @@ linters:
     - revive
     - staticcheck
     - tagalign
-    - tenv
     - testableexamples
     - testifylint
     - thelper
@@ -63,6 +60,7 @@ linters:
     - unparam
     - unused
     - usestdlibvars
+    - usetesting
     - wastedassign
 
 issues:
