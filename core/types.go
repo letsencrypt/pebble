@@ -260,7 +260,7 @@ type RenewalInfo struct {
 // using a very simple renewal calculation: calculate a point 2/3rds of the way
 // through the validity period, then give a 2-day window around that. Both the
 // `issued` and `expires` timestamps are expected to be UTC.
-func RenewalInfoSimple(issued time.Time, expires time.Time, now time.Time) *RenewalInfo {
+func RenewalInfoSimple(issued time.Time, expires time.Time) *RenewalInfo {
 	validity := expires.Add(time.Second).Sub(issued)
 	renewalOffset := validity / time.Duration(3)
 	idealRenewal := expires.Add(-renewalOffset)
