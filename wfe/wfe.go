@@ -1914,7 +1914,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(id *core.CertID) (*core.RenewalIn
 		return nil, errors.New("failed to retrieve existing certificate serial")
 	}
 
-	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter, time.Now().In(time.UTC)), nil
+	return core.RenewalInfoSimple(cert.Cert.NotBefore, cert.Cert.NotAfter), nil
 }
 
 // parseCertID parses a unique identifier (certID) as specified in
