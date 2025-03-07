@@ -367,11 +367,7 @@ func (va VAImpl) validateDNS01(task *vaTask) *core.ValidationRecord {
 func (va VAImpl) validateDNSAccount01(task *vaTask) *core.ValidationRecord {
 	acctHash := sha256.Sum256([]byte(task.AccountURL))
 	acctLabel := strings.ToLower(base32.StdEncoding.EncodeToString(acctHash[0:10]))
-	scope := "host"
-	if task.Wildcard {
-		scope = "wildcard"
-	}
-	challengeSubdomain := fmt.Sprintf("_%s._acme-%s-challenge.%s", acctLabel, scope, task.Identifier.Value)
+	challengeSubdomain := fmt.Sprintf("_%s._acme-challenge.%s", acctLabel, task.Identifier.Value)
 
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
