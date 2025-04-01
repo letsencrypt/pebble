@@ -858,6 +858,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	body := string(bodyBytes)
 	parsedJWS, err := wfe.parseJWS(body)
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected signature algorithm") {
+			return nil, acme.BadSignatureAlgorithmProblem(err.Error())
+		}
 		return nil, acme.MalformedProblem(err.Error())
 	}
 
