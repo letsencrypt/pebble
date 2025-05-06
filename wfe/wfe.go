@@ -696,10 +696,8 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, *acme
 	if err != nil {
 		var unexpectedSignAlgo *jose.ErrUnexpectedSignatureAlgorithm
 		if errors.As(err, &unexpectedSignAlgo) {
-			errmsg := fmt.Sprintf(
-				"JWS header contained unsupported algorithm, supported algorithms are: %s", goodJWSSignatureAlgorithms,
-			)
-			return nil, acme.BadSignatureAlgorithmProblem(errmsg)
+			return nil, acme.BadSignatureAlgorithmProblem(fmt.Sprintf(
+				"JWS header contained unsupported algorithm, supported algorithms are: %s", goodJWSSignatureAlgorithms))
 		}
 		return nil, acme.MalformedProblem(fmt.Sprint("Parse error reading JWS: ", err.Error()))
 	}
