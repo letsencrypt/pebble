@@ -48,7 +48,7 @@ func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) *acm
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return acme.MalformedProblem(fmt.Sprintf(
+		return acme.BadSignatureAlgorithmProblem(fmt.Sprintf(
 			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
 			jwsAlgorithm))
 	}

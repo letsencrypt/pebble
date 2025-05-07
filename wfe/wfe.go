@@ -663,7 +663,7 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response.WriteHeader(statusCode)
 }
 
-func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error) {
+func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, *acme.ProblemDetails) {
 	// Parse the raw JWS JSON to check that:
 	// * the unprotected Header field is not being used.
 	// * the "signatures" member isn't present, just "signature".
@@ -675,34 +675,39 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, error
 		Signatures []interface{}
 	}
 	if err := json.Unmarshal([]byte(body), &unprotected); err != nil {
-		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
+		return nil, acme.MalformedProblem(fmt.Sprint("Parse error reading JWS: ", err.Error()))
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
-		return nil, errors.New(
+		return nil, acme.MalformedProblem(
 			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
 
 	// ACME v2 never uses the "signatures" array of JSON serialized JWS, just the
 	// mandatory "signature" field. Reject JWS that include the "signatures" array.
 	if len(unprotected.Signatures) > 0 {
-		return nil, errors.New(
+		return nil, acme.MalformedProblem(
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
 	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
 	if err != nil {
-		return nil, fmt.Errorf("Parse error reading JWS: %w", err)
+		var unexpectedSignAlgo *jose.ErrUnexpectedSignatureAlgorithm
+		if errors.As(err, &unexpectedSignAlgo) {
+			return nil, acme.BadSignatureAlgorithmProblem(fmt.Sprintf(
+				"JWS header contained unsupported algorithm, supported algorithms are: %s", goodJWSSignatureAlgorithms))
+		}
+		return nil, acme.MalformedProblem(fmt.Sprint("Parse error reading JWS: ", err.Error()))
 	}
 
 	if len(parsedJWS.Signatures) > 1 {
-		return nil, errors.New("Too many signatures in POST body")
+		return nil, acme.MalformedProblem("Too many signatures in POST body")
 	}
 
 	if len(parsedJWS.Signatures) == 0 {
-		return nil, errors.New("POST JWS not signed")
+		return nil, acme.MalformedProblem("POST JWS not signed")
 	}
 	return parsedJWS, nil
 }
@@ -856,9 +861,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(
 	}
 
 	body := string(bodyBytes)
-	parsedJWS, err := wfe.parseJWS(body)
-	if err != nil {
-		return nil, acme.MalformedProblem(err.Error())
+	parsedJWS, prob := wfe.parseJWS(body)
+	if prob != nil {
+		return nil, prob
 	}
 
 	pubKey, prob := kx(request, parsedJWS)
@@ -1251,9 +1256,9 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Extract inner JWS
-	parsedInnerJWS, err := wfe.parseJWS(string(outerPostData.body))
-	if err != nil {
-		wfe.sendError(acme.MalformedProblem(err.Error()), response)
+	parsedInnerJWS, prob := wfe.parseJWS(string(outerPostData.body))
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 
@@ -1288,7 +1293,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Ok, now change account key
-	err = wfe.db.ChangeAccountKey(existingAcct, newPubKey)
+	err := wfe.db.ChangeAccountKey(existingAcct, newPubKey)
 	if err != nil {
 		var existingAccountError *db.ExistingAccountError
 		if errors.As(err, &existingAccountError) {
@@ -2804,10 +2809,9 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 	}
 	body := string(bodyBytes)
 
-	parsedJWS, err := wfe.parseJWS(body)
-	if err != nil {
-		wfe.sendError(
-			acme.MalformedProblem(err.Error()), response)
+	parsedJWS, prob := wfe.parseJWS(body)
+	if prob != nil {
+		wfe.sendError(prob, response)
 		return
 	}
 

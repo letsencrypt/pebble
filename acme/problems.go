@@ -6,23 +6,24 @@ import (
 )
 
 const (
-	errNS                  = "urn:ietf:params:acme:error:"
-	serverInternalErr      = errNS + "serverInternal"
-	malformedErr           = errNS + "malformed"
-	badNonceErr            = errNS + "badNonce"
-	badCSRErr              = errNS + "badCSR"
-	agreementReqErr        = errNS + "agreementRequired"
-	externalAccountReqErr  = errNS + "externalAccountRequired"
-	connectionErr          = errNS + "connection"
-	unauthorizedErr        = errNS + "unauthorized"
-	invalidContactErr      = errNS + "invalidContact"
-	unsupportedContactErr  = errNS + "unsupportedContact"
-	accountDoesNotExistErr = errNS + "accountDoesNotExist"
-	badRevocationReasonErr = errNS + "badRevocationReason"
-	alreadyRevokedErr      = errNS + "alreadyRevoked"
-	orderNotReadyErr       = errNS + "orderNotReady"
-	badPublicKeyErr        = errNS + "badPublicKey"
-	rejectedIdentifierErr  = errNS + "rejectedIdentifier"
+	errNS                    = "urn:ietf:params:acme:error:"
+	serverInternalErr        = errNS + "serverInternal"
+	malformedErr             = errNS + "malformed"
+	badNonceErr              = errNS + "badNonce"
+	badCSRErr                = errNS + "badCSR"
+	agreementReqErr          = errNS + "agreementRequired"
+	externalAccountReqErr    = errNS + "externalAccountRequired"
+	connectionErr            = errNS + "connection"
+	unauthorizedErr          = errNS + "unauthorized"
+	invalidContactErr        = errNS + "invalidContact"
+	unsupportedContactErr    = errNS + "unsupportedContact"
+	accountDoesNotExistErr   = errNS + "accountDoesNotExist"
+	badRevocationReasonErr   = errNS + "badRevocationReason"
+	alreadyRevokedErr        = errNS + "alreadyRevoked"
+	orderNotReadyErr         = errNS + "orderNotReady"
+	badPublicKeyErr          = errNS + "badPublicKey"
+	badSignatureAlgorithmErr = errNS + "badSignatureAlgorithm"
+	rejectedIdentifierErr    = errNS + "rejectedIdentifier"
 )
 
 type ProblemDetails struct {
@@ -184,6 +185,14 @@ func OrderNotReadyProblem(detail string) *ProblemDetails {
 func BadPublicKeyProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       badPublicKeyErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func BadSignatureAlgorithmProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       badSignatureAlgorithmErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
