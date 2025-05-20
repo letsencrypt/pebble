@@ -1843,9 +1843,19 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	// use as the result. We have to make sure to copy the identifiers and
 	// authorizations *slices* and not *pointers to the slices* or the mutations
 	// below could mutate the order in the database, causing data races.
-	result := order.Order
-	result.Identifiers = slices.Clone(order.Order.Identifiers)
-	result.Authorizations = slices.Clone(order.Order.Authorizations)
+	result := acme.Order{
+		Status:         order.Order.Status,
+		Error:          order.Order.Error,
+		Expires:        order.Order.Expires,
+		Identifiers:    slices.Clone(order.Order.Identifiers),
+		Profile:        order.Order.Profile,
+		Finalize:       order.Order.Finalize,
+		NotBefore:      order.Order.NotBefore,
+		NotAfter:       order.Order.NotAfter,
+		Authorizations: slices.Clone(order.Order.Authorizations),
+		Certificate:    order.Order.Certificate,
+		Replaces:       order.Order.Replaces,
+	}
 
 	// Randomize the order of the order authorization URLs as well as the order's
 	// identifiers. ACME draft Section 7.4 "Applying for Certificate Issuance"
