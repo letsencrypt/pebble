@@ -1840,8 +1840,8 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	defer order.RUnlock()
 
 	// Copy the initial OrderRequest from the internal order object to mutate and
-	// use as the result. We have to make sure to copy the identifiers and
-	// authorizations *slices* and not *pointers to the slices* or the mutations
+	// use as the result. We have to make sure to copy the *contents* of the
+	// identifiers and authorizations slices and not the slices or the mutations
 	// below could mutate the order in the database, causing data races.
 	result := acme.Order{
 		Status:         order.Order.Status,
