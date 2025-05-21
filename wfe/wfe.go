@@ -1840,8 +1840,22 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	defer order.RUnlock()
 
 	// Copy the initial OrderRequest from the internal order object to mutate and
-	// use as the result.
-	result := order.Order
+	// use as the result. We have to make sure to copy the *contents* of the
+	// identifiers and authorizations slices and not the slices or the mutations
+	// below could mutate the order in the database, causing data races.
+	result := acme.Order{
+		Status:         order.Order.Status,
+		Error:          order.Order.Error,
+		Expires:        order.Order.Expires,
+		Identifiers:    slices.Clone(order.Order.Identifiers),
+		Profile:        order.Order.Profile,
+		Finalize:       order.Order.Finalize,
+		NotBefore:      order.Order.NotBefore,
+		NotAfter:       order.Order.NotAfter,
+		Authorizations: slices.Clone(order.Order.Authorizations),
+		Certificate:    order.Order.Certificate,
+		Replaces:       order.Order.Replaces,
+	}
 
 	// Randomize the order of the order authorization URLs as well as the order's
 	// identifiers. ACME draft Section 7.4 "Applying for Certificate Issuance"
