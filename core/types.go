@@ -149,6 +149,8 @@ type Certificate struct {
 	DER          []byte
 	IssuerChains [][]*Certificate
 	AccountID    string
+	// When non-empty, this is the ARI response sent for this certificate.
+	ARIResponse string
 }
 
 func (c Certificate) PEM() []byte {

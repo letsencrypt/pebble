@@ -549,3 +549,19 @@ func (m *MemoryStore) IsDomainBlocked(name string) bool {
 
 	return false
 }
+
+// SetARIResponse looks up a certificate by serial number and sets its ARI response field
+func (m *MemoryStore) SetARIResponse(serial *big.Int, ariResponse string) error {
+	m.Lock()
+	defer m.Unlock()
+
+	for _, cert := range m.certificatesByID {
+		if cert.Cert.SerialNumber.Cmp(serial) == 0 {
+			cert.ARIResponse = ariResponse
+			return nil
+		}
+	}
+
+	// Certificate not found
+	return fmt.Errorf("certificate with serial number %s not found", serial.String())
+}
