@@ -413,7 +413,6 @@ func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) {
 	m.Lock()
 	defer m.Unlock()
 	m.revokedCertificatesByID[cert.Certificate.ID] = cert
-	delete(m.certificatesByID, cert.Certificate.ID)
 }
 
 /*
