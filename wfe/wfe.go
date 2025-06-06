@@ -1917,6 +1917,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(_ context.Context, response http.Respons
 	}
 
 	if cert.ARIResponse != "" {
+		response.Header().Set("Retry-After", strconv.Itoa(int(6*time.Hour/time.Second)))
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = response.Write([]byte(cert.ARIResponse))
 		return
 	}
