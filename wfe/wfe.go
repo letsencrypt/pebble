@@ -3012,13 +3012,13 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return acme.MalformedProblem("Error decoding Base64url-encoded DER: " + err.Error())
 	}
 
+	revokedCert := wfe.db.GetRevokedCertificateByDER(derBytes)
+	if revokedCert != nil {
+		return acme.AlreadyRevokedProblem("Certificate has already been revoked.")
+	}
+
 	cert := wfe.db.GetCertificateByDER(derBytes)
 	if cert == nil {
-		cert := wfe.db.GetRevokedCertificateByDER(derBytes)
-		if cert != nil {
-			return acme.AlreadyRevokedProblem("Certificate has already been revoked.")
-		}
-
 		return acme.MalformedProblem("Unable to find specified certificate.")
 	}
 
