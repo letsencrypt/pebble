@@ -2274,8 +2274,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder( //nolint:gocyclo,gocognit
 
 	// Prepare the order for display as JSON
 	orderReq := wfe.orderForDisplay(existingOrder, request)
-	orderURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", orderPath, existingOrder.ID))
-	response.Header().Add("Location", orderURL)
 	err = wfe.writeJSONResponse(response, http.StatusOK, orderReq)
 	if err != nil {
 		wfe.sendError(acme.InternalErrorProblem("Error marshaling order"), response)
