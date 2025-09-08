@@ -11,7 +11,7 @@ const (
 	malformedErr             = errNS + "malformed"
 	badNonceErr              = errNS + "badNonce"
 	badCSRErr                = errNS + "badCSR"
-	agreementReqErr          = errNS + "agreementRequired"
+	userActionReqErr         = errNS + "userActionRequired"
 	externalAccountReqErr    = errNS + "externalAccountRequired"
 	connectionErr            = errNS + "connection"
 	unauthorizedErr          = errNS + "unauthorized"
@@ -94,9 +94,9 @@ func Conflict(detail string) *ProblemDetails {
 	}
 }
 
-func AgreementRequiredProblem(detail string) *ProblemDetails {
+func UserActionRequiredProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       agreementReqErr,
+		Type:       userActionReqErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}
