@@ -803,10 +803,6 @@ func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetail
 				`Content-Type must be "application/jose+json"`)
 	}
 
-	if _, present := request.Header["Content-Length"]; !present {
-		return acme.MalformedProblem("missing Content-Length header on POST")
-	}
-
 	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
 	// the HTTP request, it needs to be part of the signed JWS request body
 	if _, present := request.Header["Replay-Nonce"]; present {
