@@ -3,6 +3,8 @@ package ca
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -100,9 +102,17 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 // makeKey and makeRootCert are adapted from MiniCA:
 // https://github.com/jsha/minica/blob/3a621c05b61fa1c24bcb42fbde4b261db504a74f/main.go
 
-// makeKey creates a new 2048 bit RSA private key and a Subject Key Identifier
-func makeKey() (*rsa.PrivateKey, []byte, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+// makeKey creates a new private key of the requested key algorithm, and
+// returns it and its corresponding Subject Key Identifier.
+func makeKey(keyAlg string) (crypto.Signer, []byte, error) {
+	var key crypto.Signer
+	var err error
+	switch keyAlg {
+	case "rsa":
+		key, err = rsa.GenerateKey(rand.Reader, 2048)
+	case "ecdsa":
+		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,9 +180,9 @@ func (ca *CAImpl) makeCACert(
 	return newCert, nil
 }
 
-func (ca *CAImpl) newRootIssuer(name string) (*issuer, error) {
+func (ca *CAImpl) newRootIssuer(name string, keyAlg string) (*issuer, error) {
 	// Make a root private key
-	rk, subjectKeyID, err := makeKey()
+	rk, subjectKeyID, err := makeKey(keyAlg)
 	if err != nil {
 		return nil, err
 	}
@@ -211,14 +221,14 @@ func (ca *CAImpl) newIntermediateIssuer(root *issuer, intermediateKey crypto.Sig
 // newChain generates a new issuance chain, including a root certificate and numIntermediates intermediates (at least 1).
 // The first intermediate will use intermediateKey, intermediateSubject and subjectKeyId.
 // Any intermediates between the first intermediate and the root will have their keys and subjects generated automatically.
-func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte, numIntermediates int) *chain {
+func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte, numIntermediates int, keyAlg string) *chain {
 	if numIntermediates <= 0 {
 		panic("At least one intermediate must be present in the certificate chain")
 	}
 
 	chainID := hex.EncodeToString(makeSerial().Bytes()[:3])
 
-	root, err := ca.newRootIssuer(chainID)
+	root, err := ca.newRootIssuer(chainID, keyAlg)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new root issuer: %s", err.Error()))
 	}
@@ -228,7 +238,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	prev := root
 	intermediates := make([]*issuer, numIntermediates)
 	for i := numIntermediates - 1; i > 0; i-- {
-		k, ski, err := makeKey()
+		k, ski, err := makeKey(keyAlg)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
 		}
@@ -363,7 +373,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
 	ca := &CAImpl{
 		log:      log,
 		db:       db,
@@ -378,13 +388,13 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, alternate
 	intermediateSubject := pkix.Name{
 		CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
 	}
-	intermediateKey, subjectKeyID, err := makeKey()
+	intermediateKey, subjectKeyID, err := makeKey(keyAlg)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength)
+		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength, keyAlg)
 	}
 
 	for name, prof := range profiles {
