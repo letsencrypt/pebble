@@ -16,6 +16,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/letsencrypt/pebble/v2/acme"
+	x509pq "github.com/letsencrypt/pebble/v2/ca/x509pq"
 )
 
 type Order struct {
@@ -145,7 +146,7 @@ func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {
 
 type Certificate struct {
 	ID           string
-	Cert         *x509.Certificate
+	Cert         *x509pq.Certificate
 	DER          []byte
 	IssuerChains [][]*Certificate
 	AccountID    string

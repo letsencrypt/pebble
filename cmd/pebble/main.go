@@ -109,7 +109,7 @@ func main() {
 	if keyAlg == "" {
 		keyAlg = "rsa"
 	}
-	acceptableKeyAlgs := []string{"rsa", "ecdsa"}
+	acceptableKeyAlgs := []string{"rsa", "ecdsa", "mldsa"}
 	if !slices.Contains(acceptableKeyAlgs, keyAlg) {
 		cmd.FailOnError(fmt.Errorf("%q is not one of %#v", keyAlg, acceptableKeyAlgs), "invalid key algorithm")
 	}
