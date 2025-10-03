@@ -27,7 +27,7 @@ var (
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	db := db.NewMemoryStore()
-	return New(logger, db, "", 0, 1, map[string]Profile{"default": {}})
+	return New(logger, db, "", "ecdsa", 0, 1, map[string]Profile{"default": {}})
 }
 
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {

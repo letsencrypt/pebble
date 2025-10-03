@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,7 @@ type config struct {
 		ExternalAccountMACKeys         map[string]string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
+		KeyAlgorithm    string
 		Profiles        map[string]ca.Profile
 
 		RetryAfter struct {
@@ -103,6 +105,15 @@ func main() {
 		chainLength = int(val)
 	}
 
+	keyAlg := c.Pebble.KeyAlgorithm
+	if keyAlg == "" {
+		keyAlg = "rsa"
+	}
+	acceptableKeyAlgs := []string{"rsa", "ecdsa"}
+	if !slices.Contains(acceptableKeyAlgs, keyAlg) {
+		cmd.FailOnError(fmt.Errorf("%q is not one of %#v", keyAlg, acceptableKeyAlgs), "invalid key algorithm")
+	}
+
 	profiles := c.Pebble.Profiles
 	if len(profiles) == 0 {
 		profiles = map[string]ca.Profile{
@@ -114,7 +125,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, alternateRoots, chainLength, profiles)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
