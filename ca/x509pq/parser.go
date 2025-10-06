@@ -25,6 +25,9 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
@@ -340,6 +343,24 @@ func parsePublicKey(keyData *publicKeyInfo) (any, error) {
 		if pub.Y.Sign() <= 0 || pub.Parameters.P.Sign() <= 0 ||
 			pub.Parameters.Q.Sign() <= 0 || pub.Parameters.G.Sign() <= 0 {
 			return nil, errors.New("x509: zero or negative DSA parameter")
+		}
+		return pub, nil
+	case oid.Equal(oidPublicKeyMLDSA44):
+		pub, err := mldsa44.Scheme().UnmarshalBinaryPublicKey(der)
+		if err != nil {
+			return nil, fmt.Errorf("x509: invalid ML-DSA-44 public key: %w", err)
+		}
+		return pub, nil
+	case oid.Equal(oidPublicKeyMLDSA65):
+		pub, err := mldsa65.Scheme().UnmarshalBinaryPublicKey(der)
+		if err != nil {
+			return nil, fmt.Errorf("x509: invalid ML-DSA-65 public key: %w", err)
+		}
+		return pub, nil
+	case oid.Equal(oidPublicKeyMLDSA87):
+		pub, err := mldsa87.Scheme().UnmarshalBinaryPublicKey(der)
+		if err != nil {
+			return nil, fmt.Errorf("x509: invalid ML-DSA-87 public key: %w", err)
 		}
 		return pub, nil
 	default:

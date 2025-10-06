@@ -37,6 +37,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 	"unicode"
@@ -46,6 +47,12 @@ import (
 	_ "crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
+
+	"github.com/cloudflare/circl/pki"
+	mldsa "github.com/cloudflare/circl/sign"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa44"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
 
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
@@ -108,6 +115,13 @@ func marshalPublicKey(pub any) (publicKeyBytes []byte, publicKeyAlgorithm pkix.A
 			}
 			publicKeyAlgorithm.Parameters.FullBytes = paramBytes
 		}
+	case mldsa.PublicKey:
+		publicKeyBytes, err = pub.MarshalBinary()
+		if err != nil {
+			return nil, pkix.AlgorithmIdentifier{}, err
+		}
+		publicKeyAlgorithm.Algorithm = pub.Scheme().(pki.CertificateScheme).Oid()
+		publicKeyAlgorithm.Parameters = asn1.NullRawValue
 	default:
 		return nil, pkix.AlgorithmIdentifier{}, fmt.Errorf("x509: unsupported public key type: %T", pub)
 	}
@@ -207,6 +221,9 @@ const (
 	SHA384WithRSAPSS
 	SHA512WithRSAPSS
 	PureEd25519
+	PureMLDSA44
+	PureMLDSA65
+	PureMLDSA87
 )
 
 func (algo SignatureAlgorithm) isRSAPSS() bool {
@@ -244,6 +261,9 @@ const (
 	DSA // Only supported for parsing.
 	ECDSA
 	Ed25519
+	MLDSA44
+	MLDSA65
+	MLDSA87
 )
 
 var publicKeyAlgoName = [...]string{
@@ -251,6 +271,9 @@ var publicKeyAlgoName = [...]string{
 	DSA:     "DSA",
 	ECDSA:   "ECDSA",
 	Ed25519: "Ed25519",
+	MLDSA44: "ML-DSA-44",
+	MLDSA65: "ML-DSA-65",
+	MLDSA87: "ML-DSA-87",
 }
 
 func (algo PublicKeyAlgorithm) String() string {
@@ -333,6 +356,12 @@ var (
 	// but it's specified by ISO. Microsoft's makecert.exe has been known
 	// to produce certificates with this OID.
 	oidISOSignatureSHA1WithRSA = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 29}
+
+	// ML-DSA uses the same OIDs to identify both its Public Key Algorithms and
+	// its Signature Algorithms
+	oidSignatureMLDSA44 = mldsa44.Scheme().(pki.CertificateScheme).Oid()
+	oidSignatureMLDSA65 = mldsa65.Scheme().(pki.CertificateScheme).Oid()
+	oidSignatureMLDSA87 = mldsa87.Scheme().(pki.CertificateScheme).Oid()
 )
 
 var signatureAlgorithmDetails = []struct {
@@ -360,6 +389,9 @@ var signatureAlgorithmDetails = []struct {
 	{ECDSAWithSHA384, "ECDSA-SHA384", oidSignatureECDSAWithSHA384, emptyRawValue, ECDSA, crypto.SHA384, false},
 	{ECDSAWithSHA512, "ECDSA-SHA512", oidSignatureECDSAWithSHA512, emptyRawValue, ECDSA, crypto.SHA512, false},
 	{PureEd25519, "Ed25519", oidSignatureEd25519, emptyRawValue, Ed25519, crypto.Hash(0) /* no pre-hashing */, false},
+	{PureMLDSA44, "ML-DSA-44", oidSignatureMLDSA44, emptyRawValue, MLDSA44, crypto.Hash(0) /* no pre-hashing */, false},
+	{PureMLDSA65, "ML-DSA-65", oidSignatureMLDSA65, emptyRawValue, MLDSA65, crypto.Hash(0) /* no pre-hashing */, false},
+	{PureMLDSA87, "ML-DSA-87", oidSignatureMLDSA87, emptyRawValue, MLDSA87, crypto.Hash(0) /* no pre-hashing */, false},
 }
 
 var emptyRawValue = asn1.RawValue{}
@@ -468,6 +500,23 @@ var (
 	//	id-Ed25519   OBJECT IDENTIFIER ::= { 1 3 101 112 }
 	oidPublicKeyX25519  = asn1.ObjectIdentifier{1, 3, 101, 110}
 	oidPublicKeyEd25519 = asn1.ObjectIdentifier{1, 3, 101, 112}
+	// draft-ietf-lamps-dilithium-certificates-13
+	// Algorithm Identifiers for the Module-Lattice-Based Digital Signature Algorithm (ML-DSA)
+	//
+	//  id-ml-dsa-44 OBJECT IDENTIFIER ::= { joint-iso-itu-t(2)
+	//           country(16) us(840) organization(1) gov(101) csor(3)
+	//           nistAlgorithm(4) sigAlgs(3) id-ml-dsa-44(17) }
+
+	//  id-ml-dsa-65 OBJECT IDENTIFIER ::= { joint-iso-itu-t(2)
+	//           country(16) us(840) organization(1) gov(101) csor(3)
+	//           nistAlgorithm(4) sigAlgs(3) id-ml-dsa-65(18) }
+
+	//  id-ml-dsa-87 OBJECT IDENTIFIER ::= { joint-iso-itu-t(2)
+	//           country(16) us(840) organization(1) gov(101) csor(3)
+	//           nistAlgorithm(4) sigAlgs(3) id-ml-dsa-87(19) }
+	oidPublicKeyMLDSA44 = mldsa44.Scheme().(pki.CertificateScheme).Oid()
+	oidPublicKeyMLDSA65 = mldsa65.Scheme().(pki.CertificateScheme).Oid()
+	oidPublicKeyMLDSA87 = mldsa87.Scheme().(pki.CertificateScheme).Oid()
 )
 
 // getPublicKeyAlgorithmFromOID returns the exposed PublicKeyAlgorithm
@@ -483,6 +532,12 @@ func getPublicKeyAlgorithmFromOID(oid asn1.ObjectIdentifier) PublicKeyAlgorithm 
 		return ECDSA
 	case oid.Equal(oidPublicKeyEd25519):
 		return Ed25519
+	case oid.Equal(oidPublicKeyMLDSA44):
+		return MLDSA44
+	case oid.Equal(oidPublicKeyMLDSA65):
+		return MLDSA65
+	case oid.Equal(oidPublicKeyMLDSA87):
+		return MLDSA87
 	}
 	return UnknownPublicKeyAlgorithm
 }
@@ -896,8 +951,8 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 
 	switch hashType {
 	case crypto.Hash(0):
-		if pubKeyAlgo != Ed25519 {
-			return ErrUnsupportedAlgorithm
+		if !slices.Contains([]PublicKeyAlgorithm{Ed25519, MLDSA44, MLDSA65, MLDSA87}, pubKeyAlgo) {
+			return fmt.Errorf("bad hash: %w", ErrUnsupportedAlgorithm)
 		}
 	case crypto.MD5:
 		return InsecureAlgorithmError(algo)
@@ -940,6 +995,11 @@ func checkSignature(algo SignatureAlgorithm, signed, signature []byte, publicKey
 		}
 		if !ed25519.Verify(pub, signed, signature) {
 			return errors.New("x509: Ed25519 verification failure")
+		}
+		return
+	case mldsa.PublicKey:
+		if !pub.Scheme().Verify(pub, signed, signature, nil) {
+			return errors.New("x509: ML-DSA verification failure")
 		}
 		return
 	}
@@ -1423,6 +1483,18 @@ func signingParamsForKey(key crypto.Signer, sigAlgo SignatureAlgorithm) (Signatu
 	case ed25519.PublicKey:
 		pubType = Ed25519
 		defaultAlgo = PureEd25519
+
+	case *mldsa44.PublicKey:
+		pubType = MLDSA44
+		defaultAlgo = PureMLDSA44
+
+	case *mldsa65.PublicKey:
+		pubType = MLDSA65
+		defaultAlgo = PureMLDSA65
+
+	case *mldsa87.PublicKey:
+		pubType = MLDSA87
+		defaultAlgo = PureMLDSA87
 
 	default:
 		return 0, ai, errors.New("x509: only RSA, ECDSA and Ed25519 keys supported")
