@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package x509
+package x509pq
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 	"errors"
 	"math"
 	"math/big"
-	"math/bits"
 	"strconv"
 	"strings"
 )
@@ -22,12 +21,6 @@ var (
 // An OID represents an ASN.1 OBJECT IDENTIFIER.
 type OID struct {
 	der []byte
-}
-
-// ParseOID parses a Object Identifier string, represented by ASCII numbers separated by dots.
-func ParseOID(oid string) (OID, error) {
-	var o OID
-	return o, o.unmarshalOIDText(oid)
 }
 
 func newOIDFromDER(der []byte) (OID, bool) {
@@ -49,44 +42,6 @@ func newOIDFromDER(der []byte) (OID, bool) {
 	}
 
 	return OID{der}, true
-}
-
-// OIDFromInts creates a new OID using ints, each integer is a separate component.
-func OIDFromInts(oid []uint64) (OID, error) {
-	if len(oid) < 2 || oid[0] > 2 || (oid[0] < 2 && oid[1] >= 40) {
-		return OID{}, errInvalidOID
-	}
-
-	length := base128IntLength(oid[0]*40 + oid[1])
-	for _, v := range oid[2:] {
-		length += base128IntLength(v)
-	}
-
-	der := make([]byte, 0, length)
-	der = appendBase128Int(der, oid[0]*40+oid[1])
-	for _, v := range oid[2:] {
-		der = appendBase128Int(der, v)
-	}
-	return OID{der}, nil
-}
-
-func base128IntLength(n uint64) int {
-	if n == 0 {
-		return 1
-	}
-	return (bits.Len64(n) + 6) / 7
-}
-
-func appendBase128Int(dst []byte, n uint64) []byte {
-	for i := base128IntLength(n) - 1; i >= 0; i-- {
-		o := byte(n >> uint(i*7))
-		o &= 0x7f
-		if i != 0 {
-			o |= 0x80
-		}
-		dst = append(dst, o)
-	}
-	return dst
 }
 
 func base128BigIntLength(n *big.Int) int {

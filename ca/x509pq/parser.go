@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package x509
+package x509pq
 
 import (
 	"bytes"
@@ -16,13 +16,11 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"internal/godebug"
 	"math"
 	"math/big"
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -515,191 +513,6 @@ func parseCertificatePoliciesExtension(der cryptobyte.String) ([]OID, error) {
 	return oids, nil
 }
 
-// isValidIPMask reports whether mask consists of zero or more 1 bits, followed by zero bits.
-func isValidIPMask(mask []byte) bool {
-	seenZero := false
-
-	for _, b := range mask {
-		if seenZero {
-			if b != 0 {
-				return false
-			}
-
-			continue
-		}
-
-		switch b {
-		case 0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe:
-			seenZero = true
-		case 0xff:
-		default:
-			return false
-		}
-	}
-
-	return true
-}
-
-func parseNameConstraintsExtension(out *Certificate, e pkix.Extension) (unhandled bool, err error) {
-	// RFC 5280, 4.2.1.10
-
-	// NameConstraints ::= SEQUENCE {
-	//      permittedSubtrees       [0]     GeneralSubtrees OPTIONAL,
-	//      excludedSubtrees        [1]     GeneralSubtrees OPTIONAL }
-	//
-	// GeneralSubtrees ::= SEQUENCE SIZE (1..MAX) OF GeneralSubtree
-	//
-	// GeneralSubtree ::= SEQUENCE {
-	//      base                    GeneralName,
-	//      minimum         [0]     BaseDistance DEFAULT 0,
-	//      maximum         [1]     BaseDistance OPTIONAL }
-	//
-	// BaseDistance ::= INTEGER (0..MAX)
-
-	outer := cryptobyte.String(e.Value)
-	var toplevel, permitted, excluded cryptobyte.String
-	var havePermitted, haveExcluded bool
-	if !outer.ReadASN1(&toplevel, cryptobyte_asn1.SEQUENCE) ||
-		!outer.Empty() ||
-		!toplevel.ReadOptionalASN1(&permitted, &havePermitted, cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) ||
-		!toplevel.ReadOptionalASN1(&excluded, &haveExcluded, cryptobyte_asn1.Tag(1).ContextSpecific().Constructed()) ||
-		!toplevel.Empty() {
-		return false, errors.New("x509: invalid NameConstraints extension")
-	}
-
-	if !havePermitted && !haveExcluded || len(permitted) == 0 && len(excluded) == 0 {
-		// From RFC 5280, Section 4.2.1.10:
-		//   “either the permittedSubtrees field
-		//   or the excludedSubtrees MUST be
-		//   present”
-		return false, errors.New("x509: empty name constraints extension")
-	}
-
-	getValues := func(subtrees cryptobyte.String) (dnsNames []string, ips []*net.IPNet, emails, uriDomains []string, err error) {
-		for !subtrees.Empty() {
-			var seq, value cryptobyte.String
-			var tag cryptobyte_asn1.Tag
-			if !subtrees.ReadASN1(&seq, cryptobyte_asn1.SEQUENCE) ||
-				!seq.ReadAnyASN1(&value, &tag) {
-				return nil, nil, nil, nil, fmt.Errorf("x509: invalid NameConstraints extension")
-			}
-
-			var (
-				dnsTag   = cryptobyte_asn1.Tag(2).ContextSpecific()
-				emailTag = cryptobyte_asn1.Tag(1).ContextSpecific()
-				ipTag    = cryptobyte_asn1.Tag(7).ContextSpecific()
-				uriTag   = cryptobyte_asn1.Tag(6).ContextSpecific()
-			)
-
-			switch tag {
-			case dnsTag:
-				domain := string(value)
-				if err := isIA5String(domain); err != nil {
-					return nil, nil, nil, nil, errors.New("x509: invalid constraint value: " + err.Error())
-				}
-
-				trimmedDomain := domain
-				if len(trimmedDomain) > 0 && trimmedDomain[0] == '.' {
-					// constraints can have a leading
-					// period to exclude the domain
-					// itself, but that's not valid in a
-					// normal domain name.
-					trimmedDomain = trimmedDomain[1:]
-				}
-				if _, ok := domainToReverseLabels(trimmedDomain); !ok {
-					return nil, nil, nil, nil, fmt.Errorf("x509: failed to parse dnsName constraint %q", domain)
-				}
-				dnsNames = append(dnsNames, domain)
-
-			case ipTag:
-				l := len(value)
-				var ip, mask []byte
-
-				switch l {
-				case 8:
-					ip = value[:4]
-					mask = value[4:]
-
-				case 32:
-					ip = value[:16]
-					mask = value[16:]
-
-				default:
-					return nil, nil, nil, nil, fmt.Errorf("x509: IP constraint contained value of length %d", l)
-				}
-
-				if !isValidIPMask(mask) {
-					return nil, nil, nil, nil, fmt.Errorf("x509: IP constraint contained invalid mask %x", mask)
-				}
-
-				ips = append(ips, &net.IPNet{IP: net.IP(ip), Mask: net.IPMask(mask)})
-
-			case emailTag:
-				constraint := string(value)
-				if err := isIA5String(constraint); err != nil {
-					return nil, nil, nil, nil, errors.New("x509: invalid constraint value: " + err.Error())
-				}
-
-				// If the constraint contains an @ then
-				// it specifies an exact mailbox name.
-				if strings.Contains(constraint, "@") {
-					if _, ok := parseRFC2821Mailbox(constraint); !ok {
-						return nil, nil, nil, nil, fmt.Errorf("x509: failed to parse rfc822Name constraint %q", constraint)
-					}
-				} else {
-					// Otherwise it's a domain name.
-					domain := constraint
-					if len(domain) > 0 && domain[0] == '.' {
-						domain = domain[1:]
-					}
-					if _, ok := domainToReverseLabels(domain); !ok {
-						return nil, nil, nil, nil, fmt.Errorf("x509: failed to parse rfc822Name constraint %q", constraint)
-					}
-				}
-				emails = append(emails, constraint)
-
-			case uriTag:
-				domain := string(value)
-				if err := isIA5String(domain); err != nil {
-					return nil, nil, nil, nil, errors.New("x509: invalid constraint value: " + err.Error())
-				}
-
-				if net.ParseIP(domain) != nil {
-					return nil, nil, nil, nil, fmt.Errorf("x509: failed to parse URI constraint %q: cannot be IP address", domain)
-				}
-
-				trimmedDomain := domain
-				if len(trimmedDomain) > 0 && trimmedDomain[0] == '.' {
-					// constraints can have a leading
-					// period to exclude the domain itself,
-					// but that's not valid in a normal
-					// domain name.
-					trimmedDomain = trimmedDomain[1:]
-				}
-				if _, ok := domainToReverseLabels(trimmedDomain); !ok {
-					return nil, nil, nil, nil, fmt.Errorf("x509: failed to parse URI constraint %q", domain)
-				}
-				uriDomains = append(uriDomains, domain)
-
-			default:
-				unhandled = true
-			}
-		}
-
-		return dnsNames, ips, emails, uriDomains, nil
-	}
-
-	if out.PermittedDNSDomains, out.PermittedIPRanges, out.PermittedEmailAddresses, out.PermittedURIDomains, err = getValues(permitted); err != nil {
-		return false, err
-	}
-	if out.ExcludedDNSDomains, out.ExcludedIPRanges, out.ExcludedEmailAddresses, out.ExcludedURIDomains, err = getValues(excluded); err != nil {
-		return false, err
-	}
-	out.PermittedDNSDomainsCritical = e.Critical
-
-	return unhandled, nil
-}
-
 func processExtensions(out *Certificate) error {
 	var err error
 	for _, e := range out.Extensions {
@@ -728,12 +541,6 @@ func processExtensions(out *Certificate) error {
 				if len(out.DNSNames) == 0 && len(out.EmailAddresses) == 0 && len(out.IPAddresses) == 0 && len(out.URIs) == 0 {
 					// If we didn't parse anything then we do the critical check, below.
 					unhandled = true
-				}
-
-			case 30:
-				unhandled, err = parseNameConstraintsExtension(out, e)
-				if err != nil {
-					return err
 				}
 
 			case 31:
@@ -912,8 +719,6 @@ func processExtensions(out *Certificate) error {
 	return nil
 }
 
-var x509negativeserial = godebug.New("x509negativeserial")
-
 func parseCertificate(der []byte) (*Certificate, error) {
 	cert := &Certificate{}
 
@@ -958,11 +763,7 @@ func parseCertificate(der []byte) (*Certificate, error) {
 		return nil, errors.New("x509: malformed serial number")
 	}
 	if serial.Sign() == -1 {
-		if x509negativeserial.Value() != "1" {
-			return nil, errors.New("x509: negative serial number")
-		} else {
-			x509negativeserial.IncNonDefault()
-		}
+		return nil, errors.New("x509: negative serial number")
 	}
 	cert.SerialNumber = serial
 
@@ -1113,207 +914,4 @@ func ParseCertificate(der []byte) (*Certificate, error) {
 		return nil, errors.New("x509: trailing data")
 	}
 	return cert, nil
-}
-
-// ParseCertificates parses one or more certificates from the given ASN.1 DER
-// data. The certificates must be concatenated with no intermediate padding.
-func ParseCertificates(der []byte) ([]*Certificate, error) {
-	var certs []*Certificate
-	for len(der) > 0 {
-		cert, err := parseCertificate(der)
-		if err != nil {
-			return nil, err
-		}
-		certs = append(certs, cert)
-		der = der[len(cert.Raw):]
-	}
-	return certs, nil
-}
-
-// The X.509 standards confusingly 1-indexed the version names, but 0-indexed
-// the actual encoded version, so the version for X.509v2 is 1.
-const x509v2Version = 1
-
-// ParseRevocationList parses a X509 v2 [Certificate] Revocation List from the given
-// ASN.1 DER data.
-func ParseRevocationList(der []byte) (*RevocationList, error) {
-	rl := &RevocationList{}
-
-	input := cryptobyte.String(der)
-	// we read the SEQUENCE including length and tag bytes so that
-	// we can populate RevocationList.Raw, before unwrapping the
-	// SEQUENCE so it can be operated on
-	if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed crl")
-	}
-	rl.Raw = input
-	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed crl")
-	}
-
-	var tbs cryptobyte.String
-	// do the same trick again as above to extract the raw
-	// bytes for Certificate.RawTBSCertificate
-	if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed tbs crl")
-	}
-	rl.RawTBSRevocationList = tbs
-	if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed tbs crl")
-	}
-
-	var version int
-	if !tbs.PeekASN1Tag(cryptobyte_asn1.INTEGER) {
-		return nil, errors.New("x509: unsupported crl version")
-	}
-	if !tbs.ReadASN1Integer(&version) {
-		return nil, errors.New("x509: malformed crl")
-	}
-	if version != x509v2Version {
-		return nil, fmt.Errorf("x509: unsupported crl version: %d", version)
-	}
-
-	var sigAISeq cryptobyte.String
-	if !tbs.ReadASN1(&sigAISeq, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed signature algorithm identifier")
-	}
-	// Before parsing the inner algorithm identifier, extract
-	// the outer algorithm identifier and make sure that they
-	// match.
-	var outerSigAISeq cryptobyte.String
-	if !input.ReadASN1(&outerSigAISeq, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed algorithm identifier")
-	}
-	if !bytes.Equal(outerSigAISeq, sigAISeq) {
-		return nil, errors.New("x509: inner and outer signature algorithm identifiers don't match")
-	}
-	sigAI, err := parseAI(sigAISeq)
-	if err != nil {
-		return nil, err
-	}
-	rl.SignatureAlgorithm = getSignatureAlgorithmFromAI(sigAI)
-
-	var signature asn1.BitString
-	if !input.ReadASN1BitString(&signature) {
-		return nil, errors.New("x509: malformed signature")
-	}
-	rl.Signature = signature.RightAlign()
-
-	var issuerSeq cryptobyte.String
-	if !tbs.ReadASN1Element(&issuerSeq, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed issuer")
-	}
-	rl.RawIssuer = issuerSeq
-	issuerRDNs, err := parseName(issuerSeq)
-	if err != nil {
-		return nil, err
-	}
-	rl.Issuer.FillFromRDNSequence(issuerRDNs)
-
-	rl.ThisUpdate, err = parseTime(&tbs)
-	if err != nil {
-		return nil, err
-	}
-	if tbs.PeekASN1Tag(cryptobyte_asn1.GeneralizedTime) || tbs.PeekASN1Tag(cryptobyte_asn1.UTCTime) {
-		rl.NextUpdate, err = parseTime(&tbs)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
-		var revokedSeq cryptobyte.String
-		if !tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed crl")
-		}
-		for !revokedSeq.Empty() {
-			rce := RevocationListEntry{}
-
-			var certSeq cryptobyte.String
-			if !revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE) {
-				return nil, errors.New("x509: malformed crl")
-			}
-			rce.Raw = certSeq
-			if !certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
-				return nil, errors.New("x509: malformed crl")
-			}
-
-			rce.SerialNumber = new(big.Int)
-			if !certSeq.ReadASN1Integer(rce.SerialNumber) {
-				return nil, errors.New("x509: malformed serial number")
-			}
-			rce.RevocationTime, err = parseTime(&certSeq)
-			if err != nil {
-				return nil, err
-			}
-			var extensions cryptobyte.String
-			var present bool
-			if !certSeq.ReadOptionalASN1(&extensions, &present, cryptobyte_asn1.SEQUENCE) {
-				return nil, errors.New("x509: malformed extensions")
-			}
-			if present {
-				for !extensions.Empty() {
-					var extension cryptobyte.String
-					if !extensions.ReadASN1(&extension, cryptobyte_asn1.SEQUENCE) {
-						return nil, errors.New("x509: malformed extension")
-					}
-					ext, err := parseExtension(extension)
-					if err != nil {
-						return nil, err
-					}
-					if ext.Id.Equal(oidExtensionReasonCode) {
-						val := cryptobyte.String(ext.Value)
-						if !val.ReadASN1Enum(&rce.ReasonCode) {
-							return nil, fmt.Errorf("x509: malformed reasonCode extension")
-						}
-					}
-					rce.Extensions = append(rce.Extensions, ext)
-				}
-			}
-
-			rl.RevokedCertificateEntries = append(rl.RevokedCertificateEntries, rce)
-			rcDeprecated := pkix.RevokedCertificate{
-				SerialNumber:   rce.SerialNumber,
-				RevocationTime: rce.RevocationTime,
-				Extensions:     rce.Extensions,
-			}
-			rl.RevokedCertificates = append(rl.RevokedCertificates, rcDeprecated)
-		}
-	}
-
-	var extensions cryptobyte.String
-	var present bool
-	if !tbs.ReadOptionalASN1(&extensions, &present, cryptobyte_asn1.Tag(0).Constructed().ContextSpecific()) {
-		return nil, errors.New("x509: malformed extensions")
-	}
-	if present {
-		if !extensions.ReadASN1(&extensions, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed extensions")
-		}
-		for !extensions.Empty() {
-			var extension cryptobyte.String
-			if !extensions.ReadASN1(&extension, cryptobyte_asn1.SEQUENCE) {
-				return nil, errors.New("x509: malformed extension")
-			}
-			ext, err := parseExtension(extension)
-			if err != nil {
-				return nil, err
-			}
-			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
-				rl.AuthorityKeyId, err = parseAuthorityKeyIdentifier(ext)
-				if err != nil {
-					return nil, err
-				}
-			} else if ext.Id.Equal(oidExtensionCRLNumber) {
-				value := cryptobyte.String(ext.Value)
-				rl.Number = new(big.Int)
-				if !value.ReadASN1Integer(rl.Number) {
-					return nil, errors.New("x509: malformed crl number")
-				}
-			}
-			rl.Extensions = append(rl.Extensions, ext)
-		}
-	}
-
-	return rl, nil
 }
