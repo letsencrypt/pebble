@@ -81,3 +81,5 @@ issues:
       linters:
         - goconst
       text: 'string `Incorrect validation certificate for %s challenge. ` has \d occurrences, make it a constant'
+  exclude-dirs:
+    - ca/x509pq
