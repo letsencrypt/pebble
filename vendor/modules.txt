@@ -1,3 +1,34 @@
+# github.com/cloudflare/circl v1.6.1
+## explicit; go 1.22.0
+github.com/cloudflare/circl/ecc/goldilocks
+github.com/cloudflare/circl/internal/conv
+github.com/cloudflare/circl/internal/sha3
+github.com/cloudflare/circl/math
+github.com/cloudflare/circl/math/fp25519
+github.com/cloudflare/circl/math/fp448
+github.com/cloudflare/circl/math/mlsbset
+github.com/cloudflare/circl/pki
+github.com/cloudflare/circl/sign
+github.com/cloudflare/circl/sign/dilithium/mode2
+github.com/cloudflare/circl/sign/dilithium/mode2/internal
+github.com/cloudflare/circl/sign/dilithium/mode3
+github.com/cloudflare/circl/sign/dilithium/mode3/internal
+github.com/cloudflare/circl/sign/dilithium/mode5
+github.com/cloudflare/circl/sign/dilithium/mode5/internal
+github.com/cloudflare/circl/sign/ed25519
+github.com/cloudflare/circl/sign/ed448
+github.com/cloudflare/circl/sign/eddilithium2
+github.com/cloudflare/circl/sign/eddilithium3
+github.com/cloudflare/circl/sign/internal/dilithium
+github.com/cloudflare/circl/sign/internal/dilithium/params
+github.com/cloudflare/circl/sign/mldsa/mldsa44
+github.com/cloudflare/circl/sign/mldsa/mldsa44/internal
+github.com/cloudflare/circl/sign/mldsa/mldsa65
+github.com/cloudflare/circl/sign/mldsa/mldsa65/internal
+github.com/cloudflare/circl/sign/mldsa/mldsa87
+github.com/cloudflare/circl/sign/mldsa/mldsa87/internal
+github.com/cloudflare/circl/sign/schemes
+github.com/cloudflare/circl/simd/keccakf1600
 # github.com/go-jose/go-jose/v4 v4.1.2
 ## explicit; go 1.23.0
 github.com/go-jose/go-jose/v4
@@ -11,6 +42,8 @@ github.com/letsencrypt/challtestsrv
 github.com/miekg/dns
 # golang.org/x/crypto v0.39.0
 ## explicit; go 1.23.0
+golang.org/x/crypto/cryptobyte
+golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/pbkdf2
 # golang.org/x/mod v0.24.0
 ## explicit; go 1.23.0
@@ -27,6 +60,7 @@ golang.org/x/net/ipv6
 golang.org/x/sync/errgroup
 # golang.org/x/sys v0.33.0
 ## explicit; go 1.23.0
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/tools v0.33.0

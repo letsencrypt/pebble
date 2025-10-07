@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/pebble/v2/acme"
+	x509pq "github.com/letsencrypt/pebble/v2/ca/x509pq"
 	"github.com/letsencrypt/pebble/v2/core"
 	"github.com/letsencrypt/pebble/v2/db"
 )
@@ -27,7 +28,7 @@ var (
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	db := db.NewMemoryStore()
-	return New(logger, db, "", "ecdsa", 0, 1, map[string]Profile{"default": {}})
+	return New(logger, db, "", "mldsa", 0, 1, map[string]Profile{"default": {}})
 }
 
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
@@ -58,7 +59,7 @@ func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
 	}
 }
 
-func getOCSPMustStapleExtension(cert *x509.Certificate) *pkix.Extension {
+func getOCSPMustStapleExtension(cert *x509pq.Certificate) *pkix.Extension {
 	for _, ext := range cert.Extensions {
 		if ext.Id.Equal(ocspID) && bytes.Equal(ext.Value, ocspValue) {
 			return &ext

@@ -7,8 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/x509"
+	"crypto/sha256"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
@@ -21,7 +20,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+
 	"github.com/letsencrypt/pebble/v2/acme"
+	"github.com/letsencrypt/pebble/v2/ca/x509pq"
 	"github.com/letsencrypt/pebble/v2/core"
 	"github.com/letsencrypt/pebble/v2/db"
 )
@@ -79,7 +81,7 @@ func makeSerial() *big.Int {
 // Taken from https://github.com/cloudflare/cfssl/blob/b94e044bb51ec8f5a7232c71b1ed05dbe4da96ce/signer/signer.go#L221-L244
 func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 	// Marshal the public key as ASN.1
-	pubAsDER, err := x509.MarshalPKIXPublicKey(key)
+	pubAsDER, err := x509pq.MarshalPKIXPublicKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +96,9 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	// Hash it according to https://tools.ietf.org/html/rfc5280#section-4.2.1.2 Method #1:
-	ski := sha1.Sum(pubInfo.SubjectPublicKey.Bytes)
-	return ski[:], nil
+	// Hash it according to https://datatracker.ietf.org/doc/html/rfc7093#section-2 Method #1:
+	skid := sha256.Sum256(pubInfo.SubjectPublicKey.Bytes)
+	return skid[0:20:20], nil
 }
 
 // makeKey and makeRootCert are adapted from MiniCA:
@@ -112,6 +114,8 @@ func makeKey(keyAlg string) (crypto.Signer, []byte, error) {
 		key, err = rsa.GenerateKey(rand.Reader, 2048)
 	case "ecdsa":
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	case "mldsa":
+		_, key, err = mldsa65.GenerateKey(rand.Reader)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -130,21 +134,21 @@ func (ca *CAImpl) makeCACert(
 	signer *issuer,
 ) (*core.Certificate, error) {
 	serial := makeSerial()
-	template := &x509.Certificate{
+	template := &x509pq.Certificate{
 		Subject:      subject,
 		SerialNumber: serial,
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509pq.KeyUsageDigitalSignature | x509pq.KeyUsageCertSign,
+		ExtKeyUsage:           []x509pq.ExtKeyUsage{x509pq.ExtKeyUsageServerAuth},
 		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
 
 	var signerKey crypto.Signer
-	var parent *x509.Certificate
+	var parent *x509pq.Certificate
 	if signer != nil && signer.key != nil && signer.cert != nil && signer.cert.Cert != nil {
 		signerKey = signer.key
 		parent = signer.cert.Cert
@@ -153,12 +157,12 @@ func (ca *CAImpl) makeCACert(
 		parent = template
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, parent, subjectKey.Public(), signerKey)
+	der, err := x509pq.CreateCertificate(rand.Reader, template, parent, subjectKey.Public(), signerKey)
 	if err != nil {
 		return nil, err
 	}
 
-	cert, err := x509.ParseCertificate(der)
+	cert, err := x509pq.ParseCertificate(der)
 	if err != nil {
 		return nil, err
 	}
@@ -306,15 +310,15 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	}
 
 	serial := makeSerial()
-	template := &x509.Certificate{
+	template := &x509pq.Certificate{
 		DNSNames:     domains,
 		IPAddresses:  ips,
 		SerialNumber: serial,
 		NotBefore:    certNotBefore,
 		NotAfter:     certNotAfter,
 
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509pq.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509pq.ExtKeyUsage{x509pq.ExtKeyUsageServerAuth},
 		ExtraExtensions:       extensions,
 		BasicConstraintsValid: true,
 		IsCA:                  false,
@@ -340,11 +344,11 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		template.OCSPServer = []string{ca.ocspResponderURL}
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
+	der, err := x509pq.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
 	if err != nil {
 		return nil, err
 	}
-	cert, err := x509.ParseCertificate(der)
+	cert, err := x509pq.ParseCertificate(der)
 	if err != nil {
 		return nil, err
 	}
