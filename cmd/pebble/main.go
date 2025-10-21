@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -27,6 +29,7 @@ type config struct {
 		TLSPort                 int
 		Certificate             string
 		PrivateKey              string
+		SSLKeyLogFile           string
 		OCSPResponderURL        string
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
@@ -162,13 +165,28 @@ func main() {
 		logger.Print("Management interface is disabled")
 	}
 
+	var ssllog io.Writer
+	ssllogfile, err := os.OpenFile(c.Pebble.SSLKeyLogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		ssllog = nil
+	} else {
+		logger.Printf("TLS session key of Pebble will be logged at %s", c.Pebble.SSLKeyLogFile)
+		ssllog = ssllogfile
+		defer ssllogfile.Close()
+	}
+	pebbleserver := http.Server{
+		TLSConfig: &tls.Config{
+			KeyLogWriter: ssllog,
+		},
+		Addr:    c.Pebble.ListenAddress,
+		Handler: muxHandler,
+	}
+
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
-	err = http.ListenAndServeTLS(
-		c.Pebble.ListenAddress,
+	err = pebbleserver.ListenAndServeTLS(
 		c.Pebble.Certificate,
-		c.Pebble.PrivateKey,
-		muxHandler)
+		c.Pebble.PrivateKey)
 	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
 }
