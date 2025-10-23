@@ -166,7 +166,7 @@ func main() {
 	}
 
 	var ssllog io.Writer
-	ssllogfile, err := os.OpenFile(os.Getenv("SSLKEYLOGFILE"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	ssllogfile, err := os.OpenFile(os.Getenv("SSLKEYLOGFILE"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		ssllog = nil
 	} else {
