@@ -16,6 +16,7 @@ const (
 	connectionErr            = errNS + "connection"
 	unauthorizedErr          = errNS + "unauthorized"
 	invalidContactErr        = errNS + "invalidContact"
+	invalidProfileErr        = errNS + "invalidProfile"
 	unsupportedContactErr    = errNS + "unsupportedContact"
 	accountDoesNotExistErr   = errNS + "accountDoesNotExist"
 	badRevocationReasonErr   = errNS + "badRevocationReason"
@@ -129,6 +130,14 @@ func UnauthorizedProblem(detail string) *ProblemDetails {
 func InvalidContactProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       invalidContactErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+func InvalidProfileProblem(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       invalidProfileErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}

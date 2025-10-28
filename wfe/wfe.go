@@ -1747,7 +1747,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	_, ok := profiles[profileName]
 	if !ok {
 		wfe.sendError(
-			acme.MalformedProblem(fmt.Sprintf("Order includes unrecognized profile name %q", profileName)), response)
+			acme.InvalidProfileProblem(fmt.Sprintf("Order includes unrecognized profile name %q", profileName)), response)
 		return
 	}
 
