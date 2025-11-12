@@ -17,7 +17,7 @@ func mustParsePOST(ob interface{}, request *http.Request) error {
 	}
 
 	if string(jsonBody) == "" {
-		return errors.New("Expected JSON POST body, was empty")
+		return errors.New("expected JSON POST body, was empty")
 	}
 
 	return json.Unmarshal(jsonBody, ob)

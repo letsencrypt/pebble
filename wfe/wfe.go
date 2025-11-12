@@ -1847,17 +1847,17 @@ func (wfe *WebFrontEndImpl) orderForDisplay(
 	// identifiers and authorizations slices and not the slices or the mutations
 	// below could mutate the order in the database, causing data races.
 	result := acme.Order{
-		Status:         order.Order.Status,
-		Error:          order.Order.Error,
-		Expires:        order.Order.Expires,
-		Identifiers:    slices.Clone(order.Order.Identifiers),
-		Profile:        order.Order.Profile,
-		Finalize:       order.Order.Finalize,
-		NotBefore:      order.Order.NotBefore,
-		NotAfter:       order.Order.NotAfter,
-		Authorizations: slices.Clone(order.Order.Authorizations),
-		Certificate:    order.Order.Certificate,
-		Replaces:       order.Order.Replaces,
+		Status:         order.Status,
+		Error:          order.Error,
+		Expires:        order.Expires,
+		Identifiers:    slices.Clone(order.Identifiers),
+		Profile:        order.Profile,
+		Finalize:       order.Finalize,
+		NotBefore:      order.NotBefore,
+		NotAfter:       order.NotAfter,
+		Authorizations: slices.Clone(order.Authorizations),
+		Certificate:    order.Certificate,
+		Replaces:       order.Replaces,
 	}
 
 	// Randomize the order of the order authorization URLs as well as the order's
@@ -2892,11 +2892,12 @@ func (wfe *WebFrontEndImpl) RevokeCert(
 
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
-	if authType == embeddedKeyID {
+	switch authType {
+	case embeddedKeyID:
 		prob = wfe.revokeCertByKeyID(parsedJWS, request)
-	} else if authType == embeddedJWK {
+	case embeddedJWK:
 		prob = wfe.revokeCertByJWK(parsedJWS, request)
-	} else {
+	default:
 		prob = acme.MalformedProblem("Malformed JWS, no KeyID or embedded JWK")
 	}
 	if prob != nil {

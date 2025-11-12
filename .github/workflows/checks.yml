@@ -12,25 +12,25 @@ permissions:
 env:
   CGO_ENABLED: 0
   GO_VERSION: stable
-  GOLANGCI_LINT_VERSION: v1.64.5
+  GOLANGCI_LINT_VERSION: v2.6.1
   SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
   go-lint-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Run GolangCI-Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
   go-mod-checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Check if go.mod is tidy
