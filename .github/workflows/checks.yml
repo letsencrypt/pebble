@@ -12,7 +12,7 @@ permissions:
 env:
   CGO_ENABLED: 0
   GO_VERSION: stable
-  GOLANGCI_LINT_VERSION: v1.64.5
+  GOLANGCI_LINT_VERSION: v2.6.1
   SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
   go-lint-checks:
