@@ -1,11 +1,5 @@
-linters-settings:
-  gocyclo:
-    min-complexity: 25
-  misspell:
-    locale: "US"
-
+version: "2"
 linters:
-  disable-all: false
   enable:
     - asasalint
     - asciicheck
@@ -17,7 +11,6 @@ linters:
     - dogsled
     - dupword
     - durationcheck
-    - errcheck
     - errchkjson
     - errorlint
     - forcetypeassert
@@ -26,18 +19,12 @@ linters:
     - gocognit
     - goconst
     - gocyclo
-    - gofmt
-    - gofumpt
     - goheader
-    - goimports
     - gomoddirectives
     - gomodguard
     - goprintffuncname
-    - gosimple
-    - govet
     - importas
     - inamedparam
-    - ineffassign
     - ireturn
     - loggercheck
     - makezero
@@ -51,33 +38,55 @@ linters:
     - predeclared
     - reassign
     - revive
-    - staticcheck
     - tagalign
     - testableexamples
     - testifylint
     - thelper
     - unconvert
     - unparam
-    - unused
     - usestdlibvars
     - usetesting
     - wastedassign
-
+  settings:
+    gocyclo:
+      min-complexity: 25
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: ca/ca.go
+        text: type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl
+      - path: va/va.go
+        text: type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl
+      - path: wfe/wfe.go
+        text: if` block ends with a `return` statement, so drop this `else` and outdent its block
+      - linters:
+          - goconst
+        path: va/va.go
+        text: string `Incorrect validation certificate for %s challenge. ` has \d occurrences, make it a constant
+      - path: (.+)\.go$
+        text: fmt.Sprintf can be replaced with string
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: true
   max-issues-per-linter: 0
   max-same-issues: 0
-  # The following excludes are considered false-positives/known-OK.
-  exclude:
-    - fmt.Sprintf can be replaced with string
-  exclude-rules:
-    - path: ca/ca.go
-      text: 'type name will be used as ca.CAImpl by other packages, and that stutters; consider calling this Impl'
-    - path: va/va.go
-      text: 'type name will be used as va.VAImpl by other packages, and that stutters; consider calling this Impl'
-    - path: wfe/wfe.go
-      text: 'if` block ends with a `return` statement, so drop this `else` and outdent its block'
-    - path: va/va.go
-      linters:
-        - goconst
-      text: 'string `Incorrect validation certificate for %s challenge. ` has \d occurrences, make it a constant'
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
