@@ -28,7 +28,7 @@ type managementServer struct {
 }
 
 func (srv *managementServer) Run() {
-	srv.log.Printf("Starting management server on %s", srv.Server.Addr)
+	srv.log.Printf("Starting management server on %s", srv.Addr)
 	// Start the HTTP server in its own dedicated Go routine
 	go func() {
 		err := srv.ListenAndServe()
