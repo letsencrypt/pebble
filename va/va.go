@@ -222,11 +222,13 @@ func (va VAImpl) setOrderError(order *core.Order, prob *acme.ProblemDetails) {
 	defer order.Unlock()
 	order.Error = prob
 
-	// Mark the parent order as "not replaced yet" so a new replacement order
-	// can be attempted.
-	err := va.db.UpdateReplacedOrder(order.Replaces, false)
-	if err != nil {
-		va.log.Printf("Error updating replacement order: %s", err)
+	if order.Replaces != "" {
+		// Mark the parent order as "not replaced yet" so a new replacement order
+		// can be attempted.
+		err := va.db.UpdateReplacedOrder(order.Replaces, false)
+		if err != nil {
+			va.log.Printf("Error updating replacement order: %s", err)
+		}
 	}
 }
 
