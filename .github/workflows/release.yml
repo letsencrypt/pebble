@@ -138,9 +138,7 @@ jobs:
         # https://cli.github.com/manual/gh_release_create
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          gh release create --generate-notes --verify-tag ${GITHUB_REF_NAME}
-        continue-on-error: true
+        run: gh release create --generate-notes --verify-tag ${GITHUB_REF_NAME}
       - name: Upload release files
         # https://cli.github.com/manual/gh_release_upload
         env:
