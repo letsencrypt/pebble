@@ -43,6 +43,9 @@ type config struct {
 
 		// Deprecated: use Profiles.ValidityPeriod instead
 		CertificateValidityPeriod uint64
+
+		RootCACert string
+		RootCAKey  string
 	}
 }
 
@@ -125,7 +128,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles, c.Pebble.RootCACert, c.Pebble.RootCAKey)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

@@ -12,12 +12,14 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -268,6 +270,51 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	return c
 }
 
+// newChainWithRoot generates a new issuance chain using a provided
+// CA issuer
+func (ca *CAImpl) newChainWithRoot(root *issuer, intermediateKey crypto.Signer, intermediateSubject pkix.Name, subjectKeyID []byte, numIntermediates int, keyAlg string) *chain {
+	if root == nil {
+		panic("root issuer cannot be nil")
+	} else if numIntermediates <= 0 {
+		panic("at least one intermediate must be present")
+	}
+
+	chainID := hex.EncodeToString(makeSerial().Bytes()[:3])
+
+	prev := root
+	intermediates := make([]*issuer, numIntermediates)
+	for i := numIntermediates - 1; i > 0; i-- {
+		k, ski, err := makeKey(keyAlg)
+		if err != nil {
+			panic(fmt.Sprintf("Error creating new intermediate key: %v", err))
+		}
+
+		intermediate, err := ca.newIntermediateIssuer(prev, k, pkix.Name{
+			CommonName: fmt.Sprintf("%s%s #%d", intermediateCAPrefix, chainID, i),
+		}, ski)
+		if err != nil {
+			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
+		}
+
+		intermediates[i] = intermediate
+		prev = intermediate
+	}
+
+	intermediate, err := ca.newIntermediateIssuer(prev, intermediateKey, intermediateSubject, subjectKeyID)
+	if err != nil {
+		panic(fmt.Sprintf("Error creating new intermediate: %v", err))
+	}
+
+	intermediates[0] = intermediate
+	c := &chain{
+		root:          root,
+		intermediates: intermediates,
+	}
+
+	ca.log.Printf("Generated issuance chain with provided root: %s", c)
+	return c
+}
+
 func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.PublicKey, accountID, notBefore, notAfter, profileName string, extensions []pkix.Extension) (*core.Certificate, error) {
 	if len(domains) == 0 && len(ips) == 0 {
 		return nil, errors.New("must specify at least one domain name or IP address")
@@ -373,7 +420,130 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
+func loadRootCAFromFiles(certPath, keyPath string, db *db.MemoryStore, log *log.Logger) (*issuer, error) {
+	if certPath == "" || keyPath == "" {
+		return nil, errors.New("no cert/key path specified")
+	}
+
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read root CA cert: %w", err)
+	}
+
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read root CA key: %w", err)
+	}
+
+	certBlock, _ := pem.Decode(certPEM)
+	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
+		return nil, errors.New("failed to decode root CA cert")
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse root CA cert: %w", err)
+	}
+
+	if !cert.IsCA {
+		return nil, errors.New("root certificate is not a CA certificate")
+	}
+
+	keyBlock, _ := pem.Decode(keyPEM)
+	if keyBlock == nil {
+		return nil, errors.New("failed to decode root CA key")
+	}
+
+	var key crypto.Signer
+	switch keyBlock.Type {
+	case "PRIVATE KEY":
+		privKey, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse PKCS8 private key: %w", err)
+		}
+
+		var ok bool
+		key, ok = privKey.(crypto.Signer)
+		if !ok {
+			return nil, fmt.Errorf("private key is not a valid signer: %T", key)
+		}
+
+	case "RSA PRIVATE KEY":
+		rsaKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse RSA private key: %w", err)
+		}
+
+		key = rsaKey
+
+	case "EC PRIVATE KEY":
+		ecKey, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse ECDSA private key: %w", err)
+		}
+
+		key = ecKey
+
+	default:
+		return nil, fmt.Errorf("unsupported root CA key: %s", keyBlock.Type)
+	}
+
+	certPubKey := cert.PublicKey
+	keyPubKey := key.Public()
+	switch certPub := certPubKey.(type) {
+	case *rsa.PublicKey:
+		keyPub, ok := keyPubKey.(*rsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("certificate public key is RSA, key is %T", keyPubKey)
+		}
+
+		if certPub.N.Cmp(keyPub.N) != 0 || certPub.E != keyPub.E {
+			return nil, errors.New("root CA certificate/key RSA mismatch")
+		}
+
+	case *ecdsa.PublicKey:
+		keyPub, ok := keyPubKey.(*ecdsa.PublicKey)
+		if !ok {
+			return nil, fmt.Errorf("certificate public key is ECDSA, key is %T", keyPubKey)
+		}
+
+		if certPub.Curve != keyPub.Curve || certPub.X.Cmp(keyPub.X) != 0 || certPub.Y.Cmp(keyPub.Y) != 0 {
+			return nil, errors.New("root CA certificate/key ECDSA mismatch")
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported root CA cert key: %T", certPubKey)
+	}
+
+	subjectKeyID := cert.SubjectKeyId
+	if subjectKeyID == nil {
+		subjectKeyID, err = makeSubjectKeyID(cert.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate root CA subject key id: %w", err)
+		}
+	}
+
+	hexSerial := hex.EncodeToString(cert.SerialNumber.Bytes())
+	coreCert := &core.Certificate{
+		ID:   hexSerial,
+		Cert: cert,
+		DER:  certBlock.Bytes,
+	}
+
+	_, err = db.AddCertificate(coreCert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add root CA cert to database: %w", err)
+	}
+
+	log.Printf("Loaded root CA certificate from %q with serial %s and SKI %x", certPath, hexSerial, subjectKeyID)
+
+	return &issuer{
+		key:  key,
+		cert: coreCert,
+	}, nil
+}
+
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile, rootCACertPath, rootCAKeyPath string) *CAImpl {
 	ca := &CAImpl{
 		log:      log,
 		db:       db,
@@ -385,6 +555,17 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg st
 		ca.log.Printf("Setting OCSP responder URL for issued certificates to %q", ca.ocspResponderURL)
 	}
 
+	var rootIssuer *issuer
+	if rootCACertPath != "" && rootCAKeyPath != "" {
+		var err error
+		rootIssuer, err = loadRootCAFromFiles(rootCACertPath, rootCAKeyPath, db, ca.log)
+		if err != nil {
+			ca.log.Printf("Failed to create fixed root issuer, creating ephemeral: %v", err)
+		} else if rootIssuer == nil {
+			panic("failed to create rootIssuer")
+		}
+	}
+
 	intermediateSubject := pkix.Name{
 		CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
 	}
@@ -394,7 +575,11 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg st
 	}
 	ca.chains = make([]*chain, 1+alternateRoots)
 	for i := 0; i < len(ca.chains); i++ {
-		ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength, keyAlg)
+		if i == 0 && rootIssuer != nil {
+			ca.chains[i] = ca.newChainWithRoot(rootIssuer, intermediateKey, intermediateSubject, subjectKeyID, chainLength, keyAlg)
+		} else {
+			ca.chains[i] = ca.newChain(intermediateKey, intermediateSubject, subjectKeyID, chainLength, keyAlg)
+		}
 	}
 
 	for name, prof := range profiles {
