@@ -272,6 +272,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(
 					return
 				}
 
+				// Reject all requests that do not include a User-Agent, which RFC 8555
+				// Section 6.1 requires all clients to supply in all requests.
+				if len(request.UserAgent()) == 0 {
+					wfe.sendError(acme.MalformedProblem("All requests MUST include a User-Agent header"), response)
+					return
+				}
+
 				// Modern ACME only sends a Replay-Nonce in responses to GET/HEAD
 				// requests to the dedicated newNonce endpoint, or in replies to POST
 				// requests that consumed a nonce.
