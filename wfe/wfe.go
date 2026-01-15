@@ -1683,7 +1683,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(newOrder *core.Order) *acme
 	}
 
 	if originalOrder.IsReplaced {
-		return acme.Conflict(fmt.Sprintf("cannot indicate an order replaces certificate with serial %s, which already has a replacement order", certID.SerialHex()))
+		return acme.AlreadyReplaced(fmt.Sprintf("certificate with serial %s already has a replacement order", certID.SerialHex()))
 	}
 
 	if originalOrder.AccountID != newOrder.AccountID {
