@@ -88,14 +88,6 @@ func BadCSRProblem(detail string) *ProblemDetails {
 	}
 }
 
-func Conflict(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       malformedErr,
-		Detail:     detail,
-		HTTPStatus: http.StatusConflict,
-	}
-}
-
 func UserActionRequiredProblem(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       userActionReqErr,
