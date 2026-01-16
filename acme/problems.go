@@ -25,6 +25,7 @@ const (
 	badPublicKeyErr          = errNS + "badPublicKey"
 	badSignatureAlgorithmErr = errNS + "badSignatureAlgorithm"
 	rejectedIdentifierErr    = errNS + "rejectedIdentifier"
+	alreadyReplacedErr       = errNS + "alreadyReplaced"
 )
 
 type ProblemDetails struct {
@@ -84,14 +85,6 @@ func BadCSRProblem(detail string) *ProblemDetails {
 		Type:       badCSRErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
-	}
-}
-
-func Conflict(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       malformedErr,
-		Detail:     detail,
-		HTTPStatus: http.StatusConflict,
 	}
 }
 
@@ -219,5 +212,13 @@ func RejectedIdentifierProblem(ident Identifier, detail string) *ProblemDetails 
 				Detail:     fmt.Sprintf("%s is a forbidden domain", ident.Value),
 			},
 		},
+	}
+}
+
+func AlreadyReplaced(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       alreadyReplacedErr,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
 	}
 }
