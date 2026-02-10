@@ -169,7 +169,7 @@ func (c challHTTPServer) ListenAndServe() error {
 		return c.ListenAndServeTLS("", "")
 	}
 	// Otherwise use HTTP
-	return c.ListenAndServe()
+	return c.Server.ListenAndServe()
 }
 
 func (c challHTTPServer) Shutdown() error {
