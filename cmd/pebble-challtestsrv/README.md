@@ -17,11 +17,11 @@ redirect behaviour for HTTP-01 challenge validation.
 ```
 Usage of pebble-challtestsrv:
   -defaultIPv4 string
-    Default IPv4 address for mock DNS responses to A queries (default "127.0.0.1")
+    Default IPv4 address for DNS responses to A queries (default "127.0.0.1")
   -defaultIPv6 string
-    Default IPv6 address for mock DNS responses to AAAA queries (default "::1")
-  -dns01 string
-    Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable. (default ":8053")
+    Default IPv6 address for DNS responses to AAAA queries (default "::1")
+  -dnsserver string
+    Comma separated bind addresses/ports for serving DNS queries. Set empty to disable. (default ":8053")
   -http01 string
     Comma separated bind addresses/ports for HTTP-01 challenges. Set empty to disable. (default ":5002")
   -https01 string
@@ -34,16 +34,16 @@ Usage of pebble-challtestsrv:
 
 To disable a challenge type, set the bind address to `""`. E.g.:
 
-* To run HTTP-01 only: `pebble-challtestsrv -https01 "" -dns01 "" -tlsalpn01 ""`
-* To run HTTPS-01 only: `pebble-challtestsrv -http01 "" -dns01 "" -tlsalpn01 ""`
+* To run HTTP-01 only: `pebble-challtestsrv -https01 "" -dnsserver "" -tlsalpn01 ""`
+* To run HTTPS-01 only: `pebble-challtestsrv -http01 "" -dnsserver "" -tlsalpn01 ""`
 * To run DNS-01 only: `pebble-challtestsrv -http01 "" -https01 "" -tlsalpn01 ""`
-* To run TLS-ALPN-01 only: `pebble-challtestsrv -http01 "" -https01 "" -dns01 ""`
+* To run TLS-ALPN-01 only: `pebble-challtestsrv -http01 "" -https01 "" -dnsserver ""`
 
 ### Management Interface
 
 _Note: These examples assume the default `-management` interface address, `:8055`._
 
-#### Mock DNS
+#### DNS
 
 ##### Default A/AAAA Responses
 
@@ -51,26 +51,26 @@ You can set the default IPv4 and IPv6 addresses used for `A` and `AAAA` query
 responses using the `-defaultIPv4` and `-defaultIPv6` command line flags.
 
 To change the default IPv4 address used for responses to `A` queries that do not
-match explicit mocks at runtime run:
+match explicit records at runtime, run:
 
     curl -d '{"ip":"10.10.10.2"}' http://localhost:8055/set-default-ipv4
 
 Similarly to change the default IPv6 address used for responses to `AAAA` queries
-that do not match explicit mocks run:
+that do not match explicit records, run:
 
     curl -d '{"ip":"::1"}' http://localhost:8055/set-default-ipv6
 
 To clear the default IPv4 or IPv6 address POST the same endpoints with an empty
 (`""`) IP.
 
-##### Mocked A/AAAA Responses
+##### A/AAAA Responses
 
 To add IPv4 addresses to be returned for `A` queries for
 `test-host.letsencrypt.org` run:
 
     curl -d '{"host":"test-host.letsencrypt.org", "addresses":["12.12.12.12", "13.13.13.13"]}' http://localhost:8055/add-a
 
-The mocked `A` responses can be removed by running:
+The `A` responses can be removed by running:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-a
 
@@ -79,38 +79,38 @@ To add IPv6 addresses to be returned for `AAAA` queries for
 
     curl -d '{"host":"test-host.letsencrypt.org", "addresses":["2001:4860:4860::8888", "2001:4860:4860::8844"]}' http://localhost:8055/add-aaaa
 
-The mocked `AAAA` responses can be removed by running:
+The `AAAA` responses can be removed by running:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-aaaa
 
-##### Mocked CAA Responses
+##### CAA Responses
 
-To add a mocked CAA policy for `test-host.letsencrypt.org` that allows issuance
+To add a CAA policy for `test-host.letsencrypt.org` that allows issuance
 by `letsencrypt.org` run:
 
     curl -d '{"host":"test-host.letsencrypt.org", "policies":[{"tag":"issue","value":"letsencrypt.org"}]}' http://localhost:8055/add-caa
 
-To remove the mocked CAA policy for `test-host.letsencrypt.org` run:
+To remove the CAA policy for `test-host.letsencrypt.org` run:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/clear-caa
 
-##### Mocked CNAME Responses
+##### CNAME Responses
 
-To add a mocked CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
+To add a CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
 
     curl -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "target": "challenges.letsencrypt.org"}' http://localhost:8055/set-cname
 
-To remove a mocked CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
+To remove a CNAME record for `_acme-challenge.test-host.letsencrypt.org` run:
 
     curl -d '{"host":"_acme-challenge.test-host.letsencrypt.org", "target": "challenges.letsencrypt.org"}' http://localhost:8055/clear-cname
 
-##### Mocked SERVFAIL Responses
+##### SERVFAIL Responses
 
 To configure the DNS server to return SERVFAIL for all queries for `test-host.letsencrypt.org` run:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/set-servfail
 
-Subsequently any query types (A, AAAA, TXT) for the name will return a SERVFAIL response, overriding any A/AAAA/TXT/CNAME mocks that may also be configured.
+Subsequently any query types (A, AAAA, TXT) for the name will return a SERVFAIL response, overriding any configured A/AAAA/TXT/CNAME records.
 
 To remove the SERVFAIL configuration for `test-host.letsencrypt.org` run:
 
@@ -153,7 +153,7 @@ the value `"foo"` run:
 
     curl -d '{"host":"_acme-challenge.test-host.letsencrypt.org.", "value": "foo"}' http://localhost:8055/set-txt
 
-To remove the mocked DNS-01 challenge response run:
+To remove the DNS-01 challenge response run:
 
     curl -d '{"host":"_acme-challenge.test-host.letsencrypt.org."}' http://localhost:8055/clear-txt
 
@@ -166,7 +166,7 @@ To add a TLS-ALPN-01 challenge response certificate for the host
 
     curl -d '{"host":"test-host.letsencrypt.org", "content":"foo"}' http://localhost:8055/add-tlsalpn01
 
-To remove the mocked TLS-ALPN-01 challenge response run:
+To remove the TLS-ALPN-01 challenge response run:
 
     curl -d '{"host":"test-host.letsencrypt.org"}' http://localhost:8055/del-tlsalpn01
 

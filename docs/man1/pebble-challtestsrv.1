@@ -5,7 +5,7 @@ pebble\-challtestsrv \- ACME challenge mock server
 .B pebble
 [\fB\-defaultIPv4\fR \fIstring\fR]
 [\fB\-defaultIPv6\fR \fIstring\fR]
-[\fB\-dns01\fR \fIstring\fR]
+[\fB\-dnssever\fR \fIstring\fR]
 [\fB\-http01\fR \fIstring\fR]
 [\fB\-https01\fR \fIstring\fR]
 [\fB\-management\fR \fIstring\fR]
@@ -14,7 +14,7 @@ pebble\-challtestsrv \- ACME challenge mock server
 .B pebble-challtestsrv
 is a utility that responds to HTTP-01,
 DNS-01, and TLS-ALPN-01 ACME challenges.  It can also be used as a
-mock DNS server letting developers mock `A`, `AAAA`, `CNAME`, and
+DNS server letting developers mock `A`, `AAAA`, `CNAME`, and
 `CAA` DNS data for specific hostnames.
 .PP
 Important note: The `pebble-challtestsrv` utility is for TEST USAGE
@@ -23,14 +23,14 @@ whatsoever.  Only use this library in a controlled test environment.
 .SH OPTIONS
 .TP
 .BR \-defaultIPv4\ \fIstring\fR
-Default IPv4 address for mock DNS responses to A queries (default
+Default IPv4 address for DNS responses to A queries (default
 "127.0.0.1")
 .TP
 .BR \-defaultIPv6\ \fIstring\fR
-Default IPv6 address for mock DNS responses to AAAA queries (default
+Default IPv6 address for DNS responses to AAAA queries (default
 "::1")
 .TP
-.BR \-dns01\ \fIstring\fR
+.BR \-dnsserver\ \fIstring\fR
 Comma separated bind addresses/ports for DNS-01 challenges and fake
 DNS data. Set empty to disable. (default ":8053")
 .TP

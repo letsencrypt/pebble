@@ -107,7 +107,7 @@ Afterwards you can access the ACME API from your host machine at
 at `https://localhost:15000` and the `pebble-challtestsrv`'s management
 interface at `http://localhost:8055`.
 
-To get started you may want to update the `pebble-challtestsrv` mock DNS data
+To get started you may want to update the `pebble-challtestsrv` DNS data
 with a new default IPv4 address to use to respond to `A` queries from `pebble`:
 
 ```
@@ -199,8 +199,8 @@ pebble -dnsserver :5053
 ```
 
 You may find it useful to set `pebble`'s `-dnsserver` to the address you used as
-the `-dns01` argument when starting up a `pebble-challtestsrv` instance. This
-will let you easily mock DNS data for Pebble. See the included
+the `-dnsserver` argument when starting up a `pebble-challtestsrv` instance. This
+will let you easily serve DNS data for Pebble. See the included
 `docker-compose.yml` and the [pebble-challtestsrv
 README](https://github.com/letsencrypt/pebble/blob/master/cmd/pebble-challtestsrv/README.md)
 for more information.

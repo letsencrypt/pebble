@@ -64,16 +64,16 @@ func main() {
 		"Comma separated bind addresses/ports for DoH queries. Set empty to disable.")
 	dohCert := flag.String("doh-cert", "", "Path to certificate file for DoH server.")
 	dohCertKey := flag.String("doh-cert-key", "", "Path to certificate key file for DoH server.")
-	dnsOneBind := flag.String("dns01", ":8053",
-		"Comma separated bind addresses/ports for DNS-01 challenges and fake DNS data. Set empty to disable.")
+	dnsBind := flag.String("dnsserver", ":8053",
+		"Comma separated bind addresses/ports for serving DNS queries. Set empty to disable.")
 	tlsAlpnOneBind := flag.String("tlsalpn01", ":5001",
 		"Comma separated bind addresses/ports for TLS-ALPN-01 and HTTPS HTTP-01 challenges. Set empty to disable.")
 	managementBind := flag.String("management", ":8055",
 		"Bind address/port for management HTTP interface")
 	defaultIPv4 := flag.String("defaultIPv4", "127.0.0.1",
-		"Default IPv4 address for mock DNS responses to A queries")
+		"Default IPv4 address for DNS responses to A queries")
 	defaultIPv6 := flag.String("defaultIPv6", "::1",
-		"Default IPv6 address for mock DNS responses to AAAA queries")
+		"Default IPv6 address for DNS responses to AAAA queries")
 
 	flag.Parse()
 
@@ -86,7 +86,7 @@ func main() {
 	httpOneAddresses := filterEmpty(strings.Split(*httpOneBind, ","))
 	httpsOneAddresses := filterEmpty(strings.Split(*httpsOneBind, ","))
 	dohAddresses := filterEmpty(strings.Split(*dohBind, ","))
-	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
+	dnsAddresses := filterEmpty(strings.Split(*dnsBind, ","))
 	tlsAlpnOneAddresses := filterEmpty(strings.Split(*tlsAlpnOneBind, ","))
 
 	logger := log.New(os.Stdout, "pebble-challtestsrv - ", log.Ldate|log.Ltime)
@@ -98,7 +98,7 @@ func main() {
 		DOHAddrs:        dohAddresses,
 		DOHCert:         *dohCert,
 		DOHCertKey:      *dohCertKey,
-		DNSOneAddrs:     dnsOneAddresses,
+		DNSAddrs:        dnsAddresses,
 		TLSALPNOneAddrs: tlsAlpnOneAddresses,
 		Log:             logger,
 	})
@@ -120,14 +120,14 @@ func main() {
 		http.HandleFunc("/add-redirect", oobSrv.addHTTPRedirect)
 		http.HandleFunc("/del-redirect", oobSrv.delHTTPRedirect)
 	}
-	if *dnsOneBind != "" {
+	if *dnsBind != "" {
 		http.HandleFunc("/set-default-ipv4", oobSrv.setDefaultDNSIPv4)
 		http.HandleFunc("/set-default-ipv6", oobSrv.setDefaultDNSIPv6)
 		// TODO(@cpu): It might make sense to revisit this API in the future to have
 		// one endpoint that accepts the mock type required (A, AAAA, CNAME, etc)
 		// instead of having separate endpoints per type.
-		http.HandleFunc("/set-txt", oobSrv.addDNS01)
-		http.HandleFunc("/clear-txt", oobSrv.delDNS01)
+		http.HandleFunc("/set-txt", oobSrv.addDNSTXTRecord)
+		http.HandleFunc("/clear-txt", oobSrv.delDNSTXTRecord)
 		http.HandleFunc("/add-a", oobSrv.addDNSARecord)
 		http.HandleFunc("/clear-a", oobSrv.delDNSARecord)
 		http.HandleFunc("/add-aaaa", oobSrv.addDNSAAAARecord)
