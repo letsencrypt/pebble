@@ -19,6 +19,7 @@ const (
 	ChallengeTLSALPN01    = "tls-alpn-01"
 	ChallengeDNS01        = "dns-01"
 	ChallengeDNSAccount01 = "dns-account-01"
+	ChallengeDNSPersist01 = "dns-persist-01"
 
 	HTTP01BaseURL = ".well-known/acme-challenge/"
 
@@ -81,10 +82,11 @@ type Authorization struct {
 
 // A Challenge is used to validate an Authorization
 type Challenge struct {
-	Type      string          `json:"type"`
-	URL       string          `json:"url"`
-	Token     string          `json:"token"`
-	Status    string          `json:"status"`
-	Validated string          `json:"validated,omitempty"`
-	Error     *ProblemDetails `json:"error,omitempty"`
+	Type              string          `json:"type"`
+	URL               string          `json:"url"`
+	Token             string          `json:"token,omitempty"`
+	Status            string          `json:"status"`
+	IssuerDomainNames []string        `json:"issuer-domain-names,omitempty"`
+	Validated         string          `json:"validated,omitempty"`
+	Error             *ProblemDetails `json:"error,omitempty"`
 }

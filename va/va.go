@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -323,6 +324,8 @@ func (va VAImpl) performValidation(task *vaTask, results chan<- *core.Validation
 		results <- va.validateDNS01(task)
 	case acme.ChallengeDNSAccount01:
 		results <- va.validateDNSAccount01(task)
+	case acme.ChallengeDNSPersist01:
+		results <- va.validateDNSPersist01(task)
 	default:
 		va.log.Printf("Error: performValidation(): Invalid challenge type: %q", task.Challenge.Type)
 	}
@@ -554,6 +557,186 @@ func (va VAImpl) validateHTTP01(task *vaTask) *core.ValidationRecord {
 	return result
 }
 
+type dnsPersistIssueValue struct {
+	issuerDomain string
+	accountURI   string
+	policy       string
+	persistUntil *time.Time
+}
+
+// trimWSP trims RFC 8659 whitespace characters (space and tab) from the
+// beginning and end of a string.
+func trimWSP(s string) string {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t'
+	})
+}
+
+// splitIssuerDomainName splits an RFC 8659 issue-value into issuer-domain-name
+// and raw parameter segments. It returns zero values when issuer-domain-name is
+// missing.
+func splitIssuerDomainName(raw string) (string, []string) {
+	// Split into issuer-domain-name and parameters.
+	parts := strings.Split(raw, ";")
+	if len(parts) == 0 {
+		return "", nil
+	}
+	// Parse issuer-domain-name.
+	issuerDomainName := trimWSP(parts[0])
+	if issuerDomainName == "" {
+		return "", nil
+	}
+	return issuerDomainName, parts[1:]
+}
+
+// parseDNSPersistIssueValues parses RFC 8659 issue-value parameters for a
+// dns-persist-01 TXT record and returns the extracted fields. It returns an
+// error if any parameter is malformed.
+func parseDNSPersistIssueValues(issuerDomainName string, paramsRaw []string) (*dnsPersistIssueValue, error) {
+	result := &dnsPersistIssueValue{issuerDomain: issuerDomainName}
+
+	// Parse parameters (with optional surrounding WSP).
+	seenTags := make(map[string]bool)
+	for _, param := range paramsRaw {
+		param = trimWSP(param)
+		if param == "" {
+			// Allow trailing semicolons or empty segments.
+			continue
+		}
+		// Capture each tag=value pair.
+		tagValue := strings.SplitN(param, "=", 2)
+		if len(tagValue) != 2 {
+			return nil, fmt.Errorf("malformed parameter %q", param)
+		}
+		tag := trimWSP(tagValue[0])
+		value := trimWSP(tagValue[1])
+		if tag == "" {
+			return nil, fmt.Errorf("malformed parameter %q", param)
+		}
+		canonicalTag := strings.ToLower(tag)
+		if seenTags[canonicalTag] {
+			return nil, fmt.Errorf("duplicate parameter %q", tag)
+		}
+		seenTags[canonicalTag] = true
+		// Ensure values contain no whitespace/control/non-ASCII characters.
+		for _, r := range value {
+			if (r >= 0x21 && r <= 0x3A) || (r >= 0x3C && r <= 0x7E) {
+				continue
+			}
+			return nil, fmt.Errorf("malformed value %q for tag %q", value, tag)
+		}
+		// Finally, capture expected tag values.
+		//
+		// Note: according to RFC 8659 matching of tags is case insensitive.
+		switch canonicalTag {
+		case "accounturi":
+			if value == "" {
+				return nil, fmt.Errorf("empty value provided for mandatory accounturi")
+			}
+			result.accountURI = value
+		case "policy":
+			// Per the dns-persist-01 specification, if the policy tag is
+			// present parameter's tag and defined values MUST be treated as
+			// case-insensitive.
+			if value != "" && strings.ToLower(value) != "wildcard" {
+				// If the policy parameter's value is anything other than
+				// "wildcard", the CA MUST proceed as if the policy parameter
+				// were not present.
+				value = ""
+			}
+			result.policy = value
+		case "persistuntil":
+			persistUntilVal, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("malformed persistUntil timestamp %q", value)
+			}
+			persistUntil := time.Unix(persistUntilVal, 0).UTC()
+			result.persistUntil = &persistUntil
+		}
+	}
+	return result, nil
+}
+
+func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
+	challengeSubdomain := fmt.Sprintf("%s.%s", "_validation-persist", task.Identifier.Value)
+	result := &core.ValidationRecord{
+		URL:         challengeSubdomain,
+		ValidatedAt: time.Now(),
+	}
+
+	txtRecords, err := va.getTXTEntry(challengeSubdomain)
+	if err != nil {
+		result.Error = acme.UnauthorizedProblem(
+			fmt.Sprintf("Error retrieving TXT records for DNS-PERSIST-01 challenge (%q)", err))
+		return result
+	}
+
+	if len(txtRecords) == 0 {
+		result.Error = acme.UnauthorizedProblem("No TXT records found for DNS-PERSIST-01 challenge")
+		return result
+	}
+
+	task.Challenge.RLock()
+	issuerNames := append([]string(nil), task.Challenge.IssuerDomainNames...)
+	task.Challenge.RUnlock()
+
+	var syntaxErrs []string
+	var authorizationErrs []string
+	for _, record := range txtRecords {
+		issuerDomainName, paramsRaw := splitIssuerDomainName(record)
+		if !slices.Contains(issuerNames, issuerDomainName) {
+			continue
+		}
+		issueValue, err := parseDNSPersistIssueValues(issuerDomainName, paramsRaw)
+		if err != nil {
+			// We know if this record was intended for us but it is malformed,
+			// we can continue checking other records but we should report the
+			// syntax error if no other record authorizes the challenge.
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: %q", issuerDomainName, err))
+			continue
+		}
+		if issueValue.accountURI == "" {
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: missing mandatory accountURI parameter", issuerDomainName))
+			continue
+		}
+		if issueValue.accountURI != task.AccountURL {
+			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
+				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: accounturi mismatch: expected %q, got %q",
+				issuerDomainName, task.AccountURL, issueValue.accountURI))
+			continue
+		}
+		// Per the dns-persist-01 specification, if the policy tag is present
+		// parameter's defined values MUST be treated as case-insensitive.
+		if task.Wildcard && strings.ToLower(issueValue.policy) != "wildcard" {
+			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
+				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: policy mismatch: expected \"wildcard\", got %q",
+				issuerDomainName, issueValue.policy))
+			continue
+		}
+		if issueValue.persistUntil != nil && result.ValidatedAt.After(*issueValue.persistUntil) {
+			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
+				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: persistUntil expired: validation time %s is after persistUntil %s",
+				issuerDomainName, result.ValidatedAt.Format(time.RFC3339), issueValue.persistUntil.Format(time.RFC3339)))
+			continue
+		}
+		return result
+	}
+
+	if len(syntaxErrs) > 0 {
+		result.Error = acme.MalformedProblem(strings.Join(syntaxErrs, "; "))
+		return result
+	}
+	if len(authorizationErrs) > 0 {
+		result.Error = acme.UnauthorizedProblem(strings.Join(authorizationErrs, "; "))
+		return result
+	}
+
+	result.Error = acme.UnauthorizedProblem("No valid TXT record found for DNS-PERSIST-01 challenge")
+	return result
+}
+
 // NOTE(@cpu): fetchHTTP only fetches the ACME HTTP-01 challenge path for
 // a given challenge & identifier domain. It is not a challenge agnostic general
 // purpose HTTP function
@@ -662,8 +845,12 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	}
 
 	for _, record := range in.Answer {
-		if t, ok := record.(*dns.TXT); ok {
-			txts = append(txts, t.Txt...)
+		t, ok := record.(*dns.TXT)
+		if ok {
+			// One TXT RR may contain multiple RFC 1035 <character-string>
+			// elements (each up to 255 data octets). Concatenate them to
+			// recover the full value.
+			txts = append(txts, strings.Join(t.Txt, ""))
 		}
 	}
 
