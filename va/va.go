@@ -667,7 +667,7 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 	txtRecords, err := va.getTXTEntry(challengeSubdomain)
 	if err != nil {
 		result.Error = acme.UnauthorizedProblem(
-			fmt.Sprintf("Error retrieving TXT records for DNS-PERSIST-01 challenge (%q)", err))
+			fmt.Sprintf("Error retrieving TXT records for DNS-PERSIST-01 challenge: %s", err))
 		return result
 	}
 
@@ -693,17 +693,17 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 			// we can continue checking other records but we should report the
 			// syntax error if no other record authorizes the challenge.
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: %q", issuerDomainName, err))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", issuerDomainName, err))
 			continue
 		}
 		if issueValue.accountURI == "" {
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: missing mandatory accountURI parameter", issuerDomainName))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: missing mandatory accountURI parameter", issuerDomainName))
 			continue
 		}
 		if issueValue.accountURI != task.AccountURL {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
-				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: accounturi mismatch: expected %q, got %q",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounturi mismatch: expected %q, got %q",
 				issuerDomainName, task.AccountURL, issueValue.accountURI))
 			continue
 		}
@@ -711,13 +711,13 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 		// parameter's defined values MUST be treated as case-insensitive.
 		if task.Wildcard && strings.ToLower(issueValue.policy) != "wildcard" {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
-				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: policy mismatch: expected \"wildcard\", got %q",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: policy mismatch: expected \"wildcard\", got %q",
 				issuerDomainName, issueValue.policy))
 			continue
 		}
 		if issueValue.persistUntil != nil && result.ValidatedAt.After(*issueValue.persistUntil) {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
-				"error parsing TXT record with issuer-domain-name %q for DNS-PERSIST-01 challenge: persistUntil expired: validation time %s is after persistUntil %s",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q, validation time %s is after persistUntil %s",
 				issuerDomainName, result.ValidatedAt.Format(time.RFC3339), issueValue.persistUntil.Format(time.RFC3339)))
 			continue
 		}

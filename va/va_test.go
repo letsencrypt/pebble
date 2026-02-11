@@ -317,7 +317,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=1"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
-			expectDetailSubstr: `persistUntil expired: validation time`,
+			expectDetailSubstr: `validation time`,
 		},
 	}
 
