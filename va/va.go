@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -600,18 +601,17 @@ func parseDNSPersistIssueValues(issuerDomainName string, paramsRaw []string) (*d
 	for _, param := range paramsRaw {
 		param = trimWSP(param)
 		if param == "" {
-			// Allow trailing semicolons or empty segments.
-			continue
+			return nil, errors.New("empty parameter or trailing semicolon provided")
 		}
 		// Capture each tag=value pair.
 		tagValue := strings.SplitN(param, "=", 2)
 		if len(tagValue) != 2 {
-			return nil, fmt.Errorf("malformed parameter %q", param)
+			return nil, fmt.Errorf("malformed parameter %q should be tag=value pair", param)
 		}
 		tag := trimWSP(tagValue[0])
 		value := trimWSP(tagValue[1])
 		if tag == "" {
-			return nil, fmt.Errorf("malformed parameter %q", param)
+			return nil, fmt.Errorf("malformed parameter %q, empty tag", param)
 		}
 		canonicalTag := strings.ToLower(tag)
 		if seenTags[canonicalTag] {

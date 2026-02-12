@@ -1,14 +1,12 @@
 package va
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/miekg/dns"
 
@@ -58,164 +56,6 @@ func TestAuthzRace(_ *testing.T) {
 	wg.Wait()
 }
 
-func TestParseDNSPersistIssueValueSuccess(t *testing.T) {
-	t.Parallel()
-	expectedPersistUntil := time.Unix(1721952000, 0).UTC()
-	testCases := []struct {
-		name               string
-		input              string
-		expectIssuerDomain string
-		expectAccountURI   string
-		expectPolicy       string
-		expectPersistUntil *time.Time
-	}{
-		{
-			name:               "all known fields with whitespace",
-			input:              "\tauthority.example\t;\taccounturi\t=\thttps://ca.example/acct/123\t;\tpolicy\t=\twildcard\t;\tpersistUntil\t=\t1721952000\t;\tfoo\t=\tbar\t",
-			expectIssuerDomain: "authority.example",
-			expectAccountURI:   "https://ca.example/acct/123",
-			expectPolicy:       "wildcard",
-			expectPersistUntil: &expectedPersistUntil,
-		},
-		{
-			name:               "unknown tag with empty value",
-			input:              "authority.example;accounturi=https://ca.example/acct/123;foo=",
-			expectIssuerDomain: "authority.example",
-			expectAccountURI:   "https://ca.example/acct/123",
-		},
-		{
-			name:               "trailing semicolon is tolerated",
-			input:              "authority.example;accounturi=https://ca.example/acct/123;",
-			expectIssuerDomain: "authority.example",
-			expectAccountURI:   "https://ca.example/acct/123",
-		},
-		{
-			name:               "unknown tags are ignored",
-			input:              "authority.example;accounturi=https://ca.example/acct/123;bad tag=value;\nweird=\\x01337",
-			expectIssuerDomain: "authority.example",
-			expectAccountURI:   "https://ca.example/acct/123",
-		},
-		{
-			name:               "known tags and values are case-insensitive",
-			input:              "authority.example;ACCOUNTURI=https://ca.example/acct/123;PoLiCy=WiLdCaRd",
-			expectIssuerDomain: "authority.example",
-			expectAccountURI:   "https://ca.example/acct/123",
-			expectPolicy:       "WiLdCaRd",
-		},
-	}
-
-	parseDNSPersistIssueValue := func(raw string) (*dnsPersistIssueValue, error) {
-		issuerDomainName, paramsRaw := splitIssuerDomainName(raw)
-		if issuerDomainName == "" {
-			return nil, fmt.Errorf("missing issuer-domain-name")
-		}
-		return parseDNSPersistIssueValues(issuerDomainName, paramsRaw)
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			parsed, err := parseDNSPersistIssueValue(tc.input)
-			if err != nil {
-				t.Fatalf("parse failed: %v", err)
-			}
-			if parsed.issuerDomain != tc.expectIssuerDomain {
-				t.Fatalf("unexpected issuer domain: got %q, want %q", parsed.issuerDomain, tc.expectIssuerDomain)
-			}
-			if parsed.accountURI != tc.expectAccountURI {
-				t.Fatalf("unexpected account URI: got %q, want %q", parsed.accountURI, tc.expectAccountURI)
-			}
-			if parsed.policy != tc.expectPolicy {
-				t.Fatalf("unexpected policy: got %q, want %q", parsed.policy, tc.expectPolicy)
-			}
-			if tc.expectPersistUntil == nil {
-				if parsed.persistUntil != nil {
-					t.Fatalf("unexpected persistUntil: got %s, want nil", parsed.persistUntil)
-				}
-				return
-			}
-			if parsed.persistUntil == nil {
-				t.Fatalf("expected persistUntil to be present")
-			}
-			if !parsed.persistUntil.Equal(*tc.expectPersistUntil) {
-				t.Fatalf("unexpected persistUntil: got %s, want %s", parsed.persistUntil, tc.expectPersistUntil)
-			}
-		})
-	}
-}
-
-func TestParseDNSPersistIssueValueErrors(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name              string
-		input             string
-		expectErrContains string
-	}{
-		{
-			name:              "duplicate known parameter",
-			input:             "authority.example;accounturi=https://ca.example/acct/123;accounturi=https://ca.example/acct/456",
-			expectErrContains: `duplicate parameter "accounturi"`,
-		},
-		{
-			name:              "parameter missing equals",
-			input:             "authority.example;accounturi=https://ca.example/acct/123;invalidparam",
-			expectErrContains: `malformed parameter "invalidparam"`,
-		},
-		{
-			name:              "persistUntil not a unix timestamp",
-			input:             "authority.example;accounturi=https://ca.example/acct/123;persistUntil=not-a-unix-timestamp",
-			expectErrContains: `malformed persistUntil timestamp "not-a-unix-timestamp"`,
-		},
-		{
-			name:              "empty mandatory accounturi",
-			input:             "authority.example;accounturi=",
-			expectErrContains: `empty value provided for mandatory accounturi`,
-		},
-		{
-			name:              "missing issuer-domain-name",
-			input:             ";accounturi=https://ca.example/acct/123",
-			expectErrContains: `missing issuer-domain-name`,
-		},
-		{
-			name:              "policy contains disallowed whitespace",
-			input:             "authority.example;accounturi=https://ca.example/acct/123;policy=wild card",
-			expectErrContains: `malformed value "wild card" for tag "policy"`,
-		},
-		{
-			name:              "duplicate unknown parameter",
-			input:             "authority.example;accounturi=https://ca.example/acct/123;foo=bar;foo=baz",
-			expectErrContains: `duplicate parameter "foo"`,
-		},
-		{
-			name:              "duplicate parameter is case-insensitive",
-			input:             "authority.example;ACCOUNTURI=https://ca.example/acct/123;accounturi=https://ca.example/acct/456",
-			expectErrContains: `duplicate parameter "accounturi"`,
-		},
-	}
-
-	parseDNSPersistIssueValue := func(raw string) (*dnsPersistIssueValue, error) {
-		issuerDomainName, paramsRaw := splitIssuerDomainName(raw)
-		if issuerDomainName == "" {
-			return nil, fmt.Errorf("missing issuer-domain-name")
-		}
-		return parseDNSPersistIssueValues(issuerDomainName, paramsRaw)
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := parseDNSPersistIssueValue(tc.input)
-			if err == nil {
-				t.Fatalf("expected error for %q", tc.input)
-			}
-			if !strings.Contains(err.Error(), tc.expectErrContains) {
-				t.Errorf("unexpected error for %q: got %q, want substring %q", tc.input, err.Error(), tc.expectErrContains)
-			}
-		})
-	}
-}
-
 func TestValidateDNSPersist01(t *testing.T) {
 	t.Parallel()
 
@@ -234,6 +74,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		expectHTTPStatus   int
 		expectDetailSubstr string
 	}{
+		// Success test cases:
 		{
 			name:             "matching malformed and matching valid record succeeds",
 			challIssuerNames: []string{"authority.example"},
@@ -251,12 +92,54 @@ func TestValidateDNSPersist01(t *testing.T) {
 			},
 		},
 		{
+			name:             "unknown tag with empty value succeeds",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/acct/123;foo=",
+			},
+		},
+		{
+			name:             "unknown tags are ignored",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/acct/123;bad tag=value;\nweird=\\x01337",
+			},
+		},
+		{
+			name:             "all known fields with heavy whitespace succeeds",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"   authority.example   ;   accounturi   =   https://ca.example/acct/123   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
+			},
+		},
+		{
+			name:             "wildcard accepts case-insensitive policy value",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;policy=wIlDcArD"},
+			challWildcard:    true,
+		},
+		{
+			name:             "wildcard accepts case-insensitive policy tag",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;pOlIcY=wildcard"},
+			challWildcard:    true,
+		},
+		// Failure test cases:
+		{
 			name:               "only matching malformed record returns malformed",
 			challIssuerNames:   []string{"authority.example"},
 			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;accounturi=https://ca.example/acct/456"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `duplicate parameter`,
+		},
+		{
+			name:               "no txt records found returns unauthorized",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: `No TXT records found for DNS-PERSIST-01 challenge`,
 		},
 		{
 			name:               "only matching unauthorized record returns unauthorized",
@@ -275,16 +158,68 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailSubstr: `No valid TXT record found`,
 		},
 		{
-			name:             "wildcard accepts case-insensitive policy value",
-			challIssuerNames: []string{"authority.example"},
-			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;policy=wIlDcArD"},
-			challWildcard:    true,
+			name:               "missing equals is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;invalidparam"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `malformed parameter "invalidparam" should be tag=value pair`,
 		},
 		{
-			name:             "wildcard accepts case-insensitive policy tag",
-			challIssuerNames: []string{"authority.example"},
-			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;pOlIcY=wildcard"},
-			challWildcard:    true,
+			name:               "empty tag is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;=abc"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `malformed parameter "=abc", empty tag`,
+		},
+		{
+			name:               "empty accounturi value is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi="},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `empty value provided for mandatory accounturi`,
+		},
+		{
+			name:               "invalid value character is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;policy=wild card"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `malformed value "wild card" for tag "policy"`,
+		},
+		{
+			name:               "persistUntil non unix timestamp is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=not-a-unix-timestamp"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `malformed persistUntil timestamp "not-a-unix-timestamp"`,
+		},
+		{
+			name:               "duplicate unknown parameter is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;foo=bar;foo=baz"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `duplicate parameter "foo"`,
+		},
+		{
+			name:               "duplicate parameter is case-insensitive",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;ACCOUNTURI=https://ca.example/acct/123;accounturi=https://ca.example/acct/456"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `duplicate parameter "accounturi"`,
+		},
+		{
+			name:               "missing issuer-domain-name record is ignored",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{";accounturi=https://ca.example/acct/123"},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: `No valid TXT record found`,
 		},
 		{
 			name:               "wildcard policy mismatch returns unauthorized",
@@ -312,9 +247,25 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailSubstr: `malformed persistUntil timestamp`,
 		},
 		{
+			name:               "trailing semicolon in matching record returns malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `empty parameter or trailing semicolon provided`,
+		},
+		{
 			name:               "expired persistUntil returns unauthorized",
 			challIssuerNames:   []string{"authority.example"},
 			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=1"},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: `validation time`,
+		},
+		{
+			name:               "negative persistUntil returns unauthorized",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=-1"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `validation time`,
