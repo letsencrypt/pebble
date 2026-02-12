@@ -11,7 +11,6 @@ permissions:
   pull-requests: read
 env:
   CGO_ENABLED: 0
-  GO_VERSION: stable
   GOLANGCI_LINT_VERSION: v2.6.1
   SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
@@ -21,7 +20,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - name: Run GolangCI-Lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -32,7 +31,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - name: Check if go.mod is tidy
         run: |
           go mod tidy
