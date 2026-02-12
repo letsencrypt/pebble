@@ -158,6 +158,14 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailSubstr: `No valid TXT record found`,
 		},
 		{
+			name:               "non-matching issuer-domain-name record is ignored",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"other.example;accounturi=https://ca.example/acct/123"},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: `No valid TXT record found`,
+		},
+		{
 			name:               "missing equals is malformed",
 			challIssuerNames:   []string{"authority.example"},
 			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;invalidparam"},
