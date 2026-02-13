@@ -11,7 +11,7 @@ permissions:
   pull-requests: read
 env:
   CGO_ENABLED: 0
-  GOLANGCI_LINT_VERSION: v2.6.1
+  GOLANGCI_LINT_VERSION: v2.9.0
   SHELLCHECK_SCRIPTS: ./*.sh
 jobs:
   go-lint-checks:
