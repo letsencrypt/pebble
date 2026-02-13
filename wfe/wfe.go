@@ -170,6 +170,7 @@ type WebFrontEndImpl struct {
 	ordersPerPage     int
 	va                *va.VAImpl
 	ca                *ca.CAImpl
+	caaIdentities     []string
 	strict            bool
 	requireEAB        bool
 	retryAfterAuthz   int
@@ -183,6 +184,7 @@ func New(
 	db *db.MemoryStore,
 	va *va.VAImpl,
 	ca *ca.CAImpl,
+	caaIdentities []string,
 	strict, requireEAB bool, retryAfterAuthz int, retryAfterOrder int,
 ) WebFrontEndImpl {
 	// Read the % of good nonces that should be rejected as bad nonces from the
@@ -243,6 +245,7 @@ func New(
 		requireEAB:        requireEAB,
 		retryAfterAuthz:   retryAfterAuthz,
 		retryAfterOrder:   retryAfterOrder,
+		caaIdentities:     caaIdentities,
 	}
 }
 
@@ -614,6 +617,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		"termsOfService":          ToSURL,
 		"externalAccountRequired": wfe.requireEAB,
 		"profiles":                wfe.ca.GetProfiles(),
+		"caaIdentities":           wfe.caaIdentities,
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -1605,15 +1609,22 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 ) (*core.Challenge, error) {
 	// Create a new challenge of the requested type
 	id := newToken()
+	token := newToken()
+	if chalType == acme.ChallengeDNSPersist01 {
+		token = ""
+	}
 	chal := &core.Challenge{
 		ID: id,
 		Challenge: acme.Challenge{
 			Type:   chalType,
-			Token:  newToken(),
+			Token:  token,
 			URL:    wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", challengePath, id)),
 			Status: acme.StatusPending,
 		},
 		Authz: authz,
+	}
+	if chalType == acme.ChallengeDNSPersist01 {
+		chal.IssuerDomainNames = append([]string(nil), wfe.caaIdentities...)
 	}
 
 	// Add it to the in-memory database
@@ -1634,14 +1645,14 @@ func (wfe *WebFrontEndImpl) makeChallenges(authz *core.Authorization, request *h
 	if strings.HasPrefix(authz.Identifier.Value, "*.") {
 		// Authorizations for a wildcard identifier get DNS-based challenges to
 		// match Boulder/Let's Encrypt wildcard issuance policy
-		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
+		enabledChallenges = []string{acme.ChallengeDNS01, acme.ChallengeDNSAccount01, acme.ChallengeDNSPersist01}
 	} else {
 		// IP addresses get HTTP-01 and TLS-ALPN challenges
 		if authz.Identifier.Type == acme.IdentifierIP {
 			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01}
 		} else {
 			// Non-wildcard, non-IP identifier authorizations get all of the enabled challenge types
-			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSAccount01}
+			enabledChallenges = []string{acme.ChallengeHTTP01, acme.ChallengeTLSALPN01, acme.ChallengeDNS01, acme.ChallengeDNSAccount01, acme.ChallengeDNSPersist01}
 		}
 	}
 	for _, chalType := range enabledChallenges {

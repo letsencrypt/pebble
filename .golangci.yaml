@@ -34,7 +34,6 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
-    - perfsprint
     - predeclared
     - reassign
     - revive
