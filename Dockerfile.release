@@ -27,5 +27,8 @@ ENTRYPOINT [ "/app.exe" ]
 
 # Final stage: dynamically select between Linux and Windows stages based on TARGETOS argument
 FROM ${TARGETOS} AS final
+ARG EXPOSE_PORTS
+# Expose the specified ports
+EXPOSE ${EXPOSE_PORTS}
 # Add test configuration files
 COPY ./test/ /test/
