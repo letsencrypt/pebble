@@ -139,6 +139,7 @@ func New(
 	if customResolverAddr != "" {
 		va.log.Printf("Using custom DNS resolver for ACME challenges: %s", customResolverAddr)
 		va.dnsClient = new(dns.Client)
+		va.dnsClient.Net = "tcp"
 	} else {
 		va.log.Print("Using system DNS resolver for ACME challenges")
 	}
