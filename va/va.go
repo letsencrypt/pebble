@@ -677,48 +677,48 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 	}
 
 	task.Challenge.RLock()
-	issuerNames := append([]string(nil), task.Challenge.IssuerDomainNames...)
+	allowedIssuers := append([]string(nil), task.Challenge.IssuerDomainNames...)
 	task.Challenge.RUnlock()
 
 	var syntaxErrs []string
 	var authorizationErrs []string
 	for _, record := range txtRecords {
-		issuerDomainName, paramsRaw := splitIssuerDomainName(record)
-		if !slices.Contains(issuerNames, issuerDomainName) {
+		receivedIssuer, paramsRaw := splitIssuerDomainName(record)
+		if !slices.Contains(allowedIssuers, receivedIssuer) {
 			continue
 		}
-		issueValue, err := parseDNSPersistIssueValues(issuerDomainName, paramsRaw)
+		params, err := parseDNSPersistIssueValues(receivedIssuer, paramsRaw)
 		if err != nil {
 			// We know if this record was intended for us but it is malformed,
 			// we can continue checking other records but we should report the
 			// syntax error if no other record authorizes the challenge.
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", issuerDomainName, err))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err))
 			continue
 		}
-		if issueValue.accountURI == "" {
+		if params.accountURI == "" {
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: missing mandatory accountURI parameter", issuerDomainName))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: missing mandatory accountURI parameter", receivedIssuer))
 			continue
 		}
-		if issueValue.accountURI != task.AccountURL {
+		if params.accountURI != task.AccountURL {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounturi mismatch: expected %q, got %q",
-				issuerDomainName, task.AccountURL, issueValue.accountURI))
+				receivedIssuer, task.AccountURL, params.accountURI))
 			continue
 		}
 		// Per the dns-persist-01 specification, if the policy tag is present
 		// parameter's defined values MUST be treated as case-insensitive.
-		if task.Wildcard && strings.ToLower(issueValue.policy) != "wildcard" {
+		if task.Wildcard && strings.ToLower(params.policy) != "wildcard" {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: policy mismatch: expected \"wildcard\", got %q",
-				issuerDomainName, issueValue.policy))
+				receivedIssuer, params.policy))
 			continue
 		}
-		if issueValue.persistUntil != nil && result.ValidatedAt.After(*issueValue.persistUntil) {
+		if params.persistUntil != nil && result.ValidatedAt.After(*params.persistUntil) {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q, validation time %s is after persistUntil %s",
-				issuerDomainName, result.ValidatedAt.Format(time.RFC3339), issueValue.persistUntil.Format(time.RFC3339)))
+				receivedIssuer, result.ValidatedAt.Format(time.RFC3339), params.persistUntil.Format(time.RFC3339)))
 			continue
 		}
 		return result
