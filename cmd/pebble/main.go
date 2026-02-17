@@ -31,6 +31,7 @@ type config struct {
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
+		CAAIdentities                  []string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
 		KeyAlgorithm    string
@@ -138,7 +139,12 @@ func main() {
 		cmd.FailOnError(err, "Failed to add domain to block list")
 	}
 
-	wfeImpl := wfe.New(logger, db, va, ca, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
+	if len(c.Pebble.CAAIdentities) < 1 {
+		logger.Println("No CAA identities configured, using default [pebble.letsencrypt.org]")
+		c.Pebble.CAAIdentities = []string{"pebble.letsencrypt.org"}
+	}
+
+	wfeImpl := wfe.New(logger, db, va, ca, c.Pebble.CAAIdentities, *strictMode, c.Pebble.ExternalAccountBindingRequired, c.Pebble.RetryAfter.Authz, c.Pebble.RetryAfter.Order)
 	muxHandler := wfeImpl.Handler()
 
 	if c.Pebble.ManagementListenAddress != "" {
