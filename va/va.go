@@ -842,7 +842,7 @@ func (va VAImpl) getTXTEntry(name string) ([]string, error) {
 	}
 
 	if in.Rcode != dns.RcodeSuccess {
-		return nil, fmt.Errorf("DNS lookup for %q returned an unsuccessful response: %q", name, in.Rcode)
+		return nil, fmt.Errorf("DNS lookup for %q returned an unsuccessful response: %d", name, in.Rcode)
 	}
 
 	for _, record := range in.Answer {
