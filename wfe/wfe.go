@@ -1625,6 +1625,7 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 	}
 	if chalType == acme.ChallengeDNSPersist01 {
 		chal.IssuerDomainNames = append([]string(nil), wfe.caaIdentities...)
+		chal.AccountURI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, authz.Order.AccountID))
 	}
 
 	// Add it to the in-memory database
