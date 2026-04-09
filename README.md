@@ -233,6 +233,18 @@ run:
 
 `PEBBLE_VA_ALWAYS_VALID=1 pebble`
 
+### Just-in-Time Validation
+
+When creating a new order, Pebble MAY perform an immediate DNS lookup
+for _validation-persist TXT records at the Validation Domain Name
+corresponding to the requested domain identifier. If this check succeed,
+Auth for that domain will move to valid state directly without client
+request asking to do so.
+
+To make pebble to try dns-persist-01 challenge at order creation time:
+
+`PEBBLE_WFE_JITVALIDATION=1 pebble`
+
 ### Invalid Anti-Replay Nonce Errors
 
 The `urn:ietf:params:acme:error:badNonce` error type is meant to be retry-able.
