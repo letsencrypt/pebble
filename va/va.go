@@ -183,6 +183,27 @@ func (va VAImpl) ValidateChallenge(ident acme.Identifier, chal *core.Challenge, 
 	va.tasks <- task
 }
 
+func (va VAImpl) JITValidateChallenge(ident acme.Identifier, chal *core.Challenge, acct *core.Account, acctURL string, wildcard bool) {
+	task := &vaTask{
+		Identifier: ident,
+		Challenge:  chal,
+		Account:    acct,
+		AccountURL: acctURL,
+		Wildcard:   wildcard,
+	}
+	va.log.Printf("try Just-in-time validation for identifier %s", ident)
+	result := va.validateDNSPersist01(task)
+	va.log.Print(result)
+	if va.alwaysValid || result.Error == nil {
+		va.log.Printf("JIT validation succied for identifier %s", ident)
+		va.setAuthzValid(chal.Authz, chal)
+	} else {
+		chal.Lock()
+		chal.Validated = ""
+		chal.Unlock()
+	}
+}
+
 func (va VAImpl) processTasks() {
 	for task := range va.tasks {
 		go va.process(task)
