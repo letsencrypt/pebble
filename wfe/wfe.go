@@ -1625,6 +1625,10 @@ func (wfe *WebFrontEndImpl) makeChallenge(
 	}
 	if chalType == acme.ChallengeDNSPersist01 {
 		chal.IssuerDomainNames = append([]string(nil), wfe.caaIdentities...)
+		// Note: By using web.relativeEndpoint here, Pebble will reflect the Host header
+		// into the accountURI here. This would not be acceptable in a security-conscious
+		// context, but is okay for Pebble.
+		chal.AccountURI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s", acctPath, authz.Order.AccountID))
 	}
 
 	// Add it to the in-memory database
