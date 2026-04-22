@@ -110,6 +110,10 @@ const (
 	// valid authorization exists or not for each identifier in an order.
 	authzReuseEnvVar = "PEBBLE_AUTHZREUSE"
 
+	// jitEnvVar defines an environment variable name used to wether if wfe
+	// should ask VA if there is valid dns-persist-01 record at order creation time
+	jitEnvVar = "PEBBLE_WFE_JITVALIDATION"
+
 	// The default value when PEBBLE_WFE_AUTHZREUSE is not set, how often to try
 	// and reuse valid authorizations.
 	defaultAuthzReuse = 50
@@ -173,6 +177,7 @@ type WebFrontEndImpl struct {
 	caaIdentities     []string
 	strict            bool
 	requireEAB        bool
+	jitValidation     bool
 	retryAfterAuthz   int
 	retryAfterOrder   int
 }
@@ -218,6 +223,14 @@ func New(
 	log.Printf("Configured to attempt authz reuse for each identifier %d%% of the time",
 		authzReusePercent)
 
+	jitvalidation := false
+	jitvar := os.Getenv(jitEnvVar)
+	switch jitvar {
+	case "1", "true", "True", "TRUE":
+		jitvalidation = true
+		log.Printf("enabling JIT validation requests. WFE will request dns-persist-01 lookup at order creation time")
+	}
+
 	// Read the number of orders per page that should be returned.
 	ordersPerPageVal := os.Getenv(ordersPerPageEnvVar)
 	var ordersPerPage int
@@ -241,6 +254,7 @@ func New(
 		ordersPerPage:     ordersPerPage,
 		va:                va,
 		ca:                ca,
+		jitValidation:     jitvalidation,
 		strict:            strict,
 		requireEAB:        requireEAB,
 		retryAfterAuthz:   retryAfterAuthz,
@@ -1584,6 +1598,16 @@ func (wfe *WebFrontEndImpl) makeAuthorizations(order *core.Order, request *http.
 			if err != nil {
 				return err
 			}
+
+			wfe.log.Print("trying jit validation for ", ident)
+			// try dns-persist-01 JIT validation
+			for _, chal := range authz.Challenges {
+				if chal.Type == acme.ChallengeDNSPersist01 {
+					wfe.va.JITValidateChallenge(ident, chal, nil, order.AccountID, authz.Wildcard)
+					// dns-persist-01 validation doesn't care about account key so we can leave it emmpty
+				}
+			}
+
 			wfe.log.Printf("There are now %d authorizations in the db\n", count)
 		}
 
