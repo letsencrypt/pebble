@@ -6,7 +6,6 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
 permissions:
   contents: read
-  packages: write # Allow docker/build-push-action to publish to GitHub Container Registry
 env:
   DOCKER_PLATFORMS: linux/amd64, linux/arm64, windows/amd64
   DOCKER_IMAGE_BASENAME: ghcr.io/${{ github.repository_owner }}
@@ -32,11 +31,14 @@ jobs:
           - linux
           - windows
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           check-latest: true
           go-version-file: go.mod
+          cache: false
       - name: Build ${{ matrix.app }} for ${{ matrix.go-os }}/${{ matrix.go-arch }}
         run: |
           go build \
@@ -48,7 +50,7 @@ jobs:
       - name: Display ${{ matrix.app }} artifacts
         run: tree /tmp/dist
       - name: Store ${{ matrix.app }} artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.app }}-${{ matrix.go-os }}-${{ matrix.go-arch }}
           path: /tmp/dist
@@ -63,10 +65,15 @@ jobs:
           expose_ports: "14000 15000"
         - app: pebble-challtestsrv
           expose_ports: "5001 5002 5003 8053 8055 8443"
+    permissions:
+      contents: read
+      packages: write # Allow docker/build-push-action to publish to GitHub Container Registry
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
       - name: Download ${{ matrix.app }} artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           merge-multiple: true
           path: /tmp/dist
@@ -75,7 +82,7 @@ jobs:
         run: tree /tmp/dist
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.DOCKER_IMAGE_BASENAME }}/${{ matrix.app }}
           # generate Docker tags based on the following events/attributes
@@ -86,15 +93,15 @@ jobs:
             type=sha
             type=raw,value=latest
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Login to GitHub Container Registry
         run: printenv GITHUB_TOKEN | docker login -u "$GITHUB_ACTOR" --password-stdin ghcr.io
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push ${{ github.repository }}/${{ matrix.app }} for ${{ env.DOCKER_PLATFORMS }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           build-args: |
             APP=${{ matrix.app }}
@@ -122,7 +129,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Display pebble version in container image
-        run: docker run ${{ env.DOCKER_IMAGE_BASENAME }}/pebble:latest -version
+        env:
+          DOCKER_IMAGE_BASENAME: ${{ env.DOCKER_IMAGE_BASENAME }}
+        run: docker run ${DOCKER_IMAGE_BASENAME}/pebble:latest -version
   create-release:
     needs:
       - go-build
@@ -131,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       - name: Display build artifacts
         run: tree .
       - name: Create release
@@ -147,6 +156,6 @@ jobs:
           for artifact in *; do
             tar czf ${artifact}.tar.gz ${artifact}
             zip -r ${artifact}.zip ${artifact}
-            gh release upload ${{ github.ref_name }} ${artifact}.* \
+            gh release upload ${GITHUB_REF_NAME} ${artifact}.* \
               --repo ${{ github.repository }};
           done
