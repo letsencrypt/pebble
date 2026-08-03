@@ -75,6 +75,29 @@ correctly.
 5. cd pebble
 6. go install ./cmd/pebble
 
+### FIPS builds
+
+Ordinary builds retain Pebble's legacy RFC 5280 SHA-1 subject key identifiers.
+To use RFC 7093 SHA-256 subject key identifiers, set
+`subjectKeyIdentifierHash` to `sha256` in the `pebble` section of the
+configuration:
+
+```json
+{
+  "pebble": {
+    "subjectKeyIdentifierHash": "sha256"
+  }
+}
+```
+
+The SHA-256 setting is required when running with `GODEBUG=fips140=only`. To
+build against the Go Cryptographic Module v1.0.0 with FIPS mode enabled by
+default:
+
+```bash
+GOFIPS140=v1.0.0 go install ./cmd/pebble
+```
+
 ## Usage
 
 ### Binary

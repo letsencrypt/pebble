@@ -7,7 +7,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // Required for legacy RFC 5280 SKI compatibility.
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -32,10 +33,37 @@ const (
 	defaultValidityPeriod = 7776000
 )
 
+// SubjectKeyIdentifierHash identifies the hash used to generate certificate
+// subject key identifiers.
+type SubjectKeyIdentifierHash string
+
+const (
+	SubjectKeyIdentifierHashSHA1   SubjectKeyIdentifierHash = "sha1"
+	SubjectKeyIdentifierHashSHA256 SubjectKeyIdentifierHash = "sha256"
+)
+
+// Option configures a CA.
+type Option struct {
+	apply func(*options)
+}
+
+// WithSubjectKeyIdentifierHash configures the hash used to generate
+// certificate subject key identifiers.
+func WithSubjectKeyIdentifierHash(hash SubjectKeyIdentifierHash) Option {
+	return Option{apply: func(options *options) {
+		options.subjectKeyIdentifierHash = hash
+	}}
+}
+
+type options struct {
+	subjectKeyIdentifierHash SubjectKeyIdentifierHash
+}
+
 type CAImpl struct {
-	log              *log.Logger
-	db               *db.MemoryStore
-	ocspResponderURL string
+	log                      *log.Logger
+	db                       *db.MemoryStore
+	ocspResponderURL         string
+	subjectKeyIdentifierHash SubjectKeyIdentifierHash
 
 	chains   []*chain
 	profiles map[string]*Profile
@@ -77,7 +105,7 @@ func makeSerial() *big.Int {
 }
 
 // Taken from https://github.com/cloudflare/cfssl/blob/b94e044bb51ec8f5a7232c71b1ed05dbe4da96ce/signer/signer.go#L221-L244
-func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
+func makeSubjectKeyID(key crypto.PublicKey, hash SubjectKeyIdentifierHash) ([]byte, error) {
 	// Marshal the public key as ASN.1
 	pubAsDER, err := x509.MarshalPKIXPublicKey(key)
 	if err != nil {
@@ -94,9 +122,20 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	// Hash it according to https://tools.ietf.org/html/rfc5280#section-4.2.1.2 Method #1:
-	ski := sha1.Sum(pubInfo.SubjectPublicKey.Bytes)
-	return ski[:], nil
+	switch hash {
+	case SubjectKeyIdentifierHashSHA256:
+		// RFC 7093, section 2, method 1 uses the leftmost 160 bits of the
+		// SHA-256 hash of the subjectPublicKey.
+		ski := sha256.Sum256(pubInfo.SubjectPublicKey.Bytes)
+		return ski[:20], nil
+	case SubjectKeyIdentifierHashSHA1:
+		// RFC 5280, section 4.2.1.2, method 1. SHA-1 is retained for legacy
+		// compatibility when explicitly selected.
+		ski := sha1.Sum(pubInfo.SubjectPublicKey.Bytes)
+		return ski[:], nil
+	default:
+		return nil, fmt.Errorf("unsupported subject key identifier hash %q", hash)
+	}
 }
 
 // makeKey and makeRootCert are adapted from MiniCA:
@@ -104,7 +143,7 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 
 // makeKey creates a new private key of the requested key algorithm, and
 // returns it and its corresponding Subject Key Identifier.
-func makeKey(keyAlg string) (crypto.Signer, []byte, error) {
+func (ca *CAImpl) makeKey(keyAlg string) (crypto.Signer, []byte, error) {
 	var key crypto.Signer
 	var err error
 	switch keyAlg {
@@ -116,7 +155,7 @@ func makeKey(keyAlg string) (crypto.Signer, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	ski, err := makeSubjectKeyID(key.Public())
+	ski, err := makeSubjectKeyID(key.Public(), ca.subjectKeyIdentifierHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -182,7 +221,7 @@ func (ca *CAImpl) makeCACert(
 
 func (ca *CAImpl) newRootIssuer(name string, keyAlg string) (*issuer, error) {
 	// Make a root private key
-	rk, subjectKeyID, err := makeKey(keyAlg)
+	rk, subjectKeyID, err := ca.makeKey(keyAlg)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +277,7 @@ func (ca *CAImpl) newChain(intermediateKey crypto.Signer, intermediateSubject pk
 	prev := root
 	intermediates := make([]*issuer, numIntermediates)
 	for i := numIntermediates - 1; i > 0; i-- {
-		k, ski, err := makeKey(keyAlg)
+		k, ski, err := ca.makeKey(keyAlg)
 		if err != nil {
 			panic(fmt.Sprintf("Error creating new intermediate issuer: %v", err))
 		}
@@ -373,11 +412,19 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile, opts ...Option) *CAImpl {
+	options := options{subjectKeyIdentifierHash: SubjectKeyIdentifierHashSHA1}
+	for _, option := range opts {
+		if option.apply != nil {
+			option.apply(&options)
+		}
+	}
+
 	ca := &CAImpl{
-		log:      log,
-		db:       db,
-		profiles: make(map[string]*Profile, len(profiles)),
+		log:                      log,
+		db:                       db,
+		subjectKeyIdentifierHash: options.subjectKeyIdentifierHash,
+		profiles:                 make(map[string]*Profile, len(profiles)),
 	}
 
 	if ocspResponderURL != "" {
@@ -388,7 +435,7 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg st
 	intermediateSubject := pkix.Name{
 		CommonName: intermediateCAPrefix + hex.EncodeToString(makeSerial().Bytes()[:3]),
 	}
-	intermediateKey, subjectKeyID, err := makeKey(keyAlg)
+	intermediateKey, subjectKeyID, err := ca.makeKey(keyAlg)
 	if err != nil {
 		panic(fmt.Sprintf("Error creating new intermediate private key: %s", err.Error()))
 	}
