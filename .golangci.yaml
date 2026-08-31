@@ -21,7 +21,6 @@ linters:
     - gocyclo
     - goheader
     - gomoddirectives
-    - gomodguard
     - goprintffuncname
     - importas
     - inamedparam
@@ -51,12 +50,12 @@ linters:
       min-complexity: 25
     misspell:
       locale: US
+    goconst:
+      ignore-tests: true
   exclusions:
-    generated: lax
     presets:
       - comments
       - common-false-positives
-      - legacy
       - std-error-handling
     rules:
       - path: ca/ca.go
@@ -71,10 +70,6 @@ linters:
         text: string `Incorrect validation certificate for %s challenge. ` has \d occurrences, make it a constant
       - path: (.+)\.go$
         text: fmt.Sprintf can be replaced with string
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -83,9 +78,3 @@ formatters:
     - gofmt
     - gofumpt
     - goimports
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
