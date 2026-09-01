@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -35,7 +36,9 @@ type config struct {
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
 		KeyAlgorithm    string
-		Profiles        map[string]ca.Profile
+		// Select the hash used for certificate subject key identifiers.
+		SubjectKeyIdentifierHash string
+		Profiles                 map[string]ca.Profile
 
 		RetryAfter struct {
 			Authz int
@@ -115,6 +118,15 @@ func main() {
 		cmd.FailOnError(fmt.Errorf("%q is not one of %#v", keyAlg, acceptableKeyAlgs), "invalid key algorithm")
 	}
 
+	subjectKeyIdentifierHash := ca.SubjectKeyIdentifierHash(c.Pebble.SubjectKeyIdentifierHash)
+	if subjectKeyIdentifierHash == "" {
+		subjectKeyIdentifierHash = ca.SubjectKeyIdentifierHashSHA1
+	}
+	if subjectKeyIdentifierHash != ca.SubjectKeyIdentifierHashSHA1 &&
+		subjectKeyIdentifierHash != ca.SubjectKeyIdentifierHashSHA256 {
+		cmd.FailOnError(errors.New("must be sha1 or sha256"), "invalid subject key identifier hash")
+	}
+
 	profiles := c.Pebble.Profiles
 	if len(profiles) == 0 {
 		profiles = map[string]ca.Profile{
@@ -126,7 +138,16 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles)
+	ca := ca.New(
+		logger,
+		db,
+		c.Pebble.OCSPResponderURL,
+		keyAlg,
+		alternateRoots,
+		chainLength,
+		profiles,
+		ca.WithSubjectKeyIdentifierHash(subjectKeyIdentifierHash),
+	)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

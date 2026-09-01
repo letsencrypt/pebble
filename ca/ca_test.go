@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/fips140"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"log"
 	"net"
 	"os"
@@ -27,7 +29,71 @@ var (
 func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	db := db.NewMemoryStore()
-	return New(logger, db, "", "ecdsa", 0, 1, map[string]Profile{"default": {}})
+	return New(
+		logger,
+		db,
+		"",
+		"ecdsa",
+		0,
+		1,
+		map[string]Profile{"default": {}},
+		WithSubjectKeyIdentifierHash(SubjectKeyIdentifierHashSHA256),
+	)
+}
+
+func testMakeSubjectKeyID(t *testing.T, hash SubjectKeyIdentifierHash, expected string) {
+	t.Helper()
+	publicKeyBytes, err := hex.DecodeString(
+		"047f7f35a79794c950060b8029fc8f363a28f11159692d9d34e6ac948190434735" +
+			"f833b1a66652dc514337aff7f5c9c75d670c019d95a5d639b72744c64a9128bb",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, y := elliptic.Unmarshal(elliptic.P256(), publicKeyBytes)
+	if x == nil || y == nil {
+		t.Fatal("failed to parse RFC 7093 public key")
+	}
+
+	got, err := makeSubjectKeyID(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := hex.DecodeString(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("unexpected subject key identifier: got %x, want %x", got, want)
+	}
+}
+
+func TestMakeSubjectKeyIDSHA1(t *testing.T) {
+	if fips140.Enforced() {
+		t.Skip("SHA-1 is unavailable when FIPS enforcement is enabled")
+	}
+	testMakeSubjectKeyID(t, SubjectKeyIdentifierHashSHA1, "6fef9162c0a3f2e7608956d41c37da0c8e87f0ae")
+}
+
+func TestMakeSubjectKeyIDSHA256(t *testing.T) {
+	testMakeSubjectKeyID(t, SubjectKeyIdentifierHashSHA256, "bf37b3e5808fd46d54b28e846311bcce1cad2e1a")
+}
+
+func TestMakeSubjectKeyIDRejectsUnknownHash(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := makeSubjectKeyID(key.Public(), SubjectKeyIdentifierHash("unknown")); err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestWithSubjectKeyIdentifierHash(t *testing.T) {
+	ca := makeCa()
+	if ca.subjectKeyIdentifierHash != SubjectKeyIdentifierHashSHA256 {
+		t.Fatalf("unexpected hash: got %q, want %q", ca.subjectKeyIdentifierHash, SubjectKeyIdentifierHashSHA256)
+	}
 }
 
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
