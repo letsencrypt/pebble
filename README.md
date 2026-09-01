@@ -221,6 +221,14 @@ variable `PEBBLE_VA_NOSLEEP` to `1`. E.g.
 The maximal number of seconds to sleep can be configured by defining
 `PEBBLE_VA_SLEEPTIME`. It must be set to a positive integer.
 
+### Testing at a fixed time
+
+By default Pebble uses the system clock when issuing certificates. To issue CA
+and leaf certificates at a fixed time, set `PEBBLE_FAKECLOCK` to an RFC3339
+timestamp. For example:
+
+`PEBBLE_FAKECLOCK=2030-01-02T03:04:05Z pebble -config ./test/config/pebble-config.json`
+
 ### Skipping Validation
 
 If you want to avoid the hassle of having to stand up a challenge response
