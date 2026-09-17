@@ -448,6 +448,7 @@ func (ca *CAImpl) CompleteOrder(order *core.Order) {
 		// Lock the authorization for reading
 		authz.RLock()
 		if authz.Status != acme.StatusValid {
+			authz.RUnlock()
 			return
 		}
 		authz.RUnlock()
