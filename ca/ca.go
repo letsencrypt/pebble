@@ -32,10 +32,38 @@ const (
 	defaultValidityPeriod = 7776000
 )
 
+// Clock supplies the current time to the CA.
+type Clock interface {
+	Now() time.Time
+}
+
+// Option configures a CA.
+type Option struct {
+	apply func(*options)
+}
+
+// WithClock configures the CA to use clk when issuing certificates.
+func WithClock(clk Clock) Option {
+	return Option{apply: func(options *options) {
+		if clk != nil {
+			options.clk = clk
+		}
+	}}
+}
+
+type options struct {
+	clk Clock
+}
+
+type wallClock struct{}
+
+func (wallClock) Now() time.Time { return time.Now() }
+
 type CAImpl struct {
 	log              *log.Logger
 	db               *db.MemoryStore
 	ocspResponderURL string
+	clk              Clock
 
 	chains   []*chain
 	profiles map[string]*Profile
@@ -130,11 +158,12 @@ func (ca *CAImpl) makeCACert(
 	signer *issuer,
 ) (*core.Certificate, error) {
 	serial := makeSerial()
+	now := ca.clk.Now()
 	template := &x509.Certificate{
 		Subject:      subject,
 		SerialNumber: serial,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(30, 0, 0),
+		NotBefore:    now,
+		NotAfter:     now.AddDate(30, 0, 0),
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -284,7 +313,7 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		return nil, fmt.Errorf("unrecgonized profile name %q", profileName)
 	}
 
-	certNotBefore := time.Now()
+	certNotBefore := ca.clk.Now()
 	var err error
 	if notBefore != "" {
 		certNotBefore, err = time.Parse(time.RFC3339, notBefore)
@@ -373,10 +402,18 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile, opts ...Option) *CAImpl {
+	options := options{clk: wallClock{}}
+	for _, option := range opts {
+		if option.apply != nil {
+			option.apply(&options)
+		}
+	}
+
 	ca := &CAImpl{
 		log:      log,
 		db:       db,
+		clk:      options.clk,
 		profiles: make(map[string]*Profile, len(profiles)),
 	}
 

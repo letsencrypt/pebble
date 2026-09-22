@@ -30,6 +30,54 @@ func makeCa() *CAImpl {
 	return New(logger, db, "", "ecdsa", 0, 1, map[string]Profile{"default": {}})
 }
 
+type fixedClock struct {
+	now time.Time
+}
+
+func (c fixedClock) Now() time.Time { return c.now }
+
+func TestWithClock(t *testing.T) {
+	now := time.Date(2030, time.January, 2, 3, 4, 5, 0, time.UTC)
+	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
+	ca := New(
+		logger,
+		db.NewMemoryStore(),
+		"",
+		"ecdsa",
+		0,
+		1,
+		map[string]Profile{"default": {}},
+		WithClock(fixedClock{now: now}),
+	)
+
+	root := ca.GetRootCert(0).Cert
+	if !root.NotBefore.Equal(now) {
+		t.Fatalf("unexpected NotBefore: got %s, want %s", root.NotBefore, now)
+	}
+	wantNotAfter := now.AddDate(30, 0, 0)
+	if !root.NotAfter.Equal(wantNotAfter) {
+		t.Fatalf("unexpected NotAfter: got %s, want %s", root.NotAfter, wantNotAfter)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := ca.newCertificate(
+		[]string{"example.com"}, nil, key.Public(), "account", "", "", "default", nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !leaf.Cert.NotBefore.Equal(now) {
+		t.Fatalf("unexpected leaf NotBefore: got %s, want %s", leaf.Cert.NotBefore, now)
+	}
+	wantLeafNotAfter := now.Add(time.Duration(defaultValidityPeriod-1) * time.Second)
+	if !leaf.Cert.NotAfter.Equal(wantLeafNotAfter) {
+		t.Fatalf("unexpected leaf NotAfter: got %s, want %s", leaf.Cert.NotAfter, wantLeafNotAfter)
+	}
+}
+
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
