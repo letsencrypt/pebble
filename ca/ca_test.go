@@ -2,12 +2,14 @@ package ca
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"log"
 	"net"
 	"os"
@@ -28,6 +30,33 @@ func makeCa() *CAImpl {
 	logger := log.New(os.Stdout, "Pebble ", log.LstdFlags)
 	db := db.NewMemoryStore()
 	return New(logger, db, "", "ecdsa", 0, 1, map[string]Profile{"default": {}})
+}
+
+func TestMakeSubjectKeyID(t *testing.T) {
+	// RFC 7093 Section 3 example P-256 public key.
+	publicKeyBytes, err := hex.DecodeString(
+		"047f7f35a79794c950060b8029fc8f363a28f11159692d9d34e6ac948190434735" +
+			"f833b1a66652dc514337aff7f5c9c75d670c019d95a5d639b72744c64a9128bb",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := ecdh.P256().NewPublicKey(publicKeyBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := makeSubjectKeyID(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := hex.DecodeString("907e7e9d05878a273d597f2aea91bdb6056245cb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("unexpected subject key identifier: got %x, want %x", got, want)
+	}
 }
 
 func makeCertOrderWithExtensions(extensions []pkix.Extension) core.Order {

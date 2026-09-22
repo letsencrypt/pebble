@@ -7,7 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -76,7 +76,11 @@ func makeSerial() *big.Int {
 	return serial
 }
 
-// Taken from https://github.com/cloudflare/cfssl/blob/b94e044bb51ec8f5a7232c71b1ed05dbe4da96ce/signer/signer.go#L221-L244
+// makeSubjectKeyID generates a Subject Key Identifier according to
+// RFC 7093 Section 2 method 3: the leftmost 160 bits of the SHA-512 hash of
+// the subjectPublicKey BIT STRING (excluding the tag, length, and number of
+// unused bits). This differs from Boulder's RFC 7093 Section 2 method 1
+// (truncated SHA-256) so ACME clients cannot overfit on Let's Encrypt.
 func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 	// Marshal the public key as ASN.1
 	pubAsDER, err := x509.MarshalPKIXPublicKey(key)
@@ -94,9 +98,8 @@ func makeSubjectKeyID(key crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	// Hash it according to https://tools.ietf.org/html/rfc5280#section-4.2.1.2 Method #1:
-	ski := sha1.Sum(pubInfo.SubjectPublicKey.Bytes)
-	return ski[:], nil
+	ski := sha512.Sum512(pubInfo.SubjectPublicKey.Bytes)
+	return ski[:20], nil
 }
 
 // makeKey and makeRootCert are adapted from MiniCA:
