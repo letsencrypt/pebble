@@ -2066,9 +2066,13 @@ func (wfe *WebFrontEndImpl) Order(
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
+	// Read what is needed here and release the lock again: holding it
+	// across orderForDisplay(), which takes it a second time, deadlocks
+	// if a writer queues up in between.
 	order.RLock()
 	orderAccountID := order.AccountID
-	defer order.RUnlock()
+	orderStatus := order.Status
+	order.RUnlock()
 
 	// If the request was authenticated we need to make sure that the
 	// authenticated account owns the order being requested
@@ -2080,7 +2084,7 @@ func (wfe *WebFrontEndImpl) Order(
 		}
 	}
 
-	if order.Status == acme.StatusProcessing {
+	if orderStatus == acme.StatusProcessing {
 		addRetryAfterHeader(response, wfe.retryAfterOrder)
 	}
 
