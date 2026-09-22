@@ -2,6 +2,7 @@ package ca
 
 import (
 	"bytes"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -40,12 +41,12 @@ func TestMakeSubjectKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	x, y := elliptic.Unmarshal(elliptic.P256(), publicKeyBytes)
-	if x == nil || y == nil {
-		t.Fatal("failed to parse RFC 7093 public key")
+	pub, err := ecdh.P256().NewPublicKey(publicKeyBytes)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	got, err := makeSubjectKeyID(&ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y})
+	got, err := makeSubjectKeyID(pub)
 	if err != nil {
 		t.Fatal(err)
 	}
