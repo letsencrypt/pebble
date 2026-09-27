@@ -63,7 +63,7 @@ jobs:
       matrix:
         include:
         - app: pebble
-          expose_ports: "14000 15000"
+          expose_ports: "14000 15000 4003"
         - app: pebble-challtestsrv
           expose_ports: "5001 5002 5003 8053 8055 8443"
     permissions:
