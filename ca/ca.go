@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/pebble/v2/acme"
@@ -32,6 +33,18 @@ const (
 	defaultValidityPeriod = 7776000
 )
 
+// CRLConfig configures CRL support. A nil *CRLConfig disables CRLs.
+type CRLConfig struct {
+	// BaseURL is the absolute http:// URL, with a trailing slash, under which
+	// the CRL is served.
+	BaseURL string
+	// MaxDelay is the maximum random delay, in seconds, before a revocation
+	// appears on the CRL. Zero means revocations appear immediately.
+	MaxDelay int64
+	// Validity is the offset from thisUpdate to nextUpdate.
+	Validity time.Duration
+}
+
 type CAImpl struct {
 	log              *log.Logger
 	db               *db.MemoryStore
@@ -39,6 +52,12 @@ type CAImpl struct {
 
 	chains   []*chain
 	profiles map[string]*Profile
+
+	crl *CRLConfig
+	// crlMu guards crlNumber. GetCRL holds it throughout, so a higher CRL
+	// number never has an earlier thisUpdate or fewer entries.
+	crlMu     sync.Mutex
+	crlNumber *big.Int
 }
 
 type chain struct {
@@ -139,7 +158,7 @@ func (ca *CAImpl) makeCACert(
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(30, 0, 0),
 
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		SubjectKeyId:          subjectKeyID,
 		BasicConstraintsValid: true,
@@ -343,6 +362,10 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 		template.OCSPServer = []string{ca.ocspResponderURL}
 	}
 
+	if crlURL := ca.CRLURL(); crlURL != "" {
+		template.CRLDistributionPoints = []string{crlURL}
+	}
+
 	der, err := x509.CreateCertificate(rand.Reader, template, issuer.cert.Cert, key, issuer.key)
 	if err != nil {
 		return nil, err
@@ -376,12 +399,21 @@ func (ca *CAImpl) newCertificate(domains []string, ips []net.IP, key crypto.Publ
 	return newCert, nil
 }
 
-func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile) *CAImpl {
+func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg string, alternateRoots int, chainLength int, profiles map[string]Profile, crl *CRLConfig) *CAImpl {
 	ca := &CAImpl{
 		log:      log,
 		db:       db,
 		profiles: make(map[string]*Profile, len(profiles)),
+		crl:      crl,
 	}
+
+	// Start the CRL number at a random value below 2^62, well under the
+	// 20-octet limit in RFC 5280 Section 5.2.3.
+	crlNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 62))
+	if err != nil {
+		panic(fmt.Sprintf("unable to create random CRL number: %s", err.Error()))
+	}
+	ca.crlNumber = crlNumber
 
 	if ocspResponderURL != "" {
 		ca.ocspResponderURL = ocspResponderURL
@@ -414,6 +446,73 @@ func New(log *log.Logger, db *db.MemoryStore, ocspResponderURL string, keyAlg st
 	}
 
 	return ca
+}
+
+// CRLURL returns the URL of the CRL covering leaf certificates, or "" if CRLs
+// are disabled. The path includes the leaf-issuing intermediate's SKID, which
+// changes every launch.
+func (ca *CAImpl) CRLURL() string {
+	if ca.crl == nil {
+		return ""
+	}
+	skid := ca.chains[0].intermediates[0].cert.Cert.SubjectKeyId
+	return ca.crl.BaseURL + "crl/" + hex.EncodeToString(skid) + ".crl"
+}
+
+// CRLVisibleAt returns the time after which a revocation made at revokedAt
+// appears on the CRL: revokedAt plus a random delay of up to MaxDelay seconds,
+// or revokedAt itself if MaxDelay is 0 or CRLs are disabled.
+func (ca *CAImpl) CRLVisibleAt(revokedAt time.Time) time.Time {
+	if ca.crl == nil || ca.crl.MaxDelay <= 0 {
+		return revokedAt
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(ca.crl.MaxDelay+1))
+	if err != nil {
+		panic(fmt.Sprintf("unable to create random CRL delay: %s", err.Error()))
+	}
+	return revokedAt.Add(time.Duration(n.Int64()) * time.Second)
+}
+
+// GetCRL signs and returns a DER-encoded CRL containing every revoked
+// certificate whose CRLVisibleAt has passed. Revoked certificates are never
+// removed from the CRL, even after they expire.
+func (ca *CAImpl) GetCRL() ([]byte, error) {
+	if ca.crl == nil {
+		return nil, errors.New("CRLs are disabled")
+	}
+
+	ca.crlMu.Lock()
+	defer ca.crlMu.Unlock()
+
+	now := time.Now()
+	ca.crlNumber.Add(ca.crlNumber, big.NewInt(1))
+	number := new(big.Int).Set(ca.crlNumber)
+	revoked := ca.db.GetRevokedCertificates()
+
+	var entries []x509.RevocationListEntry
+	for _, rc := range revoked {
+		if rc.CRLVisibleAt.After(now) {
+			continue
+		}
+		entry := x509.RevocationListEntry{
+			SerialNumber:   rc.Certificate.Cert.SerialNumber,
+			RevocationTime: rc.RevokedAt,
+		}
+		if rc.Reason != nil && *rc.Reason != 0 {
+			entry.ReasonCode = int(*rc.Reason)
+		}
+		entries = append(entries, entry)
+	}
+
+	template := &x509.RevocationList{
+		RevokedCertificateEntries: entries,
+		Number:                    number,
+		ThisUpdate:                now,
+		NextUpdate:                now.Add(ca.crl.Validity),
+	}
+
+	issuer := ca.chains[0].intermediates[0]
+	return x509.CreateRevocationList(rand.Reader, template, issuer.cert.Cert, issuer.key)
 }
 
 var ocspMustStapleExt = pkix.Extension{
