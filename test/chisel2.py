@@ -1,7 +1,14 @@
 """
-A simple client that uses the Python ACME library to run a test issuance against
-a local Pebble server. Unlike chisel.py this version implements the most recent
-version of the ACME specification. Usage:
+A simple client that uses the Python ACME library to run a test issuance and
+revocation against a local Pebble server, and checks Pebble's CRL. Unlike
+chisel.py this version implements the most recent version of the ACME
+specification.
+
+Pebble must have CRLs enabled, preferably with no delay:
+
+$ PEBBLE_CRL_MAX_DELAY=0 pebble -config test/config/pebble-config-crl.json
+
+Usage:
 
 $ virtualenv venv
 $ . venv/bin/activate
@@ -41,6 +48,10 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 0)))
 DIRECTORY = os.getenv('DIRECTORY', 'https://localhost:14000/dir')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"data:text/plain,Do%20what%20thou%20wilt")
 PORT = os.getenv('PORT', '5002')
+
+# How long to wait for a revocation to appear on the CRL. Pebble delays CRL
+# entries by up to PEBBLE_CRL_MAX_DELAY seconds (15 by default).
+CRL_WAIT = float(os.getenv('CRL_WAIT', '20'))
 
 # URLs to control dns-test-srv
 SET_TXT = "http://localhost:8055/set-txt"
@@ -197,6 +208,62 @@ def expect_problem(problem_type, func):
     if not ok:
         raise Exception('Expected %s, got no error' % problem_type)
 
+def load_cert(order):
+    """Return the leaf and issuer certificates from a finalized order."""
+    certs = x509.load_pem_x509_certificates(order.fullchain_pem.encode())
+    return certs[0], certs[1]
+
+def revoke(client, cert, reason):
+    """Revoke cert, a cryptography x509.Certificate, with the given reason."""
+    if hasattr(josepy, 'ComparableX509'):
+        # Older acme releases (with josepy < 2) take a pyOpenSSL certificate
+        # wrapped in josepy.ComparableX509.
+        cert = josepy.ComparableX509(OpenSSL.crypto.X509.from_cryptography(cert))
+    client.revoke(cert, reason)
+
+def crl_url(cert):
+    """Return the CRL distribution point URL from a certificate."""
+    crldp = cert.extensions.get_extension_for_class(x509.CRLDistributionPoints)
+    return crldp.value[0].full_name[0].value
+
+def fetch_revoked_entry(cert, issuer):
+    """Fetch the CRL named in cert's CRLDP, check its signature against issuer,
+       and poll until cert's entry appears. Return the entry."""
+    url = crl_url(cert)
+    deadline = time.time() + CRL_WAIT
+    while True:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        crl = x509.load_der_x509_crl(resp.content)
+        if not crl.is_signature_valid(issuer.public_key()):
+            raise Exception("CRL from %s has an invalid signature" % url)
+        entry = crl.get_revoked_certificate_by_serial_number(cert.serial_number)
+        if entry is not None:
+            return entry
+        if time.time() > deadline:
+            raise Exception("serial %x not on CRL %s after %ss" % (cert.serial_number, url, CRL_WAIT))
+        time.sleep(1)
+
+def revoke_and_check_crl(domains):
+    """Issue and revoke a certificate with keyCompromise, then check that it
+       appears on the CRL with that reason. Also check that Pebble rejects a
+       certificateHold revocation."""
+    client = make_client()
+    cert, issuer = load_cert(auth_and_issue(domains, client=client))
+    revoke(client, cert, 1)
+    entry = fetch_revoked_entry(cert, issuer)
+    reason = entry.extensions.get_extension_for_class(x509.CRLReason).value.reason
+    if reason != x509.ReasonFlags.key_compromise:
+        raise Exception("CRL entry has reason %s, want keyCompromise" % reason)
+    print("Revoked serial %x found on CRL %s" % (cert.serial_number, crl_url(cert)))
+
+    # Use a new account, since Pebble may reuse the first account's valid
+    # authorizations, which auth_and_issue doesn't handle.
+    held_client = make_client()
+    held, _ = load_cert(auth_and_issue(domains, client=held_client))
+    expect_problem("urn:ietf:params:acme:error:badRevocationReason",
+        lambda: revoke(held_client, held, 6))
+
 if __name__ == "__main__":
     # Die on SIGINT
     signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -206,7 +273,7 @@ if __name__ == "__main__":
         sys.exit(0)
     try:
         wait_for_acme_server()
-        auth_and_issue(domains)
+        revoke_and_check_crl(domains)
     except messages.Error as e:
         print(e)
         sys.exit(1)
