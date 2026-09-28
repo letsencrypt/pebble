@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"sync"
@@ -61,9 +62,20 @@ func issueTestCert(t *testing.T, wfe *WebFrontEndImpl) *core.Certificate {
 // revocationBody returns a revocation request JSON body for cert.
 func revocationBody(t *testing.T, cert *core.Certificate) []byte {
 	t.Helper()
+	return revocationBodyWithReason(t, cert, nil)
+}
 
-	body, err := json.Marshal(map[string]string{
-		"certificate": base64.RawURLEncoding.EncodeToString(cert.DER),
+// revocationBodyWithReason returns a revocation request JSON body for cert
+// with the given reason code, or no reason if reason is nil.
+func revocationBodyWithReason(t *testing.T, cert *core.Certificate, reason *uint) []byte {
+	t.Helper()
+
+	body, err := json.Marshal(struct {
+		Certificate string `json:"certificate"`
+		Reason      *uint  `json:"reason,omitempty"`
+	}{
+		Certificate: base64.RawURLEncoding.EncodeToString(cert.DER),
+		Reason:      reason,
 	})
 	if err != nil {
 		t.Fatalf("marshaling revocation body: %s", err)
@@ -111,5 +123,29 @@ func TestProcessRevocationConcurrent(t *testing.T) {
 	}
 	if successes != 1 {
 		t.Errorf("got %d successful revocations, want exactly 1", successes)
+	}
+}
+
+func allowRevocation(*core.Certificate) *acme.ProblemDetails { return nil }
+
+func TestProcessRevocationReasons(t *testing.T) {
+	badReasonType := acme.BadRevocationReasonProblem("").Type
+	for reason := range uint(12) {
+		t.Run(fmt.Sprintf("reason %d", reason), func(t *testing.T) {
+			wfe := newTestWFE(t)
+			cert := issueTestCert(t, wfe)
+			prob := wfe.processRevocation(revocationBodyWithReason(t, cert, &reason), allowRevocation)
+
+			switch reason {
+			case 0, 1, 3, 4, 5, 9:
+				if prob != nil {
+					t.Errorf("revocation with reason %d failed: %+v", reason, prob)
+				}
+			default:
+				if prob == nil || prob.Type != badReasonType {
+					t.Errorf("revocation with reason %d: got %+v, want %s", reason, prob, badReasonType)
+				}
+			}
+		})
 	}
 }
