@@ -226,10 +226,11 @@ func NewCertID(serial []byte, akid []byte) (*CertID, error) {
 		return nil, errors.New("must send non-nil bytes")
 	}
 
+	sn := new(big.Int).SetBytes(serial)
 	return &CertID{
 		KeyIdentifier: akid,
-		SerialNumber:  new(big.Int).SetBytes(serial),
-		id:            hex.EncodeToString(serial),
+		SerialNumber:  sn,
+		id:            hex.EncodeToString(sn.Bytes()),
 	}, nil
 }
 
