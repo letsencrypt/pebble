@@ -26,7 +26,7 @@ func newTestWFE(t *testing.T) *WebFrontEndImpl {
 	logger := log.New(io.Discard, "", 0)
 	memoryStore := db.NewMemoryStore()
 
-	caImpl := ca.New(logger, memoryStore, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": {}})
+	caImpl := ca.New(logger, memoryStore, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": {}}, nil)
 	vaImpl := va.New(logger, 0, 0, false, "", memoryStore)
 
 	wfeImpl := New(logger, memoryStore, vaImpl, caImpl, nil, false, false, 0, 0)
