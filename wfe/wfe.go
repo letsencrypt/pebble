@@ -578,6 +578,40 @@ func (wfe *WebFrontEndImpl) ManagementHandler() http.Handler {
 	return m
 }
 
+// CRLHandler returns a handler that serves the CA's CRL at the path of
+// CRLURL, signing a fresh CRL on each request. Use it only when CRLs are
+// enabled.
+func (wfe *WebFrontEndImpl) CRLHandler() http.Handler {
+	crlPath := "/"
+	if u, err := url.Parse(wfe.ca.CRLURL()); err == nil {
+		crlPath = u.Path
+	}
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != crlPath {
+			http.NotFound(response, request)
+			return
+		}
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			response.Header().Set("Allow", "GET, HEAD")
+			response.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		crl, err := wfe.ca.GetCRL()
+		if err != nil {
+			wfe.log.Printf("Error signing CRL: %s", err)
+			response.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		response.Header().Set("Content-Type", "application/pkix-crl")
+		response.Header().Set("Cache-Control", "no-cache")
+		response.Header().Set("Content-Length", strconv.Itoa(len(crl)))
+		response.WriteHeader(http.StatusOK)
+		if request.Method == http.MethodGet {
+			_, _ = response.Write(crl)
+		}
+	})
+}
+
 func (wfe *WebFrontEndImpl) Directory(
 	_ context.Context,
 	response http.ResponseWriter,
@@ -3064,10 +3098,12 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return prob
 	}
 
+	revokedAt := time.Now()
 	revoked := wfe.db.RevokeCertificate(&core.RevokedCertificate{
-		Certificate: cert,
-		RevokedAt:   time.Now(),
-		Reason:      revokeCertReq.Reason,
+		Certificate:  cert,
+		RevokedAt:    revokedAt,
+		Reason:       revokeCertReq.Reason,
+		CRLVisibleAt: wfe.ca.CRLVisibleAt(revokedAt),
 	})
 	if !revoked {
 		return acme.AlreadyRevokedProblem(alreadyRevokedDetail)
