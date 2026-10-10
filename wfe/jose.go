@@ -16,7 +16,7 @@ import (
 )
 
 var goodJWSSignatureAlgorithms = []jose.SignatureAlgorithm{
-	jose.RS256, jose.ES256, jose.ES384, jose.ES512,
+	jose.RS256, jose.ES256, jose.ES384, jose.ES512, jose.MLDSA44, jose.MLDSA65, jose.MLDSA87,
 }
 
 func algorithmForKey(key *jose.JSONWebKey) (string, error) {
@@ -33,6 +33,12 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 			return string(jose.ES512), nil
 		}
 	}
+
+	alg := mldsaAlgorithmForKey(key)
+	if alg != "" {
+		return alg, nil
+	}
+
 	return "", fmt.Errorf("no signature algorithms suitable for given key type: %T", key.Key)
 }
 
@@ -49,8 +55,8 @@ func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) *acm
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
 		return acme.BadSignatureAlgorithmProblem(fmt.Sprintf(
-			"signature type '%s' in JWS header is not supported, expected one of RS256, ES256, ES384 or ES512",
-			jwsAlgorithm))
+			"signature type '%s' in JWS header is not supported, expected one of %s",
+			jwsAlgorithm, goodJWSSignatureAlgorithms))
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
 		return acme.BadPublicKeyProblem(fmt.Sprintf(
