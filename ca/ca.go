@@ -115,6 +115,8 @@ func makeKey(keyAlg string) (crypto.Signer, []byte, error) {
 		key, err = rsa.GenerateKey(rand.Reader, 2048)
 	case "ecdsa":
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	case "mldsa":
+		key, err = mldsaGenerateKey()
 	}
 	if err != nil {
 		return nil, nil, err
