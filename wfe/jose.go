@@ -54,13 +54,14 @@ func checkAlgorithm(key *jose.JSONWebKey, parsedJws *jose.JSONWebSignature) *acm
 	}
 	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
 	if jwsAlgorithm != algorithm {
-		return acme.BadSignatureAlgorithmProblem(fmt.Sprintf(
-			"signature type '%s' in JWS header is not supported, expected one of %s",
-			jwsAlgorithm, goodJWSSignatureAlgorithms))
+		return acme.MalformedProblem(fmt.Sprintf(
+			"JWS signature header algorithm %s does not match expected algorithm %s for JWK",
+			jwsAlgorithm, algorithm))
 	}
 	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return acme.BadPublicKeyProblem(fmt.Sprintf(
-			"algorithm '%s' on JWK is unacceptable", key.Algorithm))
+		return acme.MalformedProblem(fmt.Sprintf(
+			"JWK key header algorithm %s does not match expected algorithm %s for JWK",
+			key.Algorithm, algorithm))
 	}
 	return nil
 }
