@@ -710,7 +710,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body string) (*jose.JSONWebSignature, *acme
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
-	parsedJWS, err := jose.ParseSigned(body, goodJWSSignatureAlgorithms)
+	parsedJWS, err := jose.ParseSignedJSON(body, goodJWSSignatureAlgorithms)
 	if err != nil {
 		var unexpectedSignAlgo *jose.ErrUnexpectedSignatureAlgorithm
 		if errors.As(err, &unexpectedSignAlgo) {
@@ -3085,7 +3085,7 @@ func (wfe *WebFrontEndImpl) verifyEAB(
 		jose.HS256, jose.HS384, jose.HS512,
 	}
 
-	eab, err := jose.ParseSigned(string(eabBytes), eabSignatureAlgorithms)
+	eab, err := jose.ParseSignedJSON(string(eabBytes), eabSignatureAlgorithms)
 	if err != nil {
 		return nil, acme.MalformedProblem(
 			fmt.Sprintf("failed to decode external account binding: %s", err))
