@@ -32,13 +32,10 @@ func algorithmForKey(key *jose.JSONWebKey) (string, error) {
 		case "P-521":
 			return string(jose.ES512), nil
 		}
+	case *mldsaPublicKey:
+		// Algorithm is always present and valid for AKP keys
+		return key.Algorithm, nil
 	}
-
-	alg := mldsaAlgorithmForKey(key)
-	if alg != "" {
-		return alg, nil
-	}
-
 	return "", fmt.Errorf("no signature algorithms suitable for given key type: %T", key.Key)
 }
 
