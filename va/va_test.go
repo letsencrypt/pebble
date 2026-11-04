@@ -249,7 +249,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "duplicate parameter is case-insensitive",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456"},
+			challTXTRecords:    []string{"authority.example;ACCOUNTURI=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `duplicate parameter "accounturi"`,
@@ -356,7 +356,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 
 			err := json.Unmarshal([]byte(jwkJSON), task.Account.Key)
 			if err != nil {
-				log.Fatalf("failed to fill jwk %v", err)
+				t.Fatalf("failed to fill jwk %v", err)
 			}
 
 			result := va.validateDNSPersist01(task)

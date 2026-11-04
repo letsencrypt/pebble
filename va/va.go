@@ -717,7 +717,7 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 
 		if !strings.HasPrefix(params.accountURI, va.AccountHashPrefix) {
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accountHashPrefix does not match, expexted %s",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accountHashPrefix does not match, expected %s",
 				receivedIssuer, va.AccountHashPrefix))
 			continue
 		}
@@ -725,7 +725,7 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 		temp := strings.Split(strings.TrimPrefix(params.accountURI, va.AccountHashPrefix), "/")
 		if len(temp) != 2 {
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash does not contain hash algorithm.",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash does not contain hash algorithm",
 				receivedIssuer))
 			continue
 		}
@@ -749,32 +749,37 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 			hashalg = crypto.SHA3_512.New()
 		default:
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash has unsupported hash algorithm %s.",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash has unsupported hash algorithm %s",
 				receivedIssuer, temp[0]))
 			continue
 		}
 		// building account hash
-		thumbprint, _ := task.Account.Key.Thumbprint(crypto.SHA256)
+		thumbprint, err := task.Account.Key.Thumbprint(crypto.SHA256)
+		if err != nil {
+			// Shouldn't fail for valid account, but if it failed we can't succeed this challgne at large
+			result.Error = acme.InternalErrorProblem(fmt.Sprintf(
+				"Error building thumbprint for account %s: %s", task.AccountURL, err.Error()))
+			return result
+		}
+
 		key := []byte(base64.RawURLEncoding.EncodeToString(thumbprint))
-		accountidentsurfix := append(key, []byte(task.AccountURL)...)
+		accountidentsurffix := append(key, []byte(task.AccountURL)...)
 
 		globalAccHashIn := []byte{0x1, '*'} // global accounthash, see Section 4.1
-		globalAccHashIn = append(globalAccHashIn, accountidentsurfix...)
+		globalAccHashIn = append(globalAccHashIn, accountidentsurffix...)
 		hashalg.Write(globalAccHashIn)
 		globalAccHashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
 
 		hashalg.Reset()
 		perdomainAcchashIn := []byte{byte(len(task.Identifier.Value))} // per domain accounthash value
 		perdomainAcchashIn = append(perdomainAcchashIn, []byte(task.Identifier.Value)...)
-		perdomainAcchashIn = append(perdomainAcchashIn, accountidentsurfix...)
+		perdomainAcchashIn = append(perdomainAcchashIn, accountidentsurffix...)
 		hashalg.Write(perdomainAcchashIn)
 		perdomainAcchashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
 
 		validAccountURIs := []string{globalAccHashStr, perdomainAcchashStr}
 
-		if !slices.ContainsFunc(validAccountURIs, func(sttr string) bool {
-			return subtle.ConstantTimeCompare([]byte(sttr), []byte(observedhash)) == 1
-		}) {
+		if !slices.Contains(validAccountURIs, observedhash) {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: "+
 					"accounthash mismatch: expected %s for domain %s, %s for domain-correlation opt-out, got %q",

@@ -128,7 +128,7 @@ func main() {
 
 	accountHashPrefix := c.Pebble.AccountHashPrefix
 	if accountHashPrefix == "" {
-		logger.Println("No AccountHashPrefix configured, using default [https://pebble.letsencrypt.org/hashed-accountsz/]")
+		logger.Println("No AccountHashPrefix configured, using default [https://pebble.letsencrypt.org/hashed-accounts/]")
 		accountHashPrefix = "https://pebble.letsencrypt.org/hashed-accounts/"
 	}
 	if !strings.HasSuffix(accountHashPrefix, "/") {
