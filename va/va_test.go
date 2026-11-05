@@ -1,6 +1,7 @@
 package va
 
 import (
+	"encoding/json"
 	"log"
 	"net"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/pebble/v2/acme"
@@ -35,7 +37,7 @@ func TestAuthzRace(_ *testing.T) {
 
 	// This whole test can be removed if/when the MemoryStore becomes 100% by value
 	ms := db.NewMemoryStore()
-	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "", ms)
+	va := New(log.New(os.Stdout, "Pebble/TestRace", log.LstdFlags), 14000, 15000, false, "", ms, "https://ca.example/account-hash/")
 
 	authz := &core.Authorization{
 		ID: "auth-id",
@@ -60,9 +62,11 @@ func TestValidateDNSPersist01(t *testing.T) {
 	t.Parallel()
 
 	const (
-		domain     = "example.com"
-		txtName    = "_validation-persist.example.com"
-		accountURL = "https://ca.example/acct/123"
+		domain            = "example.com"
+		txtName           = "_validation-persist.example.com"
+		accountURL        = "https://ca.example/acct/123"
+		hashalg           = "sha-256"
+		accountHashPrefix = "https://ca.example/account-hash/"
 	)
 
 	testCases := []struct {
@@ -76,11 +80,32 @@ func TestValidateDNSPersist01(t *testing.T) {
 	}{
 		// Success test cases:
 		{
+			name:             "using per domain hash succeeds",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw",
+			},
+		},
+		{
+			name:             "opt out of the domain-correlation mitigation, set domain as '*', should succeed",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug",
+			},
+		},
+		{
+			name:             "using sha3-256 for account hash, but key still need to be sha-256",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha3-256/sDsI2tmNNk0xwo0LLJbtVc0U4FIgVkPHAflH9BWn7Sw",
+			},
+		},
+		{
 			name:             "matching malformed and matching valid record succeeds",
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
-				"authority.example;accounturi=https://ca.example/acct/123;accounturi=https://ca.example/acct/456",
-				"authority.example;accounturi=https://ca.example/acct/123",
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456",
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw",
 			},
 		},
 		{
@@ -88,47 +113,47 @@ func TestValidateDNSPersist01(t *testing.T) {
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
 				"authority.example;accounturi=https://ca.example/acct/999",
-				"authority.example;accounturi=https://ca.example/acct/123",
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug",
 			},
 		},
 		{
 			name:             "unknown tag with empty value succeeds",
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
-				"authority.example;accounturi=https://ca.example/acct/123;foo=",
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug;foo=",
 			},
 		},
 		{
 			name:             "unknown tags are ignored",
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
-				"authority.example;accounturi=https://ca.example/acct/123;bad tag=value;\nweird=\\x01337",
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug;bad tag=value;\nweird=\\x01337",
 			},
 		},
 		{
 			name:             "all known fields with heavy whitespace succeeds",
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
-				"   authority.example   ;   accounturi   =   https://ca.example/acct/123   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
+				"   authority.example   ;   accounturi   =   https://ca.example/account-hash/sha-256/NpDnSwUthQK8zCgFdefYxAdAVPnygMLbs9US6oO-5ug   ;   policy   =   wildcard   ;   persistUntil   =   4102444800   ",
 			},
 		},
 		{
 			name:             "wildcard accepts case-insensitive policy value",
 			challIssuerNames: []string{"authority.example"},
-			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;policy=wIlDcArD"},
+			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;policy=wIlDcArD"},
 			challWildcard:    true,
 		},
 		{
 			name:             "wildcard accepts case-insensitive policy tag",
 			challIssuerNames: []string{"authority.example"},
-			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;pOlIcY=wildcard"},
+			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;pOlIcY=wildcard"},
 			challWildcard:    true,
 		},
 		// Failure test cases:
 		{
 			name:               "only matching malformed record returns malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;accounturi=https://ca.example/acct/456"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `duplicate parameter`,
@@ -144,15 +169,23 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "only matching unauthorized record returns unauthorized",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/999"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/0000000000000000000000000000000000000000000"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
-			expectDetailSubstr: `accounturi mismatch`,
+			expectDetailSubstr: `accounthash mismatch`,
+		},
+		{
+			name:               "using unsupported hash algorithm is malformed",
+			challIssuerNames:   []string{"authority.example"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/someotherhash/0000000000000000"},
+			expectErr:          true,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `unsupported hash`,
 		},
 		{
 			name:               "non-matching malformed record is ignored",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"other.example;accounturi=https://ca.example/acct/123;accounturi=https://ca.example/acct/456"},
+			challTXTRecords:    []string{"other.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `No valid TXT record found`,
@@ -160,7 +193,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "non-matching issuer-domain-name record is ignored",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"other.example;accounturi=https://ca.example/acct/123"},
+			challTXTRecords:    []string{"other.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `No valid TXT record found`,
@@ -168,7 +201,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "missing equals is malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;invalidparam"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;invalidparam"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `malformed parameter "invalidparam" should be tag=value pair`,
@@ -176,7 +209,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "empty tag is malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;=abc"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;=abc"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `malformed parameter "=abc", empty tag`,
@@ -192,7 +225,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "invalid value character is malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;policy=wild card"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;policy=wild card"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `malformed value "wild card" for tag "policy"`,
@@ -200,7 +233,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "persistUntil non unix timestamp is malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=not-a-unix-timestamp"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;persistUntil=not-a-unix-timestamp"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `malformed persistUntil timestamp "not-a-unix-timestamp"`,
@@ -208,7 +241,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "duplicate unknown parameter is malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;foo=bar;foo=baz"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;foo=bar;foo=baz"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `duplicate parameter "foo"`,
@@ -216,7 +249,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "duplicate parameter is case-insensitive",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;ACCOUNTURI=https://ca.example/acct/123;accounturi=https://ca.example/acct/456"},
+			challTXTRecords:    []string{"authority.example;ACCOUNTURI=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;accounturi=https://ca.example/acct/456"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `duplicate parameter "accounturi"`,
@@ -224,7 +257,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "missing issuer-domain-name record is ignored",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{";accounturi=https://ca.example/acct/123"},
+			challTXTRecords:    []string{";accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `No valid TXT record found`,
@@ -232,7 +265,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "wildcard policy mismatch returns unauthorized",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;policy=notwildcard"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;policy=notwildcard"},
 			challWildcard:      true,
 			expectErr:          true,
 			expectHTTPStatus:   403,
@@ -249,7 +282,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "empty persistUntil returns malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil="},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;persistUntil="},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `malformed persistUntil timestamp`,
@@ -257,7 +290,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "trailing semicolon in matching record returns malformed",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;"},
 			expectErr:          true,
 			expectHTTPStatus:   400,
 			expectDetailSubstr: `empty parameter or trailing semicolon provided`,
@@ -265,7 +298,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "expired persistUntil returns unauthorized",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=1"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;persistUntil=1"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `validation time`,
@@ -273,7 +306,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 		{
 			name:               "negative persistUntil returns unauthorized",
 			challIssuerNames:   []string{"authority.example"},
-			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/acct/123;persistUntil=-1"},
+			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;persistUntil=-1"},
 			expectErr:          true,
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `validation time`,
@@ -291,8 +324,17 @@ func TestValidateDNSPersist01(t *testing.T) {
 
 			va := VAImpl{
 				customResolverAddr: addr,
+				AccountHashPrefix:  accountHashPrefix,
 				dnsClient:          new(dns.Client),
 			}
+
+			jwkJSON := `{
+			"kty": "RSA",
+			"n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+			"e": "AQAB",
+			"alg": "RS256",
+			"kid": "2011-04-29"
+			}` // example jwk to get thumbprint
 
 			task := &vaTask{
 				Identifier: acme.Identifier{
@@ -306,7 +348,15 @@ func TestValidateDNSPersist01(t *testing.T) {
 					},
 				},
 				AccountURL: accountURL,
-				Wildcard:   tc.challWildcard,
+				Account: &core.Account{
+					Key: &jose.JSONWebKey{},
+				},
+				Wildcard: tc.challWildcard,
+			}
+
+			err := json.Unmarshal([]byte(jwkJSON), task.Account.Key)
+			if err != nil {
+				t.Fatalf("failed to fill jwk %v", err)
 			}
 
 			result := va.validateDNSPersist01(task)

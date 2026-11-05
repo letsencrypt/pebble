@@ -618,6 +618,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		"externalAccountRequired": wfe.requireEAB,
 		"profiles":                wfe.ca.GetProfiles(),
 		"caaIdentities":           wfe.caaIdentities,
+		"issuerDomainNames":       wfe.caaIdentities,        // should be same as caaIdentites for public CA.
+		"accountHashPrefix":       wfe.va.AccountHashPrefix, // read from VA to fill this
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
