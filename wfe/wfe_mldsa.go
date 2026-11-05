@@ -3,8 +3,11 @@
 package wfe
 
 import (
+	"crypto/mldsa"
 	"crypto/x509"
 )
+
+type mldsaPublicKey = mldsa.PublicKey
 
 func init() {
 	goodSignatureAlgorithms[x509.MLDSA44] = true
