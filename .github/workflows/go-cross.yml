@@ -20,7 +20,6 @@ jobs:
           - stable
         os:
           - ubuntu-latest
-          - macos-14 # M1 runners
           - macos-latest
           - windows-latest
     steps:
