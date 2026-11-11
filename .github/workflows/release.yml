@@ -123,6 +123,12 @@ jobs:
         docker-os:
           - ubuntu-latest
           - windows-latest
+    defaults:
+      run:
+        # For Windows, GHA defaults to PowerShell, which doesn't interpolate
+        # environment variables the same way bash does. We want bash.
+        # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsshell
+        shell: bash
     steps:
       - name: Login to GitHub Container Registry
         run: printenv GITHUB_TOKEN | docker login -u "$GITHUB_ACTOR" --password-stdin ghcr.io
