@@ -2,6 +2,7 @@ package va
 
 import (
 	"context"
+	"crypto"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -11,6 +12,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"math/rand"
@@ -111,6 +113,7 @@ type VAImpl struct {
 	strict             bool
 	customResolverAddr string
 	dnsClient          *dns.Client
+	AccountHashPrefix  string // exported so wfe can publish it in meta
 
 	// The VA having a DB client is indeed strange. This is only used to
 	// facilitate va.setOrderError changing the ARI related order replacement
@@ -123,6 +126,7 @@ func New(
 	httpPort, tlsPort int,
 	strict bool, customResolverAddr string,
 	db *db.MemoryStore,
+	accountHashPrefix string,
 ) *VAImpl {
 	va := &VAImpl{
 		log:                log,
@@ -134,6 +138,7 @@ func New(
 		strict:             strict,
 		customResolverAddr: customResolverAddr,
 		db:                 db,
+		AccountHashPrefix:  accountHashPrefix,
 	}
 
 	if customResolverAddr != "" {
@@ -702,10 +707,83 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: missing mandatory accountURI parameter", receivedIssuer))
 			continue
 		}
-		if params.accountURI != task.AccountURL {
+
+		if params.accountURI == task.AccountURL {
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: this record uses raw AcccountURI, Please use hashed format",
+				receivedIssuer))
+			continue
+		}
+
+		if !strings.HasPrefix(params.accountURI, va.AccountHashPrefix) {
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accountHashPrefix does not match, expected %s",
+				receivedIssuer, va.AccountHashPrefix))
+			continue
+		}
+		// calculate account hash format, as defined in draft-ietf-acme-dns-persist-02
+		temp := strings.Split(strings.TrimPrefix(params.accountURI, va.AccountHashPrefix), "/")
+		if len(temp) != 2 {
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash does not contain hash algorithm",
+				receivedIssuer))
+			continue
+		}
+
+		var hashalg hash.Hash
+		hashalgstring := temp[0] // hash alg: keep mind IANA have names in lowercase
+		observedhash := temp[1]
+
+		switch hashalgstring { // use a bunch of allowed hash algs
+		case "sha-256":
+			hashalg = crypto.SHA256.New()
+		case "sha-384":
+			hashalg = crypto.SHA384.New()
+		case "sha-512":
+			hashalg = crypto.SHA512.New()
+		case "sha3-256":
+			hashalg = crypto.SHA3_256.New()
+		case "sha3-384":
+			hashalg = crypto.SHA3_384.New()
+		case "sha3-512":
+			hashalg = crypto.SHA3_512.New()
+		default:
+			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash has unsupported hash algorithm %s",
+				receivedIssuer, temp[0]))
+			continue
+		}
+		// building account hash
+		thumbprint, err := task.Account.Key.Thumbprint(crypto.SHA256)
+		if err != nil {
+			// Shouldn't fail for valid account, but if it failed we can't succeed this challgne at large
+			result.Error = acme.InternalErrorProblem(fmt.Sprintf(
+				"Error building thumbprint for account %s: %s", task.AccountURL, err.Error()))
+			return result
+		}
+
+		key := []byte(base64.RawURLEncoding.EncodeToString(thumbprint))
+		accountidentsurffix := append(key, []byte(task.AccountURL)...)
+
+		globalAccHashIn := []byte{0x1, '*'} // global accounthash, see Section 4.1
+		globalAccHashIn = append(globalAccHashIn, accountidentsurffix...)
+		hashalg.Write(globalAccHashIn)
+		globalAccHashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
+
+		hashalg.Reset()
+		perdomainAcchashIn := []byte{byte(len(task.Identifier.Value))} // per domain accounthash value
+		perdomainAcchashIn = append(perdomainAcchashIn, []byte(task.Identifier.Value)...)
+		perdomainAcchashIn = append(perdomainAcchashIn, accountidentsurffix...)
+		hashalg.Write(perdomainAcchashIn)
+		perdomainAcchashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
+
+		validAccountURIs := []string{globalAccHashStr, perdomainAcchashStr}
+
+		if !slices.Contains(validAccountURIs, observedhash) {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounturi mismatch: expected %q, got %q",
-				receivedIssuer, task.AccountURL, params.accountURI))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: "+
+					"accounthash mismatch: expected %s for domain %s, %s for domain-correlation opt-out, got %q",
+				receivedIssuer, validAccountURIs[0], task.Identifier.Value, validAccountURIs[1], observedhash))
 			continue
 		}
 		// Per the dns-persist-01 specification, if the policy tag is present
