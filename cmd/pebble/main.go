@@ -1,14 +1,17 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/pebble/v2/ca"
 	"github.com/letsencrypt/pebble/v2/cmd"
@@ -19,6 +22,13 @@ import (
 
 var version = "dev" // Default value, to be overridden with ldflags
 
+// CRL settings, in seconds.
+const (
+	defaultCRLMaxDelay = 15
+	defaultCRLValidity = 7 * 24 * 60 * 60
+	maxCRLValidity     = 10 * 24 * 60 * 60
+)
+
 type config struct {
 	Pebble struct {
 		ListenAddress           string
@@ -28,6 +38,15 @@ type config struct {
 		Certificate             string
 		PrivateKey              string
 		OCSPResponderURL        string
+		// Optional CRL support, enabled only when both CRLListenAddress and
+		// CRLBaseURL are set.
+		CRLListenAddress string
+		CRLBaseURL       string
+		// Maximum random delay in seconds before a revocation appears on the
+		// CRL. Unset means defaultCRLMaxDelay, and 0 means no delay.
+		CRLMaxDelay *int
+		// Seconds from thisUpdate to nextUpdate. 0 means defaultCRLValidity.
+		CRLValidity int
 		// Require External Account Binding for "newAccount" requests
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
@@ -125,8 +144,11 @@ func main() {
 		}
 	}
 
+	crlConfig, err := loadCRLConfig(&c, logger)
+	cmd.FailOnError(err, "Invalid CRL configuration")
+
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles, nil)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles, crlConfig)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
@@ -168,6 +190,17 @@ func main() {
 		logger.Print("Management interface is disabled")
 	}
 
+	if crlConfig != nil {
+		go func() {
+			err := http.ListenAndServe(c.Pebble.CRLListenAddress, wfeImpl.CRLHandler())
+			cmd.FailOnError(err, "Calling ListenAndServe() for CRL interface")
+		}()
+		logger.Printf("CRL interface listening on: %s\n", c.Pebble.CRLListenAddress)
+		logger.Printf("CRL available at: %s", ca.CRLURL())
+	} else {
+		logger.Print("CRL interface is disabled")
+	}
+
 	logger.Printf("Listening on: %s\n", c.Pebble.ListenAddress)
 	logger.Printf("ACME directory available at: https://%s%s",
 		c.Pebble.ListenAddress, wfe.DirectoryPath)
@@ -177,4 +210,85 @@ func main() {
 		c.Pebble.PrivateKey,
 		muxHandler)
 	cmd.FailOnError(err, "Calling ListenAndServeTLS()")
+}
+
+// envInt returns the value of an integer environment variable, or nil if it's
+// unset or not an integer. A non-integer value is logged.
+func envInt(name string, logger *log.Logger) *int {
+	val, ok := os.LookupEnv(name)
+	if !ok {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(val, 10, 0)
+	if err != nil {
+		logger.Printf("Ignoring %s=%q: not an integer", name, val)
+		return nil
+	}
+	i := int(parsed)
+	return &i
+}
+
+// loadCRLConfig combines the CRL config fields with their PEBBLE_CRL_*
+// environment overrides, validates them, and returns the CA's CRL
+// configuration, or nil if CRLs are disabled. It also writes the effective
+// listen address back to c.Pebble.CRLListenAddress.
+func loadCRLConfig(c *config, logger *log.Logger) (*ca.CRLConfig, error) {
+	if val := os.Getenv("PEBBLE_CRL_LISTEN_ADDRESS"); val != "" {
+		c.Pebble.CRLListenAddress = val
+	}
+	if val := os.Getenv("PEBBLE_CRL_BASE_URL"); val != "" {
+		c.Pebble.CRLBaseURL = val
+	}
+
+	maxDelay := defaultCRLMaxDelay
+	if c.Pebble.CRLMaxDelay != nil {
+		maxDelay = *c.Pebble.CRLMaxDelay
+	}
+	if val := envInt("PEBBLE_CRL_MAX_DELAY", logger); val != nil {
+		maxDelay = *val
+	}
+
+	validity := c.Pebble.CRLValidity
+	if val := envInt("PEBBLE_CRL_VALIDITY", logger); val != nil {
+		validity = *val
+	}
+
+	listen, base := c.Pebble.CRLListenAddress, c.Pebble.CRLBaseURL
+	if listen == "" && base == "" {
+		return nil, nil
+	}
+	if listen == "" || base == "" {
+		return nil, errors.New("crlListenAddress and crlBaseURL must be set together")
+	}
+
+	u, err := url.Parse(base)
+	if err != nil {
+		return nil, fmt.Errorf("parsing crlBaseURL %q: %w", base, err)
+	}
+	if u.Scheme != "http" || u.Host == "" {
+		return nil, fmt.Errorf("crlBaseURL %q must be an absolute http:// URL", base)
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+
+	if maxDelay < 0 {
+		return nil, fmt.Errorf("crlMaxDelay must not be negative: %d", maxDelay)
+	}
+
+	switch {
+	case validity < 0:
+		return nil, fmt.Errorf("crlValidity must not be negative: %d", validity)
+	case validity == 0:
+		validity = defaultCRLValidity
+	case validity > maxCRLValidity:
+		logger.Printf("crlValidity of %d seconds exceeds 10 days, using %d", validity, maxCRLValidity)
+		validity = maxCRLValidity
+	}
+
+	return &ca.CRLConfig{
+		BaseURL:  base,
+		MaxDelay: int64(maxDelay),
+		Validity: time.Duration(validity) * time.Second,
+	}, nil
 }

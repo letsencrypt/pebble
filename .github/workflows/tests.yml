@@ -33,8 +33,8 @@ jobs:
       - name: go install commands
         run: go install -v -race ./cmd/...
       - name: launch pebble
-        run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 pebble &
-      # Perform a test issuance with chisel2.py
+        run: GORACE="halt_on_error=1" PEBBLE_WFE_NONCEREJECT=0 PEBBLE_CRL_MAX_DELAY=0 pebble -config test/config/pebble-config-crl.json &
+      # Perform a test issuance and revocation with chisel2.py
       - name: chisel
         run: REQUESTS_CA_BUNDLE=./test/certs/pebble.minica.pem python ./test/chisel2.py example.letsencrypt.org elpmaxe.letsencrypt.org
   eggsampler-linux:

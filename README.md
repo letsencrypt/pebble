@@ -288,7 +288,8 @@ Pebble does not currently reuse Pending Authorizations across Orders, however ot
 
 ### Avoiding Client HTTPS Errors
 
-Pebble is accessible over HTTPS only and uses a [test
+Pebble's ACME API and management interface are accessible over HTTPS only
+(the optional [CRL listener](#crls) is plain HTTP). They use a [test
 certificate](test/certs/localhost/cert.pem) generated using a [test
 CA](test/certs/pebble.minica.pem) (See [the `test/certs/`
 directory](test/certs/README.md) for more information).
@@ -399,6 +400,54 @@ to retrieve the OCSP status of a certificate, run Pebble with a `pebble-config.j
 ```
   "ocspResponderURL": "http://127.0.0.1:4002",
 ```
+
+### CRLs
+
+Pebble can serve a CRL over plain HTTP. This is disabled by default. To enable
+it, set both `crlListenAddress` and `crlBaseURL` in the config file (see
+[`test/config/pebble-config-crl.json`](test/config/pebble-config-crl.json)), or
+set the matching environment variables. Issued certificates then include a CRL
+Distribution Point (CRLDP) pointing at the CRL.
+
+| Config field | Environment variable | Default | Meaning |
+|---|---|---|---|
+| `crlListenAddress` | `PEBBLE_CRL_LISTEN_ADDRESS` | none | Listen address, e.g. `0.0.0.0:4003` |
+| `crlBaseURL` | `PEBBLE_CRL_BASE_URL` | none | `http://` URL clients use to reach the listener, e.g. `http://localhost:4003/` |
+| `crlMaxDelay` | `PEBBLE_CRL_MAX_DELAY` | `15` | Maximum random delay, in seconds, before a revocation appears on the CRL. `0` disables the delay |
+| `crlValidity` | `PEBBLE_CRL_VALIDITY` | `604800` (7 days) | Seconds from `thisUpdate` to `nextUpdate`, capped at 10 days |
+
+Non-empty environment variables override config fields.
+
+The CRL URL includes the Subject Key Identifier of the leaf-issuing
+intermediate, which changes every time Pebble starts. Read the URL from a
+certificate's CRLDP or from Pebble's startup log instead of hardcoding it.
+
+Details:
+
+- There is one CRL, covering leaf certificates. It is signed by the
+  leaf-issuing intermediate on every request.
+- The random delay keeps clients from relying on instant CRL updates. The
+  [certificate status](#certificate-status) endpoint and ARI reflect a
+  revocation immediately.
+- Revoked certificates stay on the CRL, even after they expire.
+- Entries with reason 0 (`unspecified`) have no `reasonCode` extension.
+- Root CRLs, intermediate CRLs, and sharding are not supported.
+
+Whether or not CRLs are enabled, Pebble accepts only revocation reasons 0, 1,
+3, 4, 5 and 9, and CA certificates include the `cRLSign` key usage.
+
+To enable CRLs with Docker:
+
+```
+docker run -p 14000:14000 -p 15000:15000 -p 4003:4003 \
+  -e PEBBLE_CRL_LISTEN_ADDRESS=0.0.0.0:4003 \
+  -e PEBBLE_CRL_BASE_URL=http://localhost:4003/ \
+  ghcr.io/letsencrypt/pebble
+```
+
+A `localhost` base URL only works for clients on the host. For clients in other
+containers, use an address they can reach, as in the commented-out CRL settings
+in [`docker-compose.yml`](docker-compose.yml).
 
 ### Listing orders
 
