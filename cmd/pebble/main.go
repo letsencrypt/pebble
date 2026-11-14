@@ -126,7 +126,7 @@ func main() {
 	}
 
 	db := db.NewMemoryStore()
-	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles)
+	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles, nil)
 	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {

@@ -192,6 +192,8 @@ type RevokedCertificate struct {
 	Certificate *Certificate
 	RevokedAt   time.Time
 	Reason      *uint
+	// CRLVisibleAt is the time after which the revocation appears on the CRL.
+	CRLVisibleAt time.Time
 }
 
 type ValidationRecord struct {
