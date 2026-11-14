@@ -104,6 +104,10 @@ const (
 	unusedRevocationReason       = 7
 	aACompromiseRevocationReason = 10
 
+	// alreadyRevokedDetail is the problem detail returned when a revocation
+	// request names a certificate that is already revoked.
+	alreadyRevokedDetail = "Certificate has already been revoked."
+
 	// authzReuseEnvVar defines an environment variable name used to provide a
 	// percentage value for how often Pebble should try to reuse valid authorizations
 	// for each identifier in an order. The percentage is independent of whether a
@@ -3036,7 +3040,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	revokedCert := wfe.db.GetRevokedCertificateByDER(derBytes)
 	if revokedCert != nil {
-		return acme.AlreadyRevokedProblem("Certificate has already been revoked.")
+		return acme.AlreadyRevokedProblem(alreadyRevokedDetail)
 	}
 
 	cert := wfe.db.GetCertificateByDER(derBytes)
@@ -3048,11 +3052,14 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		return prob
 	}
 
-	wfe.db.RevokeCertificate(&core.RevokedCertificate{
+	revoked := wfe.db.RevokeCertificate(&core.RevokedCertificate{
 		Certificate: cert,
 		RevokedAt:   time.Now(),
 		Reason:      revokeCertReq.Reason,
 	})
+	if !revoked {
+		return acme.AlreadyRevokedProblem(alreadyRevokedDetail)
+	}
 	return nil
 }
 

@@ -395,7 +395,7 @@ func (m *MemoryStore) GetCertificateByDER(der []byte) *core.Certificate {
 	return nil
 }
 
-// GetCertificateByDER loops over all revoked certificates to find the one that matches the provided
+// GetRevokedCertificateByDER loops over all revoked certificates to find the one that matches the provided
 // DER bytes. This method is linear and it's not optimized to give you a quick response.
 func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.RevokedCertificate {
 	m.RLock()
@@ -409,10 +409,17 @@ func (m *MemoryStore) GetRevokedCertificateByDER(der []byte) *core.RevokedCertif
 	return nil
 }
 
-func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) {
+// RevokeCertificate atomically marks a certificate as revoked. It returns false
+// without changing anything if the certificate was already revoked, and true
+// if this call revoked it.
+func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) bool {
 	m.Lock()
 	defer m.Unlock()
+	if _, ok := m.revokedCertificatesByID[cert.Certificate.ID]; ok {
+		return false
+	}
 	m.revokedCertificatesByID[cert.Certificate.ID] = cert
+	return true
 }
 
 /*
