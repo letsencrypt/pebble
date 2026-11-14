@@ -10,8 +10,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/pebble/v2/acme"
 	"github.com/letsencrypt/pebble/v2/ca"
@@ -23,10 +27,17 @@ import (
 // newTestWFE builds a WebFrontEndImpl backed by a real MemoryStore, CA and VA.
 func newTestWFE(t *testing.T) *WebFrontEndImpl {
 	t.Helper()
+	return newTestWFEWithCRL(t, nil)
+}
+
+// newTestWFEWithCRL is like newTestWFE, but with the given CRL configuration.
+// A nil crl disables CRLs.
+func newTestWFEWithCRL(t *testing.T, crl *ca.CRLConfig) *WebFrontEndImpl {
+	t.Helper()
 	logger := log.New(io.Discard, "", 0)
 	memoryStore := db.NewMemoryStore()
 
-	caImpl := ca.New(logger, memoryStore, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": {}}, nil)
+	caImpl := ca.New(logger, memoryStore, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": {}}, crl)
 	vaImpl := va.New(logger, 0, 0, false, "", memoryStore)
 
 	wfeImpl := New(logger, memoryStore, vaImpl, caImpl, nil, false, false, 0, 0)
@@ -148,4 +159,112 @@ func TestProcessRevocationReasons(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProcessRevocationCRLVisibleAt(t *testing.T) {
+	const maxDelay = 5
+	for _, tc := range []struct {
+		name string
+		crl  *ca.CRLConfig
+	}{
+		{"CRLs disabled", nil},
+		{"CRLs enabled", &ca.CRLConfig{BaseURL: "http://localhost:4003/", MaxDelay: maxDelay, Validity: time.Hour}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wfe := newTestWFEWithCRL(t, tc.crl)
+			cert := issueTestCert(t, wfe)
+			if prob := wfe.processRevocation(revocationBody(t, cert), allowRevocation); prob != nil {
+				t.Fatalf("revocation failed: %+v", prob)
+			}
+
+			rc := wfe.db.GetRevokedCertificateBySerial(cert.Cert.SerialNumber)
+			if rc == nil {
+				t.Fatal("revoked certificate not found")
+			}
+			if tc.crl == nil {
+				if !rc.CRLVisibleAt.Equal(rc.RevokedAt) {
+					t.Errorf("CRLVisibleAt = %s, want RevokedAt %s", rc.CRLVisibleAt, rc.RevokedAt)
+				}
+				return
+			}
+			latest := rc.RevokedAt.Add(maxDelay * time.Second)
+			if rc.CRLVisibleAt.Before(rc.RevokedAt) || rc.CRLVisibleAt.After(latest) {
+				t.Errorf("CRLVisibleAt = %s, want within [%s, %s]", rc.CRLVisibleAt, rc.RevokedAt, latest)
+			}
+		})
+	}
+}
+
+func TestCRLHandler(t *testing.T) {
+	wfe := newTestWFEWithCRL(t, &ca.CRLConfig{BaseURL: "http://localhost:4003/", Validity: time.Hour})
+	handler := wfe.CRLHandler()
+
+	crlURL, err := url.Parse(wfe.ca.CRLURL())
+	if err != nil {
+		t.Fatalf("parsing CRL URL: %s", err)
+	}
+
+	fetch := func(t *testing.T) *x509.RevocationList {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, crlURL.Path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status %d, want 200", crlURL.Path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "application/pkix-crl" {
+			t.Errorf("Content-Type = %q, want application/pkix-crl", ct)
+		}
+		crl, err := x509.ParseRevocationList(rec.Body.Bytes())
+		if err != nil {
+			t.Fatalf("parsing CRL: %s", err)
+		}
+		return crl
+	}
+
+	t.Run("empty CRL", func(t *testing.T) {
+		if crl := fetch(t); len(crl.RevokedCertificateEntries) != 0 {
+			t.Errorf("CRL has %d entries, want 0", len(crl.RevokedCertificateEntries))
+		}
+	})
+
+	t.Run("revoked certificate", func(t *testing.T) {
+		cert := issueTestCert(t, wfe)
+		reason := uint(1)
+		if prob := wfe.processRevocation(revocationBodyWithReason(t, cert, &reason), allowRevocation); prob != nil {
+			t.Fatalf("revocation failed: %+v", prob)
+		}
+		crl := fetch(t)
+		if len(crl.RevokedCertificateEntries) != 1 {
+			t.Fatalf("CRL has %d entries, want 1", len(crl.RevokedCertificateEntries))
+		}
+		entry := crl.RevokedCertificateEntries[0]
+		if entry.SerialNumber.Cmp(cert.Cert.SerialNumber) != 0 || entry.ReasonCode != 1 {
+			t.Errorf("CRL entry = serial %s reason %d, want serial %s reason 1",
+				entry.SerialNumber, entry.ReasonCode, cert.Cert.SerialNumber)
+		}
+	})
+
+	t.Run("HEAD", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodHead, crlURL.Path, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("HEAD: status %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("unknown path", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/crl/0000.crl", nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET unknown path: status %d, want 404", rec.Code)
+		}
+	})
+
+	t.Run("POST", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, crlURL.Path, nil))
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST: status %d, want 405", rec.Code)
+		}
+	})
 }
