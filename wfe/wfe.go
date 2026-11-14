@@ -98,12 +98,6 @@ const (
 	// max length becomes 253.
 	maxDNSIdentifierLength = 253
 
-	// Invalid revocation reason codes.
-	// The full list of codes can be found in Section 8.5.3.1 of ITU-T X.509
-	// http://www.itu.int/rec/T-REC-X.509-201210-I/en
-	unusedRevocationReason       = 7
-	aACompromiseRevocationReason = 10
-
 	// alreadyRevokedDetail is the problem detail returned when a revocation
 	// request names a certificate that is already revoked.
 	alreadyRevokedDetail = "Certificate has already been revoked."
@@ -163,6 +157,24 @@ type topHandler struct {
 
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	th.wfe.ServeHTTP(w, r)
+}
+
+// validRevocationReasons are the revocation reason codes accepted from ACME
+// clients. The codes are defined in Section 8.5.3.1 of ITU-T X.509
+// (http://www.itu.int/rec/T-REC-X.509-201210-I/en). All other codes are
+// rejected:
+//   - 2 (cACompromise) applies only to CA certificates.
+//   - 6 (certificateHold) is forbidden by the Baseline Requirements.
+//   - 7 is unused, and codes above 10 are undefined.
+//   - 8 (removeFromCRL) is only allowed in delta CRLs (RFC 5280 Section 5.3.1).
+//   - 10 (aACompromise) applies only to attribute authorities.
+var validRevocationReasons = map[uint]struct{}{
+	0: {}, // unspecified
+	1: {}, // keyCompromise
+	3: {}, // affiliationChanged
+	4: {}, // superseded
+	5: {}, // cessationOfOperation
+	9: {}, // privilegeWithdrawn
 }
 
 type WebFrontEndImpl struct {
@@ -3028,7 +3040,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	if revokeCertReq.Reason != nil {
 		r := *revokeCertReq.Reason
-		if r == unusedRevocationReason || r > aACompromiseRevocationReason {
+		if _, ok := validRevocationReasons[r]; !ok {
 			return acme.BadRevocationReasonProblem(fmt.Sprintf("Invalid revocation reason: %d", r))
 		}
 	}
