@@ -4,7 +4,6 @@
 [![Tests](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml/badge.svg)](https://github.com/letsencrypt/pebble/actions/workflows/tests.yml)
 
 [![Coverage Status](https://coveralls.io/repos/github/letsencrypt/pebble/badge.svg)](https://coveralls.io/github/letsencrypt/pebble)
-[![Go Report Card](https://goreportcard.com/badge/github.com/letsencrypt/pebble)](https://goreportcard.com/report/github.com/letsencrypt/pebble)
 
 A miniature version of [Boulder](https://github.com/letsencrypt/boulder), Pebble
 is a small [ACME](https://github.com/ietf-wg-acme/acme) test server not suited
