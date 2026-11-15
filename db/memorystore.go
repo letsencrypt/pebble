@@ -422,6 +422,18 @@ func (m *MemoryStore) RevokeCertificate(cert *core.RevokedCertificate) bool {
 	return true
 }
 
+// GetRevokedCertificates returns a snapshot of all revoked certificates in a
+// newly allocated slice.
+func (m *MemoryStore) GetRevokedCertificates() []*core.RevokedCertificate {
+	m.RLock()
+	defer m.RUnlock()
+	revoked := make([]*core.RevokedCertificate, 0, len(m.revokedCertificatesByID))
+	for _, c := range m.revokedCertificatesByID {
+		revoked = append(revoked, c)
+	}
+	return revoked
+}
+
 /*
  * keyToID produces a string with the hex representation of the SHA256 digest
  * over a provided public key. We use this to associate public keys to
