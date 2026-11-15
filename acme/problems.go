@@ -3,6 +3,9 @@ package acme
 import (
 	"fmt"
 	"net/http"
+	"sort"
+
+	jose "github.com/go-jose/go-jose/v4"
 )
 
 const (
@@ -32,6 +35,7 @@ type ProblemDetails struct {
 	Type        string           `json:"type,omitempty"`
 	Detail      string           `json:"detail,omitempty"`
 	HTTPStatus  int              `json:"status,omitempty"`
+	Algorithms  []string         `json:"algorithms,omitempty"`
 	Identifier  *Identifier      `json:"identifier,omitempty"`
 	Subproblems []ProblemDetails `json:"subproblems,omitempty"`
 }
@@ -192,11 +196,18 @@ func BadPublicKeyProblem(detail string) *ProblemDetails {
 	}
 }
 
-func BadSignatureAlgorithmProblem(detail string) *ProblemDetails {
+func BadSignatureAlgorithmProblem(detail string, algorithms []jose.SignatureAlgorithm) *ProblemDetails {
+	supportedAlgorithms := make([]string, len(algorithms))
+	for i, algorithm := range algorithms {
+		supportedAlgorithms[i] = string(algorithm)
+	}
+	sort.Strings(supportedAlgorithms)
+
 	return &ProblemDetails{
 		Type:       badSignatureAlgorithmErr,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+		Algorithms: supportedAlgorithms,
 	}
 }
 
