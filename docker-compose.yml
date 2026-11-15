@@ -6,6 +6,11 @@ services:
     ports:
       - 14000:14000 # HTTPS ACME API
       - 15000:15000 # HTTPS Management API
+      # - 4003:4003 # HTTP CRLs
+    # To enable CRLs, uncomment this block and the 4003 port above.
+    # environment:
+    #   - PEBBLE_CRL_LISTEN_ADDRESS=0.0.0.0:4003
+    #   - PEBBLE_CRL_BASE_URL=http://10.30.50.2:4003/
     networks:
       acmenet:
         ipv4_address: 10.30.50.2
