@@ -2356,6 +2356,21 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
+	// Do the account and order lookups before locking the authz.
+	// MemoryStore.FindValidAuthorization and Order.GetStatus take the db
+	// lock, then the order lock, then the authz lock. Taking either of the
+	// first two while holding the authz lock deadlocks if a writer queues up.
+	var account *core.Account
+	if postData.postAsGet {
+		account, prob = wfe.validPOSTAsGET(postData)
+	} else {
+		account, prob = wfe.getAcctByKey(postData.jwk)
+	}
+	if prob != nil {
+		wfe.sendError(prob, response)
+		return
+	}
+
 	authzID := strings.TrimPrefix(request.URL.Path, authzPath)
 	authz := wfe.db.GetAuthorizationByID(authzID)
 	if authz == nil {
@@ -2363,22 +2378,17 @@ func (wfe *WebFrontEndImpl) Authz(
 		return
 	}
 
-	authz.Lock()
-	defer authz.Unlock()
 	authz.Order.RLock()
 	orderAcctID := authz.Order.AccountID
 	authz.Order.RUnlock()
 
+	authz.Lock()
+	defer authz.Unlock()
+
 	// If the postData is not a POST-as-GET, treat this as case A) and update
 	// the authorization based on the postData
 	if !postData.postAsGet {
-		existingAcct, prob := wfe.getAcctByKey(postData.jwk)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-
-		if orderAcctID != existingAcct.ID {
+		if orderAcctID != account.ID {
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account does not own authorization"), response)
 			return
@@ -2406,12 +2416,6 @@ func (wfe *WebFrontEndImpl) Authz(
 		// Otherwise this was a POST-as-GET request and we need to verify it
 		// accordingly and ensure the authorized account owns the authorization
 		// being fetched.
-		account, prob := wfe.validPOSTAsGET(postData)
-		if prob != nil {
-			wfe.sendError(prob, response)
-			return
-		}
-
 		if orderAcctID != account.ID {
 			wfe.sendError(acme.UnauthorizedProblem(
 				"Account authorizing the request is not the owner of the authorization"),
