@@ -124,6 +124,16 @@ func TestValidateDNSPersist01(t *testing.T) {
 			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/acct/123;pOlIcY=wildcard"},
 			challWildcard:    true,
 		},
+		{
+			name:             "issuer-domain-name matches case-insensitively",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords:  []string{"AUTHORITY.Example;accounturi=https://ca.example/acct/123"},
+		},
+		{
+			name:             "issuer-domain-name matches with a trailing dot",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords:  []string{"authority.example.;accounturi=https://ca.example/acct/123"},
+		},
 		// Failure test cases:
 		{
 			name:               "only matching malformed record returns malformed",
