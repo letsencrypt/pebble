@@ -574,9 +574,20 @@ func trimWSP(s string) string {
 	})
 }
 
-// splitIssuerDomainName splits an RFC 8659 issue-value into issuer-domain-name
-// and raw parameter segments. It returns zero values when issuer-domain-name is
-// missing.
+// normalizeIssuerDomainName normalizes an issuer-domain-name so that it can be
+// compared against the names in the challenge's issuer-domain-names array,
+// which draft-ietf-acme-dns-persist requires the CA to publish as lowercase
+// A-labels with no trailing dot. It case-folds and strips a trailing dot, which
+// are steps 1 and 4 of the normalization algorithm in Section 9.2; steps 2 and
+// 3, NFC normalization and Punycode conversion, are no-ops for the ASCII names
+// Pebble is configured with.
+func normalizeIssuerDomainName(name string) string {
+	return strings.TrimSuffix(strings.ToLower(name), ".")
+}
+
+// splitIssuerDomainName splits an RFC 8659 issue-value into a normalized
+// issuer-domain-name and raw parameter segments. It returns zero values when
+// issuer-domain-name is missing.
 func splitIssuerDomainName(raw string) (string, []string) {
 	// Split into issuer-domain-name and parameters.
 	parts := strings.Split(raw, ";")
@@ -584,7 +595,7 @@ func splitIssuerDomainName(raw string) (string, []string) {
 		return "", nil
 	}
 	// Parse issuer-domain-name.
-	issuerDomainName := trimWSP(parts[0])
+	issuerDomainName := normalizeIssuerDomainName(trimWSP(parts[0]))
 	if issuerDomainName == "" {
 		return "", nil
 	}
