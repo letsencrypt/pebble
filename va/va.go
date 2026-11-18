@@ -571,6 +571,11 @@ type dnsPersistIssueValue struct {
 	persistUntil *time.Time
 }
 
+type dnsPersistHashedAccountURI struct {
+	hashAlg hash.Hash
+	value   string
+}
+
 // trimWSP trims RFC 8659 whitespace characters (space and tab) from the
 // beginning and end of a string.
 func trimWSP(s string) string {
@@ -663,11 +668,72 @@ func parseDNSPersistIssueValues(issuerDomainName string, paramsRaw []string) (*d
 	return result, nil
 }
 
+// splitAccountURI accepts hashprefix and accounturi in TXT record,
+// split and parse it into hash algorithm and actual hash
+func splitAccountURI(prefix string, accounturi string) (*dnsPersistHashedAccountURI, error) {
+	if !strings.HasPrefix(accounturi, prefix) {
+		return nil, fmt.Errorf("accountHashPrefix does not match, expected %s", prefix)
+	}
+	// calculate account hash format, as defined in draft-ietf-acme-dns-persist-03
+	temp := strings.Split(strings.TrimPrefix(accounturi, prefix), "/")
+	if len(temp) != 2 {
+		return nil, fmt.Errorf("accounthash does not contain hash algorithm")
+	}
+
+	hashalgstring := temp[0] // hash alg: keep mind IANA have names in lowercase
+	observedhash := temp[1]
+
+	var hashalg hash.Hash
+	switch hashalgstring { // use a bunch of allowed hash algs
+	case "sha-256":
+		hashalg = crypto.SHA256.New()
+	case "sha-384":
+		hashalg = crypto.SHA384.New()
+	case "sha-512":
+		hashalg = crypto.SHA512.New()
+	case "sha3-256":
+		hashalg = crypto.SHA3_256.New()
+	case "sha3-384":
+		hashalg = crypto.SHA3_384.New()
+	case "sha3-512":
+		hashalg = crypto.SHA3_512.New()
+	default:
+		return nil, fmt.Errorf("accountHash has unsupported hash algorithm %s", temp[0])
+	}
+	return &dnsPersistHashedAccountURI{
+		hashAlg: hashalg,
+		value:   observedhash,
+	}, nil
+}
+
 func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
+	needWildcardPolicy := task.Wildcard
+	validationTargetDomain := task.Identifier.Value
 	challengeSubdomain := fmt.Sprintf("%s.%s", "_validation-persist", task.Identifier.Value)
 	result := &core.ValidationRecord{
 		URL:         challengeSubdomain,
 		ValidatedAt: time.Now(),
+	}
+
+	// if AncestorDomain is included, check its allowed and change challenge subdomain into it
+	if task.Challenge.AncestorDomain != "" {
+		challengeSubdomain = fmt.Sprintf("%s.%s", "_validation-persist", task.Challenge.AncestorDomain)
+		validationTargetDomain = task.Challenge.AncestorDomain
+		result.URL = challengeSubdomain
+		// if one set AncestorDomain it validating txt record need wildcard policy
+		needWildcardPolicy = true
+		if !strings.HasSuffix(task.Identifier.Value, ("." + task.Challenge.AncestorDomain)) {
+			result.Error = acme.UnauthorizedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is not subdomain of requested ident %s",
+					task.Challenge.AncestorDomain, task.Identifier.Value))
+			return result
+		}
+		if !strings.Contains(task.Challenge.AncestorDomain, ".") {
+			result.Error = acme.UnauthorizedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is a TLD, rejected",
+					task.Challenge.AncestorDomain))
+			return result
+		}
 	}
 
 	txtRecords, err := va.getTXTEntry(challengeSubdomain)
@@ -715,44 +781,13 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 			continue
 		}
 
-		if !strings.HasPrefix(params.accountURI, va.AccountHashPrefix) {
+		hashedAccURI, err := splitAccountURI(va.AccountHashPrefix, params.accountURI)
+		if err != nil {
 			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accountHashPrefix does not match, expected %s",
-				receivedIssuer, va.AccountHashPrefix))
-			continue
-		}
-		// calculate account hash format, as defined in draft-ietf-acme-dns-persist-02
-		temp := strings.Split(strings.TrimPrefix(params.accountURI, va.AccountHashPrefix), "/")
-		if len(temp) != 2 {
-			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash does not contain hash algorithm",
-				receivedIssuer))
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: %s", receivedIssuer, err.Error()))
 			continue
 		}
 
-		var hashalg hash.Hash
-		hashalgstring := temp[0] // hash alg: keep mind IANA have names in lowercase
-		observedhash := temp[1]
-
-		switch hashalgstring { // use a bunch of allowed hash algs
-		case "sha-256":
-			hashalg = crypto.SHA256.New()
-		case "sha-384":
-			hashalg = crypto.SHA384.New()
-		case "sha-512":
-			hashalg = crypto.SHA512.New()
-		case "sha3-256":
-			hashalg = crypto.SHA3_256.New()
-		case "sha3-384":
-			hashalg = crypto.SHA3_384.New()
-		case "sha3-512":
-			hashalg = crypto.SHA3_512.New()
-		default:
-			syntaxErrs = append(syntaxErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: accounthash has unsupported hash algorithm %s",
-				receivedIssuer, temp[0]))
-			continue
-		}
 		// building account hash
 		thumbprint, err := task.Account.Key.Thumbprint(crypto.SHA256)
 		if err != nil {
@@ -765,32 +800,34 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 		key := []byte(base64.RawURLEncoding.EncodeToString(thumbprint))
 		accountidentsurffix := append(key, []byte(task.AccountURL)...)
 
+		hashedAccURI.hashAlg.Reset()
 		globalAccHashIn := []byte{0x1, '*'} // global accounthash, see Section 4.1
 		globalAccHashIn = append(globalAccHashIn, accountidentsurffix...)
-		hashalg.Write(globalAccHashIn)
-		globalAccHashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
+		hashedAccURI.hashAlg.Write(globalAccHashIn)
+		globalAccHashStr := base64.RawURLEncoding.EncodeToString(hashedAccURI.hashAlg.Sum(nil))
 
-		hashalg.Reset()
-		perdomainAcchashIn := []byte{byte(len(task.Identifier.Value))} // per domain accounthash value
-		perdomainAcchashIn = append(perdomainAcchashIn, []byte(task.Identifier.Value)...)
+		hashedAccURI.hashAlg.Reset()
+		perdomainAcchashIn := []byte{byte(len(validationTargetDomain))} // per domain accounthash value
+		perdomainAcchashIn = append(perdomainAcchashIn, []byte(validationTargetDomain)...)
 		perdomainAcchashIn = append(perdomainAcchashIn, accountidentsurffix...)
-		hashalg.Write(perdomainAcchashIn)
-		perdomainAcchashStr := base64.RawURLEncoding.EncodeToString(hashalg.Sum(nil))
+		hashedAccURI.hashAlg.Write(perdomainAcchashIn)
+		perdomainAcchashStr := base64.RawURLEncoding.EncodeToString(hashedAccURI.hashAlg.Sum(nil))
 
-		validAccountURIs := []string{globalAccHashStr, perdomainAcchashStr}
+		validAccountURIs := []string{perdomainAcchashStr, globalAccHashStr}
 
-		if !slices.Contains(validAccountURIs, observedhash) {
+		if !slices.Contains(validAccountURIs, hashedAccURI.value) {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
+				// tell hash expected for debug
 				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: "+
-					"accounthash mismatch: expected %s for domain %s, %s for domain-correlation opt-out, got %q",
-				receivedIssuer, validAccountURIs[0], task.Identifier.Value, validAccountURIs[1], observedhash))
+					"accounthash mismatch: expected %s for validation target %s, %s for domain-correlation opt-out, got %q",
+				receivedIssuer, validAccountURIs[0], validationTargetDomain, validAccountURIs[1], hashedAccURI.value))
 			continue
 		}
 		// Per the dns-persist-01 specification, if the policy tag is present
 		// parameter's defined values MUST be treated as case-insensitive.
-		if task.Wildcard && strings.ToLower(params.policy) != "wildcard" {
+		if needWildcardPolicy && strings.ToLower(params.policy) != "wildcard" {
 			authorizationErrs = append(authorizationErrs, fmt.Sprintf(
-				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: policy mismatch: expected \"wildcard\", got %q",
+				"Error parsing DNS-PERSIST-01 challenge TXT record with issuer-domain-name %q: policy mismatch: required \"wildcard\", got %q",
 				receivedIssuer, params.policy))
 			continue
 		}

@@ -72,8 +72,11 @@ func TestValidateDNSPersist01(t *testing.T) {
 	testCases := []struct {
 		name               string
 		challIssuerNames   []string
+		targetdomain       string
 		challTXTRecords    []string
 		challWildcard      bool
+		challAncestor      string
+		AncestorTXTRecords []string
 		expectErr          bool
 		expectHTTPStatus   int
 		expectDetailSubstr string
@@ -94,7 +97,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 			},
 		},
 		{
-			name:             "using sha3-256 for account hash, but key still need to be sha-256",
+			name:             "using sha3-256 for account hash, but key thumbprint still need to be sha-256",
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords: []string{
 				"authority.example;accounturi=https://ca.example/account-hash/sha3-256/sDsI2tmNNk0xwo0LLJbtVc0U4FIgVkPHAflH9BWn7Sw",
@@ -148,6 +151,14 @@ func TestValidateDNSPersist01(t *testing.T) {
 			challIssuerNames: []string{"authority.example"},
 			challTXTRecords:  []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;pOlIcY=wildcard"},
 			challWildcard:    true,
+		},
+		{
+			name:             "using ancesterdomain, should check at ancester for validation",
+			targetdomain:     "test.example.com",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw; policy=wildcard",
+			},
 		},
 		// Failure test cases:
 		{
@@ -269,7 +280,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 			challWildcard:      true,
 			expectErr:          true,
 			expectHTTPStatus:   403,
-			expectDetailSubstr: `policy mismatch: expected "wildcard", got`,
+			expectDetailSubstr: `policy mismatch: required "wildcard", got`,
 		},
 		{
 			name:               "matching record missing accounturi returns malformed",
@@ -311,11 +322,51 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectHTTPStatus:   403,
 			expectDetailSubstr: `validation time`,
 		},
+		{
+			name:             "if ancesterDomain was used hash but using leaf domain for accounthash",
+			targetdomain:     "foo.example.com",
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/qZCXuUCEYvBBpHpYkXXqyfqmyXL5ELhsitU4BAj0hyk; policy=wildcard",
+			},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: "accounthash mismatch",
+		},
+		{
+			name:             "user trying to use non-parent for ancesterDomain",
+			targetdomain:     "realexample.com", // exmaple.com is prefix but not real parent domain
+			challIssuerNames: []string{"authority.example"},
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw; policy=wildcard",
+			},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: "not subdomain of",
+		},
+		{
+			name:             "wlidcard policy required using ancesterdomain even if auth itself isn't wildcard",
+			targetdomain:     "test.example.com",
+			challIssuerNames: []string{"authority.example"},
+			challWildcard:    false,
+			challTXTRecords: []string{
+				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw",
+			},
+			expectErr:          true,
+			expectHTTPStatus:   403,
+			expectDetailSubstr: "wildcard",
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			targetdomain := domain
+			ancestor := ""
+			if tc.targetdomain != "" {
+				targetdomain = tc.targetdomain
+				ancestor = domain
+			}
 
 			addr, shutdown := startMockTXTDNSServer(t, map[string][]string{
 				txtName: tc.challTXTRecords,
@@ -339,13 +390,14 @@ func TestValidateDNSPersist01(t *testing.T) {
 			task := &vaTask{
 				Identifier: acme.Identifier{
 					Type:  acme.IdentifierDNS,
-					Value: domain,
+					Value: targetdomain,
 				},
 				Challenge: &core.Challenge{
 					Challenge: acme.Challenge{
 						Type:              acme.ChallengeDNSPersist01,
 						IssuerDomainNames: tc.challIssuerNames,
 					},
+					AncestorDomain: ancestor,
 				},
 				AccountURL: accountURL,
 				Account: &core.Account{
