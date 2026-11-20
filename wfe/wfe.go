@@ -618,6 +618,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		"externalAccountRequired": wfe.requireEAB,
 		"profiles":                wfe.ca.GetProfiles(),
 		"caaIdentities":           wfe.caaIdentities,
+		"issuerDomainNames":       wfe.caaIdentities,        // should be same as caaIdentites for public CA.
+		"accountHashPrefix":       wfe.va.AccountHashPrefix, // read from VA to fill this
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -811,7 +813,7 @@ func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetail
 	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
 		return acme.UnsupportedMediaTypeProblem(
 			`Invalid Content-Type header on POST. ` +
-				`Content-Type must be "application/jose+json"`)
+				`Content-Type must be "application/jose+json"` + contentType)
 	}
 
 	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
@@ -2575,25 +2577,20 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	// In strict mode we reject any challenge POST with a body other than `{}`.
-	// This matches RFC 8555 Section 7.5.1 and the ACME challenge types that
-	// Pebble has implemented. Per ACME errata 5729[0] it may not be true for
-	// extensions to ACME that add new challenge types.
-	//
-	// [0]: https://www.rfc-editor.org/errata/eid5729
-	if wfe.strict && !bytes.Equal(postData.body, []byte("{}")) {
-		wfe.sendError(
-			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
-		return
-	}
-
+	// make a struct that all things we understand in challenge response
+	// in struct mode parser will reject unknown extensions.
 	// When not in strict mode we still want to be strict about the legacy key
-	// authorization field not being present in the POST JSON.
+	// authorization field not being present in the POST JSON, so we catch it too.
 	var chalResp struct {
-		KeyAuthorization *string
+		KeyAuthorization *string `json:"keyAuthorization,omitempty"`
+		AncestorDomain   string  `json:"ancestorDomain,omitempty"`
 	}
-	err := json.Unmarshal(postData.body, &chalResp)
-	if err != nil {
+	chaldecoder := json.NewDecoder(bytes.NewReader(postData.body))
+	if wfe.strict {
+		chaldecoder.DisallowUnknownFields()
+	}
+	err := chaldecoder.Decode(&chalResp)
+	if err != nil || chaldecoder.More() {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
 		return
@@ -2616,6 +2613,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	existingChal := wfe.db.GetChallengeByID(chalID)
 	if existingChal == nil {
 		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if chalResp.AncestorDomain != "" && existingChal.Type != acme.ChallengeDNSPersist01 {
+		wfe.sendError(
+			acme.UnauthorizedProblem("ancestorDomain is not allowed for challenge type :"+existingChal.Type), response)
 		return
 	}
 
@@ -2676,12 +2678,14 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 
 	// Confirm challenge status again and update it immediately before sending it to the VA
+	// challenge update's payload will add here too
 	prob = nil
 	existingChal.Lock()
 	if existingChal.Status != acme.StatusPending {
 		prob = acme.MalformedProblem(
 			fmt.Sprintf("Challenge in %s status cannot be updated", existingChal.Status))
 	} else {
+		existingChal.AncestorDomain = chalResp.AncestorDomain
 		existingChal.Status = acme.StatusProcessing
 	}
 	existingChal.Unlock()

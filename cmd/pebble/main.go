@@ -32,6 +32,7 @@ type config struct {
 		ExternalAccountBindingRequired bool
 		ExternalAccountMACKeys         map[string]string
 		CAAIdentities                  []string
+		AccountHashPrefix              string
 		// Configure policies to deny certain domains
 		DomainBlocklist []string
 		KeyAlgorithm    string
@@ -125,9 +126,18 @@ func main() {
 		}
 	}
 
+	accountHashPrefix := c.Pebble.AccountHashPrefix
+	if accountHashPrefix == "" {
+		logger.Println("No AccountHashPrefix configured, using default [https://pebble.letsencrypt.org/hashed-accounts/]")
+		accountHashPrefix = "https://pebble.letsencrypt.org/hashed-accounts/"
+	}
+	if !strings.HasSuffix(accountHashPrefix, "/") {
+		accountHashPrefix = accountHashPrefix + "/" // make it in dir format
+	}
+
 	db := db.NewMemoryStore()
 	ca := ca.New(logger, db, c.Pebble.OCSPResponderURL, keyAlg, alternateRoots, chainLength, profiles)
-	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db)
+	va := va.New(logger, c.Pebble.HTTPPort, c.Pebble.TLSPort, *strictMode, *resolverAddress, db, accountHashPrefix)
 
 	for keyID, key := range c.Pebble.ExternalAccountMACKeys {
 		err := db.AddExternalAccountKeyByID(keyID, key)
