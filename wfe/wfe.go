@@ -813,7 +813,7 @@ func (wfe *WebFrontEndImpl) validPOST(request *http.Request) *acme.ProblemDetail
 	if contentType := request.Header.Get("Content-Type"); contentType != expectedJWSContentType {
 		return acme.UnsupportedMediaTypeProblem(
 			`Invalid Content-Type header on POST. ` +
-				`Content-Type must be "application/jose+json"` + contentType)
+				`Content-Type must be "application/jose+json"`)
 	}
 
 	// Per 6.4.1  "Replay-Nonce" clients should not send a Replay-Nonce header in
@@ -2617,7 +2617,7 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	}
 	if chalResp.AncestorDomain != "" && existingChal.Type != acme.ChallengeDNSPersist01 {
 		wfe.sendError(
-			acme.UnauthorizedProblem("ancestorDomain is not allowed for challenge type :"+existingChal.Type), response)
+			acme.MalformedProblem("ancestorDomain is not allowed for challenge type :"+existingChal.Type), response)
 		return
 	}
 
@@ -2631,12 +2631,33 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 			acme.InternalErrorProblem("challenge missing associated authz"), response)
 		return
 	}
-
 	authz.RLock()
+	targetIdent := authz.Identifier
 	authz.Order.RLock()
 	orderAcctID := authz.Order.AccountID
 	authz.Order.RUnlock()
 	authz.RUnlock()
+
+	// need to verify AncestorDomain in wfe
+	if chalResp.AncestorDomain != "" {
+		if targetIdent.Type == acme.IdentifierIP {
+			wfe.sendError(
+				acme.MalformedProblem("ancestorDomain is forbidden for IP address identifier"), response)
+			return
+		}
+		if !strings.HasSuffix(targetIdent.Type, ("." + chalResp.AncestorDomain)) {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is not subdomain of requested ident %s",
+					chalResp.AncestorDomain, targetIdent.Value)), response)
+			return
+		} // pebble normally doesn't test for TLD limit, but catch plain TLD case for
+		if !strings.Contains(chalResp.AncestorDomain, ".") {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is a TLD, rejected",
+					chalResp.AncestorDomain)), response)
+			return
+		}
+	}
 
 	if orderAcctID != existingAcct.ID {
 		wfe.sendError(acme.UnauthorizedProblem(
@@ -2675,6 +2696,20 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 	if strings.HasPrefix(ident.Value, "*.") {
 		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 		wildcard = true
+	}
+
+	targetlen := len(ident.Value)
+	if chalResp.AncestorDomain != "" {
+		targetlen = len(chalResp.AncestorDomain)
+	}
+	const prefixlen = len("_validation-persist.")
+	if (prefixlen + targetlen) > maxDNSIdentifierLength {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("target domain _validation-persist.%s is too long for DNS, len %d",
+					targetIdent.Value, prefixlen+targetlen)),
+			response)
+		return
 	}
 
 	// Confirm challenge status again and update it immediately before sending it to the VA

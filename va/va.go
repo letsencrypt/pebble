@@ -658,7 +658,7 @@ func parseDNSPersistIssueValues(issuerDomainName string, paramsRaw []string) (*d
 			result.policy = value
 		case "persistuntil":
 			persistUntilVal, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
+			if err != nil || persistUntilVal < 0 {
 				return nil, fmt.Errorf("malformed persistUntil timestamp %q", value)
 			}
 			persistUntil := time.Unix(persistUntilVal, 0).UTC()
@@ -715,21 +715,22 @@ func (va VAImpl) validateDNSPersist01(task *vaTask) *core.ValidationRecord {
 		ValidatedAt: time.Now(),
 	}
 
-	// if AncestorDomain is included, check its allowed and change challenge subdomain into it
+	// if AncestorDomain is included, make that resulting TXT records need wildcard policy
 	if task.Challenge.AncestorDomain != "" {
 		challengeSubdomain = fmt.Sprintf("%s.%s", "_validation-persist", task.Challenge.AncestorDomain)
 		validationTargetDomain = task.Challenge.AncestorDomain
 		result.URL = challengeSubdomain
-		// if one set AncestorDomain it validating txt record need wildcard policy
 		needWildcardPolicy = true
+
+		// validate domain is in right form, wfe already checked those but shouldn't trust it
 		if !strings.HasSuffix(task.Identifier.Value, ("." + task.Challenge.AncestorDomain)) {
-			result.Error = acme.UnauthorizedProblem(
+			result.Error = acme.MalformedProblem(
 				fmt.Sprintf("requested AncestorDomain %s is not subdomain of requested ident %s",
 					task.Challenge.AncestorDomain, task.Identifier.Value))
 			return result
 		}
 		if !strings.Contains(task.Challenge.AncestorDomain, ".") {
-			result.Error = acme.UnauthorizedProblem(
+			result.Error = acme.MalformedProblem(
 				fmt.Sprintf("requested AncestorDomain %s is a TLD, rejected",
 					task.Challenge.AncestorDomain))
 			return result

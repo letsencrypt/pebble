@@ -315,12 +315,12 @@ func TestValidateDNSPersist01(t *testing.T) {
 			expectDetailSubstr: `validation time`,
 		},
 		{
-			name:               "negative persistUntil returns unauthorized",
+			name:               "negative persistUntil returns malformed",
 			challIssuerNames:   []string{"authority.example"},
 			challTXTRecords:    []string{"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw;persistUntil=-1"},
 			expectErr:          true,
-			expectHTTPStatus:   403,
-			expectDetailSubstr: `validation time`,
+			expectHTTPStatus:   400,
+			expectDetailSubstr: `malformed persistUntil`,
 		},
 		{
 			name:             "if ancesterDomain was used hash but using leaf domain for accounthash",
@@ -341,7 +341,7 @@ func TestValidateDNSPersist01(t *testing.T) {
 				"authority.example;accounturi=https://ca.example/account-hash/sha-256/5SQm7n6tPh2-PlLbCKGnViTXX5z19SCN4cPGQHSk-kw; policy=wildcard",
 			},
 			expectErr:          true,
-			expectHTTPStatus:   403,
+			expectHTTPStatus:   400,
 			expectDetailSubstr: "not subdomain of",
 		},
 		{
