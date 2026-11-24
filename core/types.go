@@ -125,9 +125,10 @@ type Authorization struct {
 type Challenge struct {
 	sync.RWMutex
 	acme.Challenge
-	ID            string
-	Authz         *Authorization
-	ValidatedDate time.Time
+	ID             string
+	Authz          *Authorization
+	ValidatedDate  time.Time
+	AncestorDomain string
 }
 
 func (ch *Challenge) ExpectedKeyAuthorization(key *jose.JSONWebKey) string {

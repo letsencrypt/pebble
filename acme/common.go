@@ -87,7 +87,7 @@ type Challenge struct {
 	Token             string          `json:"token,omitempty"`
 	Status            string          `json:"status"`
 	AccountURI        string          `json:"accounturi,omitempty"`
-	IssuerDomainNames []string        `json:"issuer-domain-names,omitempty"`
+	IssuerDomainNames []string        `json:"issuerDomainNames,omitempty"`
 	Validated         string          `json:"validated,omitempty"`
 	Error             *ProblemDetails `json:"error,omitempty"`
 }

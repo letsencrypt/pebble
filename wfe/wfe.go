@@ -618,6 +618,8 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		"externalAccountRequired": wfe.requireEAB,
 		"profiles":                wfe.ca.GetProfiles(),
 		"caaIdentities":           wfe.caaIdentities,
+		"issuerDomainNames":       wfe.caaIdentities,        // should be same as caaIdentites for public CA.
+		"accountHashPrefix":       wfe.va.AccountHashPrefix, // read from VA to fill this
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
@@ -2575,25 +2577,20 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		return
 	}
 
-	// In strict mode we reject any challenge POST with a body other than `{}`.
-	// This matches RFC 8555 Section 7.5.1 and the ACME challenge types that
-	// Pebble has implemented. Per ACME errata 5729[0] it may not be true for
-	// extensions to ACME that add new challenge types.
-	//
-	// [0]: https://www.rfc-editor.org/errata/eid5729
-	if wfe.strict && !bytes.Equal(postData.body, []byte("{}")) {
-		wfe.sendError(
-			acme.MalformedProblem(`challenge initiation POST JWS body was not "{}"`), response)
-		return
-	}
-
+	// make a struct that all things we understand in challenge response
+	// in struct mode parser will reject unknown extensions.
 	// When not in strict mode we still want to be strict about the legacy key
-	// authorization field not being present in the POST JSON.
+	// authorization field not being present in the POST JSON, so we catch it too.
 	var chalResp struct {
-		KeyAuthorization *string
+		KeyAuthorization *string `json:"keyAuthorization,omitempty"`
+		AncestorDomain   string  `json:"ancestorDomain,omitempty"`
 	}
-	err := json.Unmarshal(postData.body, &chalResp)
-	if err != nil {
+	chaldecoder := json.NewDecoder(bytes.NewReader(postData.body))
+	if wfe.strict {
+		chaldecoder.DisallowUnknownFields()
+	}
+	err := chaldecoder.Decode(&chalResp)
+	if err != nil || chaldecoder.More() {
 		wfe.sendError(
 			acme.MalformedProblem("Error unmarshaling body JSON"), response)
 		return
@@ -2618,6 +2615,11 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}
+	if chalResp.AncestorDomain != "" && existingChal.Type != acme.ChallengeDNSPersist01 {
+		wfe.sendError(
+			acme.MalformedProblem("ancestorDomain is not allowed for challenge type :"+existingChal.Type), response)
+		return
+	}
 
 	authz, prob := wfe.validateChallengeUpdate(existingChal)
 	if prob != nil {
@@ -2629,12 +2631,33 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 			acme.InternalErrorProblem("challenge missing associated authz"), response)
 		return
 	}
-
 	authz.RLock()
+	targetIdent := authz.Identifier
 	authz.Order.RLock()
 	orderAcctID := authz.Order.AccountID
 	authz.Order.RUnlock()
 	authz.RUnlock()
+
+	// need to verify AncestorDomain in wfe
+	if chalResp.AncestorDomain != "" {
+		if targetIdent.Type == acme.IdentifierIP {
+			wfe.sendError(
+				acme.MalformedProblem("ancestorDomain is forbidden for IP address identifier"), response)
+			return
+		}
+		if !strings.HasSuffix(targetIdent.Type, ("." + chalResp.AncestorDomain)) {
+			wfe.sendError(acme.MalformedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is not subdomain of requested ident %s",
+					chalResp.AncestorDomain, targetIdent.Value)), response)
+			return
+		} // pebble normally doesn't test for TLD limit, but catch plain TLD case for
+		if !strings.Contains(chalResp.AncestorDomain, ".") {
+			wfe.sendError(acme.UnauthorizedProblem(
+				fmt.Sprintf("requested AncestorDomain %s is a TLD, rejected",
+					chalResp.AncestorDomain)), response)
+			return
+		}
+	}
 
 	if orderAcctID != existingAcct.ID {
 		wfe.sendError(acme.UnauthorizedProblem(
@@ -2675,13 +2698,29 @@ func (wfe *WebFrontEndImpl) updateChallenge(
 		wildcard = true
 	}
 
+	targetlen := len(ident.Value)
+	if chalResp.AncestorDomain != "" {
+		targetlen = len(chalResp.AncestorDomain)
+	}
+	const prefixlen = len("_validation-persist.")
+	if (prefixlen + targetlen) > maxDNSIdentifierLength {
+		wfe.sendError(
+			acme.MalformedProblem(
+				fmt.Sprintf("target domain _validation-persist.%s is too long for DNS, len %d",
+					targetIdent.Value, prefixlen+targetlen)),
+			response)
+		return
+	}
+
 	// Confirm challenge status again and update it immediately before sending it to the VA
+	// challenge update's payload will add here too
 	prob = nil
 	existingChal.Lock()
 	if existingChal.Status != acme.StatusPending {
 		prob = acme.MalformedProblem(
 			fmt.Sprintf("Challenge in %s status cannot be updated", existingChal.Status))
 	} else {
+		existingChal.AncestorDomain = chalResp.AncestorDomain
 		existingChal.Status = acme.StatusProcessing
 	}
 	existingChal.Unlock()
