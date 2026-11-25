@@ -2326,6 +2326,7 @@ func prepAuthorizationForDisplay(authz *core.Authorization) acme.Authorization {
 		// If the authz isn't pending then we need to filter the challenges displayed
 		// to only those that were used to make the authz valid || invalid.
 		if result.Status != acme.StatusPending && (c.Error == nil && c.Status != acme.StatusValid) {
+			c.RUnlock()
 			continue
 		}
 		chals = append(chals, c.Challenge)
